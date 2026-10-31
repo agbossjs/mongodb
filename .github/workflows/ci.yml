@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (MongoDB 7 replica set, @agboss/core at the pinned SHA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # a single-node replica set (the stores' required deployment) and a standalone mongod (the
+      # start check must refuse it); the integration tests fail in CI without them, never skip
+      AGBOSS_MONGODB_TEST_URL: mongodb://localhost:27017/?replicaSet=rs0
+      AGBOSS_MONGODB_STANDALONE_TEST_URL: mongodb://localhost:27018/?directConnection=true
+    steps:
+      - uses: actions/checkout@v4
+
+      # a service container cannot take a command (--replSet): the servers start here, booting
+      # while the install runs; "Wait for MongoDB" initiates the replica set
+      - name: Start MongoDB 7 (replica set rs0 on 27017, standalone on 27018)
+        run: |
+          docker run -d --name mongo-rs -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          docker run -d --name mongo-standalone -p 27018:27017 mongo:7
+
+      - name: Resolve the pinned framework SHA
+        id: pin
+        run: echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out agbossjs/agboss at the pinned SHA
+        uses: actions/checkout@v4
+        with:
+          repository: agbossjs/agboss
+          ref: ${{ steps.pin.outputs.sha }}
+          path: .agboss-source
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Pack @agboss/core at the pinned SHA and install the tarball
+        env:
+          AGBOSS_REPO_DIR: .agboss-source
+        run: |
+          npm run pack:framework
+          npm run install:packed
+
+      - name: Wait for MongoDB and initiate the replica set
+        run: |
+          for server in mongo-rs mongo-standalone; do
+            for attempt in $(seq 1 60); do
+              docker exec "$server" mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' && break
+              sleep 1
+            done
+          done
+          docker exec mongo-rs mongosh --quiet --eval 'rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] })'
+          for attempt in $(seq 1 60); do
+            [ "$(docker exec mongo-rs mongosh --quiet --eval 'db.hello().isWritablePrimary')" = "true" ] && exit 0
+            sleep 1
+          done
+          echo "the replica set has no primary after 60 s" && exit 1
+
+      - name: Check (format, suppressions, installs, lint, types, tests with coverage, API report)
+        run: npm run check
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "const t=require('./coverage/coverage-summary.json').total;console.log('| | % |\n|---|---|\n'+['lines','branches','functions','statements'].map(k=>'| '+k+' | '+t[k].pct+' |').join('\n'))" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: MongoDB logs
+        if: failure()
+        run: docker logs mongo-rs | tail -100

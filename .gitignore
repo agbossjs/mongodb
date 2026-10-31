@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.packed
+.agboss-source
+# flow types `agboss check` generates: never committed
+.agboss
+temp
+*.tsbuildinfo
+.DS_Store
