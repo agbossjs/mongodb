@@ -1,0 +1,83 @@
+{
+  "name": "@agboss/mongodb",
+  "version": "0.1.0",
+  "description": "MongoDB stores for AGBoss (scaffold): the replica-set connection that enforces write concern majority and snapshot transactions; the stores follow agbossjs/agboss#526 and #484.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Pavel Ravvich <hello@agboss.dev> (https://github.com/pavelravvich)",
+  "homepage": "https://agboss.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agbossjs/mongodb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agbossjs/mongodb/issues"
+  },
+  "keywords": [
+    "agboss",
+    "mongodb",
+    "replica-set",
+    "langgraph",
+    "ai-agents"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "pretest": "npm run build",
+    "test": "vitest run",
+    "precoverage": "npm run build",
+    "coverage": "vitest run --coverage",
+    "check:api": "npm run build && node scripts/api-report.mjs",
+    "api:update": "npm run build && node scripts/api-report.mjs --write",
+    "check": "npm run format:check && npm run check:suppressions && npm run check:installs && npm run check:real-time && npm run lint && npm run typecheck && npm run coverage && npm run check:api",
+    "pack:framework": "node scripts/pack-framework.mjs",
+    "install:packed": "node scripts/install-packed.mjs",
+    "install:published": "node scripts/install-published.mjs",
+    "check:suppressions": "node scripts/check-suppressions.mjs",
+    "check:installs": "node scripts/check-installs.mjs",
+    "check:real-time": "node scripts/check-real-time.mjs"
+  },
+  "peerDependencies": {
+    "@agboss/core": "^0.1.1"
+  },
+  "dependencies": {
+    "mongodb": "^7.7.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@microsoft/api-extractor": "^7.60.0",
+    "@types/node": "^22.20.5",
+    "@typescript-eslint/utils": "^8.72.1",
+    "@vitest/coverage-v8": "^3.2.7",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^3.2.7"
+  }
+}
