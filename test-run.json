@@ -1,0 +1,16 @@
+{
+  "//": "agbossjs/agboss#630: what `npm run coverage` must run \u2014 scripts/check-test-run.mjs holds vitest's JSON report against it: every file ran a test, the store contracts included.",
+  "projects": [
+    {
+      "name": "tests",
+      "include": ["tests/**/*.test.ts"],
+      "exclude": ["tests/faults/**", "tests/integration/failover.test.ts"],
+      "minFiles": 16
+    },
+    {
+      "name": "contracts",
+      "include": ["tests/contracts/**/*.test.ts"],
+      "minFiles": 2
+    }
+  ]
+}

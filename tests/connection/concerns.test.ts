@@ -108,11 +108,13 @@ describe("enforcementProblemsOf: what the built client carries", () => {
     ]);
   });
 
-  it("the enforced options are w=majority on the journal, majority reads from the primary", () => {
+  it("the enforced options are w=majority on the journal, majority reads from the primary, retried writes", () => {
     expect(ENFORCED_CLIENT_OPTIONS).toEqual({
       writeConcern: { w: "majority", journal: true },
       readConcern: { level: "majority" },
       readPreference: "primary",
+      retryWrites: true,
+      retryReads: true,
     });
   });
 });
@@ -152,4 +154,18 @@ describe("transactionOptionsOf", () => {
       });
     },
   );
+});
+
+describe("retryWrites: a write whose reply was lost is retried exactly once", () => {
+  it("retryWrites=false fails: its outcome would be unknown", () => {
+    expect(concernProblemsOf({ options: { retryWrites: false } })).toEqual([
+      expect.stringMatching(/^retryWrites=false: .*not retried exactly once/),
+    ]);
+  });
+
+  it("retryWrites on, or left out, is fine; the connection sets it", () => {
+    expect(concernProblemsOf({ options: { retryWrites: true } })).toEqual([]);
+    expect(concernProblemsOf({ options: {} })).toEqual([]);
+    expect(ENFORCED_CLIENT_OPTIONS.retryWrites).toBe(true);
+  });
 });

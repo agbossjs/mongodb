@@ -22,11 +22,17 @@ import {
   TransactionReadConcern,
 } from "./concerns.js";
 import { requireTransactionalDeployment, type MongoTopology } from "./deployment.js";
+import { ensureSchema } from "./schema.js";
 import {
+  databaseOfUrl,
   DEFAULT_DATABASE,
   settingsOfEnvironment,
   type MongoConnectionSettings,
 } from "./settings.js";
+import type { MongoTransaction } from "./transaction.js";
+
+/** Each connection's start (`onInit`), made once: a component keeps no state of its own. */
+const started = new WeakMap<MongoConnection, Promise<void>>();
 
 /** A client of `url`: the driver parses it here and connects on the first operation only. */
 function clientOf(url: string, options?: MongoClientOptions): MongoClient {
@@ -66,7 +72,7 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
 export class MongoConnection implements OnInit, OnDestroy {
   /** The instance's client: every store's operations, every transaction's session. */
   readonly client: MongoClient;
-  /** The database the stores' collections are in (`mongodbDatabase`, default `agboss`). */
+  /** The database the stores' collections are in (`mongodbDatabase`, else the URL's, else `agboss`). */
   readonly db: Db;
   readonly #transactionOptions: TransactionOptions;
 
@@ -75,9 +81,10 @@ export class MongoConnection implements OnInit, OnDestroy {
       source instanceof ApplicationContext ? settingsOfEnvironment(source.environment) : source;
     // what the URL alone asks for: a weaker concern there is refused, never silently overridden
     requireConcerns(concernProblemsOf(clientOf(settings.url)));
-    this.client = clientOf(settings.url, ENFORCED_CLIENT_OPTIONS);
+    // a field left `undefined` is left out, never written as `null`: a document reads back as given
+    this.client = clientOf(settings.url, { ...ENFORCED_CLIENT_OPTIONS, ignoreUndefined: true });
     requireConcerns(enforcementProblemsOf(this.client));
-    this.db = this.client.db(settings.database ?? DEFAULT_DATABASE);
+    this.db = this.client.db(settings.database ?? databaseOfUrl(settings.url) ?? DEFAULT_DATABASE);
     this.#transactionOptions = transactionOptionsOf(
       settings.transactionReadConcern ?? TransactionReadConcern.Snapshot,
     );
@@ -103,23 +110,41 @@ export class MongoConnection implements OnInit, OnDestroy {
 
   /**
    * `work` in one transaction (`transactionOptions`: snapshot or majority reads, `w=majority`
-   * commit), retried by the driver on a transient error — `work` must be safe to run again. Each
-   * operation of `work` passes `{ session }`.
+   * commit) — the driver's `withTransaction`, with its retry rules, which the stores rely on:
+   *
+   * - an error labelled `TransientTransactionError` (a `WriteConflict` with another transaction, a
+   *   primary stepping down before the commit) aborts the attempt — none of its writes is ever
+   *   seen — and runs `work` again from its start, in a new transaction, until 120 s have passed;
+   *   so `work` may run more than once per call and must do nothing outside `transaction.session`;
+   * - a commit whose outcome is unknown (`UnknownTransactionCommitResult`: the reply lost, a write
+   *   concern error) is committed again — the same transaction, which the server commits once —,
+   *   never run again; past the 120 s the call rejects and the transaction may have committed, so
+   *   a caller treats that rejection as "outcome unknown" and reads before it writes again;
+   * - any other error (the work's own, a fence's refusal) aborts and is rethrown as it is.
+   *
+   * Each operation of `work` passes `{ session: transaction.session }`.
    */
   async inTransaction<TResult>(
-    work: (session: ClientSession) => Promise<TResult>,
+    work: (transaction: MongoTransaction) => Promise<TResult>,
   ): Promise<TResult> {
-    const session = this.client.startSession();
+    const session: ClientSession = this.client.startSession();
+    const transaction: MongoTransaction = { session, db: this.db };
     try {
-      return await session.withTransaction(work, this.#transactionOptions);
+      return await session.withTransaction(() => work(transaction), this.#transactionOptions);
     } finally {
       await session.endSession();
     }
   }
 
-  /** The start check: the deployment is a replica set or a sharded cluster. */
-  async onInit(): Promise<void> {
-    await this.deployment();
+  /**
+   * The start checks: the deployment is a replica set or a sharded cluster; then the stores'
+   * collections and indexes, made if missing (a collection with another collation than the simple
+   * one is `MongoCollationError`). Once per connection: a second call waits for the first.
+   */
+  onInit(): Promise<void> {
+    const ready = started.get(this) ?? this.deployment().then(() => ensureSchema(this.db));
+    started.set(this, ready);
+    return ready;
   }
 
   /** Closes the client when the instance stops (its stores are destroyed first: they depend on it). */

@@ -5,11 +5,20 @@ import { TransactionReadConcern } from "./concerns.js";
 /** The database the stores use when the environment does not set `mongodbDatabase`. */
 export const DEFAULT_DATABASE = "agboss";
 
+/**
+ * The database a connection string names (`mongodb://h1,h2/<database>?…`), `undefined` when it
+ * names none.
+ */
+export function databaseOfUrl(url: string): string | undefined {
+  const path = /^mongodb(?:\+srv)?:\/\/[^/?]*\/([^?]*)/u.exec(url)?.[1];
+  return path === undefined || path === "" ? undefined : decodeURIComponent(path);
+}
+
 /** What one application instance's connection is made of. */
 export interface MongoConnectionSettings {
   /** The replica set: `mongodb://host1,host2,host3/?replicaSet=rs0` (or `mongodb+srv://…`). */
   readonly url: string;
-  /** The database the stores' collections are in (default `agboss`). */
+  /** The database the stores' collections are in (default: the URL's, else `agboss`). */
   readonly database?: string;
   /** The read concern of the stores' transactions (default `snapshot`). */
   readonly transactionReadConcern?: TransactionReadConcern;

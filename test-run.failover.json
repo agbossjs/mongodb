@@ -1,0 +1,10 @@
+{
+  "//": "agbossjs/agboss#630: what `npm run test:failover` must run (vitest.failover.config.ts) — the failover of the replica set.",
+  "projects": [
+    {
+      "name": "failover",
+      "include": ["tests/integration/failover.test.ts"],
+      "minFiles": 1
+    }
+  ]
+}
