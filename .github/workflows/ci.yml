@@ -4,29 +4,37 @@ on:
   push:
     branches: [main]
   pull_request:
+  # agbossjs/agboss#484: the fault suite on the real clock, every night
+  schedule:
+    - cron: "37 3 * * *"
 
 permissions:
   contents: read
 
+env:
+  # a three-member replica set (the stores' deployment; the failover tests step its primary down)
+  # and a standalone mongod (the start check must refuse it); the tests fail without them, never skip
+  AGBOSS_MONGODB_TEST_URL: mongodb://localhost:27017,localhost:27018,localhost:27019/?replicaSet=rs0
+  AGBOSS_MONGODB_STANDALONE_TEST_URL: mongodb://localhost:27020/?directConnection=true
+
 jobs:
   check:
-    name: check (MongoDB 7 replica set, @agboss/core at the pinned SHA)
+    name: check (MongoDB 7, a 3-member replica set, @agboss/core at the pinned SHA)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      # a single-node replica set (the stores' required deployment) and a standalone mongod (the
-      # start check must refuse it); the integration tests fail in CI without them, never skip
-      AGBOSS_MONGODB_TEST_URL: mongodb://localhost:27017/?replicaSet=rs0
-      AGBOSS_MONGODB_STANDALONE_TEST_URL: mongodb://localhost:27018/?directConnection=true
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       # a service container cannot take a command (--replSet): the servers start here, booting
-      # while the install runs; "Wait for MongoDB" initiates the replica set
-      - name: Start MongoDB 7 (replica set rs0 on 27017, standalone on 27018)
+      # while the install runs; "Initiate the replica set" waits for them. enableTestCommands: the
+      # retry and failover tests force errors with the server's own fail points.
+      - name: Start MongoDB 7 (replica set rs0 on 27017-27019, standalone on 27020)
         run: |
-          docker run -d --name mongo-rs -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
-          docker run -d --name mongo-standalone -p 27018:27017 mongo:7
+          for port in 27017 27018 27019; do
+            docker run -d --name "mongo-$port" --network host mongo:7 \
+              mongod --replSet rs0 --port "$port" --bind_ip_all --setParameter enableTestCommands=1
+          done
+          docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
 
       - name: Resolve the pinned framework SHA
         id: pin
@@ -54,20 +62,8 @@ jobs:
           npm run pack:framework
           npm run install:packed
 
-      - name: Wait for MongoDB and initiate the replica set
-        run: |
-          for server in mongo-rs mongo-standalone; do
-            for attempt in $(seq 1 60); do
-              docker exec "$server" mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' && break
-              sleep 1
-            done
-          done
-          docker exec mongo-rs mongosh --quiet --eval 'rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] })'
-          for attempt in $(seq 1 60); do
-            [ "$(docker exec mongo-rs mongosh --quiet --eval 'db.hello().isWritablePrimary')" = "true" ] && exit 0
-            sleep 1
-          done
-          echo "the replica set has no primary after 60 s" && exit 1
+      - name: Initiate the replica set
+        run: .github/mongo-replica-set.sh
 
       - name: Check (format, suppressions, installs, lint, types, tests with coverage, API report)
         run: npm run check
@@ -81,4 +77,70 @@ jobs:
 
       - name: MongoDB logs
         if: failure()
-        run: docker logs mongo-rs | tail -100
+        run: for port in 27017 27018 27019; do docker logs "mongo-$port" 2>&1 | tail -60; done
+
+  # agbossjs/agboss#484 AC2, #527 AC2: the core's fault suite on MongoDB — real pods on one replica
+  # set, killed, stopped, frozen and cut off it. Always on the real clock (agbossjs/agboss#607:
+  # MongoDB decides a lease's expiry by its own $$NOW, so the pods run at its rate, the core's 30 s
+  # lease), its scenarios split over three jobs to fit.
+  faults:
+    name: faults ${{ matrix.shard }}/3 (the fault suite on a MongoDB 7 replica set)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      AGBOSS_FAULT_SHARD: ${{ matrix.shard }}/3
+      AGBOSS_FAULT_DUMP_DIR: ${{ github.workspace }}/fault-dumps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start MongoDB 7 (replica set rs0 on 27017-27019, standalone on 27020)
+        run: |
+          for port in 27017 27018 27019; do
+            docker run -d --name "mongo-$port" --network host mongo:7 \
+              mongod --replSet rs0 --port "$port" --bind_ip_all --setParameter enableTestCommands=1
+          done
+          docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
+
+      - name: Resolve the pinned framework SHA
+        id: pin
+        run: echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out agbossjs/agboss at the pinned SHA
+        uses: actions/checkout@v4
+        with:
+          repository: agbossjs/agboss
+          ref: ${{ steps.pin.outputs.sha }}
+          path: .agboss-source
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Pack @agboss/core at the pinned SHA and install the tarball
+        env:
+          AGBOSS_REPO_DIR: .agboss-source
+        run: |
+          npm run pack:framework
+          npm run install:packed
+
+      - name: Initiate the replica set
+        run: .github/mongo-replica-set.sh
+
+      - name: The fault suite
+        run: npm run test:faults
+
+      - name: The failed scenarios' events and store history
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fault-dumps-${{ matrix.shard }}
+          path: fault-dumps
+          if-no-files-found: ignore

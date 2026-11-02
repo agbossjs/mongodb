@@ -21,6 +21,10 @@ export const ENFORCED_CLIENT_OPTIONS: MongoClientOptions = {
   writeConcern: { w: "majority", journal: true },
   readConcern: { level: "majority" },
   readPreference: "primary",
+  // a single-document write whose reply was lost is retried once, exactly once (the server keeps
+  // its outcome by the session's transaction number): a lease is never taken twice by one call
+  retryWrites: true,
+  retryReads: true,
 };
 
 /** A client's concerns as the driver resolved them (`client.writeConcern`, …). */
@@ -31,6 +35,8 @@ export interface ClientConcerns {
   };
   readonly readConcern?: { readonly level?: string | undefined };
   readonly readPreference?: { readonly mode?: string | undefined };
+  /** The client's options as parsed (`retryWrites` among them). */
+  readonly options?: { readonly retryWrites?: boolean | undefined };
 }
 
 /** The read concern levels under which a read never sees a write a failover rolls back. */
@@ -67,9 +73,26 @@ function readProblemsOf(concerns: ClientConcerns): string[] {
   return problems;
 }
 
+/**
+ * `retryWrites=false`: a single-document write whose reply a failover or a network cut lost is no
+ * longer retried exactly once by the driver — a lease taken or an id kept would come back as an
+ * error, its outcome unknown.
+ */
+function retryProblemsOf(concerns: ClientConcerns): string[] {
+  return concerns.options?.retryWrites === false
+    ? [
+        "retryWrites=false: a write whose reply a failover lost is not retried exactly once — its outcome is unknown; remove retryWrites from mongodbUrl",
+      ]
+    : [];
+}
+
 /** Each setting of `concerns` that is weaker than the stores need; empty when none. */
 export function concernProblemsOf(concerns: ClientConcerns): string[] {
-  return [...writeProblemsOf(concerns.writeConcern), ...readProblemsOf(concerns)];
+  return [
+    ...writeProblemsOf(concerns.writeConcern),
+    ...readProblemsOf(concerns),
+    ...retryProblemsOf(concerns),
+  ];
 }
 
 /** What is missing from a client that should carry `ENFORCED_CLIENT_OPTIONS`; empty when nothing. */

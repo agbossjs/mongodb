@@ -192,7 +192,7 @@ describe("MongoConnection when the deployment does not answer", () => {
     const connection = new MongoConnection({ url: UNREACHABLE });
     const ran: string[] = [];
     try {
-      const transaction = connection.inTransaction(async (session) => {
+      const transaction = connection.inTransaction(async ({ session }) => {
         ran.push("work");
         await connection.db.collection("payments").insertOne({ amount: 1 }, { session });
       });

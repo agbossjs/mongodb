@@ -1,7 +1,7 @@
 {
   "name": "@agboss/mongodb",
   "version": "0.1.0",
-  "description": "MongoDB stores for AGBoss (scaffold): the replica-set connection that enforces write concern majority and snapshot transactions; the stores follow agbossjs/agboss#526 and #484.",
+  "description": "MongoDB stores for AGBoss: several application instances share execution trees on one replica set — leases, records, trees, pauses, the child queue, checkpoints, fenced effects, the lease log, budgets, history, rate limits, mesh requests and outbound calls, with w=majority and the server's time.",
   "type": "module",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -49,19 +49,23 @@
     "pretest": "npm run build",
     "test": "vitest run",
     "precoverage": "npm run build",
-    "coverage": "vitest run --coverage",
+    "coverage": "node scripts/check-test-run.mjs --expect test-run.json -- vitest run --coverage",
     "check:api": "npm run build && node scripts/api-report.mjs",
     "api:update": "npm run build && node scripts/api-report.mjs --write",
-    "check": "npm run format:check && npm run check:suppressions && npm run check:installs && npm run check:real-time && npm run lint && npm run typecheck && npm run coverage && npm run check:api",
+    "check": "npm run format:check && npm run check:suppressions && npm run check:installs && npm run check:real-time && npm run lint && npm run typecheck && npm run coverage && npm run test:failover && npm run check:api",
     "pack:framework": "node scripts/pack-framework.mjs",
     "install:packed": "node scripts/install-packed.mjs",
     "install:published": "node scripts/install-published.mjs",
     "check:suppressions": "node scripts/check-suppressions.mjs",
     "check:installs": "node scripts/check-installs.mjs",
-    "check:real-time": "node scripts/check-real-time.mjs"
+    "check:real-time": "node scripts/check-real-time.mjs",
+    "test:faults": "node scripts/check-test-run.mjs --expect test-run.faults.json -- vitest run --config vitest.faults.config.ts",
+    "test:failover": "node scripts/check-test-run.mjs --expect test-run.failover.json -- vitest run --config vitest.failover.config.ts"
   },
   "peerDependencies": {
-    "@agboss/core": "^0.1.1"
+    "@agboss/core": "^0.1.1",
+    "@langchain/core": "^1.1.44",
+    "@langchain/langgraph-checkpoint": "^1.2.0"
   },
   "dependencies": {
     "mongodb": "^7.7.0",

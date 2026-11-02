@@ -54,3 +54,23 @@ export class MongoReplicaSetRequiredError extends AGBossError {
     );
   }
 }
+
+/**
+ * A collection of the stores exists with a collation other than the simple (binary) one: its unique
+ * keys would compare text by a locale's rules — `Zoë-17` and `zoe-17` one business key, one payment
+ * replayed for another. The application does not start; drop the collection (or rename it away) so
+ * the connection creates it with the simple collation.
+ */
+export class MongoCollationError extends AGBossError {
+  static override readonly code: string = "mongodb.collation-not-simple";
+  override name = "MongoCollationError";
+  /** The collections found with another collation. */
+  readonly collections: readonly string[];
+
+  constructor(collections: readonly string[]) {
+    super(
+      `the MongoDB stores compare keys byte for byte, but ${collections.join(", ")} ${collections.length === 1 ? "has" : "have"} a non-simple collation — drop ${collections.length === 1 ? "it" : "them"}, the connection creates the stores' collections with the simple collation`,
+    );
+    this.collections = collections;
+  }
+}

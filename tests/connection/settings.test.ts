@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DATABASE, MongoSettingsError, TransactionReadConcern } from "../../src/index.js";
-import { settingsOfEnvironment } from "../../src/connection/settings.js";
+import { databaseOfUrl, settingsOfEnvironment } from "../../src/connection/settings.js";
 import { revealing } from "../support/application-context.js";
 
 const URL = "mongodb://app:secret@db1,db2,db3/?replicaSet=rs0";
@@ -84,5 +84,18 @@ describe("the environment fields of the MongoDB stores", () => {
 
   it("the error has its stable code", () => {
     expect(MongoSettingsError.code).toBe("mongodb.settings-invalid");
+  });
+});
+
+describe("databaseOfUrl: the database a connection string names", () => {
+  it.each([
+    ["mongodb://h1:1,h2:2/orders?replicaSet=rs0", "orders"],
+    ["mongodb+srv://cluster.example.net/billing", "billing"],
+    ["mongodb://h1/my%20db", "my db"],
+    ["mongodb://h1/?replicaSet=rs0", undefined],
+    ["mongodb://h1", undefined],
+    ["mongodb://h1/", undefined],
+  ])("%s → %s", (url, database) => {
+    expect(databaseOfUrl(url)).toBe(database);
   });
 });

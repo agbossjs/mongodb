@@ -1,0 +1,10 @@
+{
+  "//": "agbossjs/agboss#630: what `npm run test:faults` must run (vitest.faults.config.ts) — the fault suite on MongoDB.",
+  "projects": [
+    {
+      "name": "faults",
+      "include": ["tests/faults/**/*.test.ts"],
+      "minFiles": 1
+    }
+  ]
+}
