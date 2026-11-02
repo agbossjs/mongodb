@@ -115,7 +115,6 @@ export const DEFAULT_DATABASE = "agboss";
 // @public
 export class MongoCheckpointSaver extends BaseCheckpointSaver {
     constructor(connection: MongoConnection);
-    // (undocumented)
     deleteThread(threadId: string): Promise<void>;
     // (undocumented)
     getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
@@ -341,7 +340,6 @@ export class MongoExecutionTreeRepository extends ExecutionTreeRepository {
 export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTransaction> {
     constructor(connection: MongoConnection, clock: StoreClock, settings: FencedEffectSettings);
     static readonly backend: string | undefined;
-    // (undocumented)
     deleteByStoredAtBefore(cutoff: Date): Promise<void>;
     // (undocumented)
     static readonly leaseRepository: Class | undefined;
@@ -502,7 +500,6 @@ export enum TransactionReadConcern {
 // src/stores/mongo-checkpoint-saver.ts:70:10 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-checkpoint-saver.ts:83:9 - (ae-undocumented) Missing documentation for "put".
 // src/stores/mongo-checkpoint-saver.ts:107:9 - (ae-undocumented) Missing documentation for "putWrites".
-// src/stores/mongo-checkpoint-saver.ts:144:9 - (ae-undocumented) Missing documentation for "deleteThread".
 // src/stores/mongo-child-execution-queue.repository.ts:80:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-child-execution-queue.repository.ts:84:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
 // src/stores/mongo-child-execution-queue.repository.ts:111:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
@@ -566,7 +563,6 @@ export enum TransactionReadConcern {
 // src/stores/mongo-fenced-effect.repository.ts:52:3 - (ae-undocumented) Missing documentation for "leaseRepository".
 // src/stores/mongo-fenced-effect.repository.ts:66:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-fenced-effect.repository.ts:70:3 - (ae-undocumented) Missing documentation for "runInTransaction".
-// src/stores/mongo-fenced-effect.repository.ts:83:9 - (ae-undocumented) Missing documentation for "deleteByStoredAtBefore".
 // src/stores/mongo-mesh-request.repository.ts:51:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-mesh-request.repository.ts:55:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
 // src/stores/mongo-mesh-request.repository.ts:67:9 - (ae-undocumented) Missing documentation for "findByKey".
