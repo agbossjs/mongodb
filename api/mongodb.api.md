@@ -10,6 +10,7 @@ import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
 import { BudgetAccount } from '@agboss/core';
 import { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 import { ChildExecutionEnd } from '@agboss/core';
+import { ChildExecutionQueueDepth } from '@agboss/core';
 import { ChildExecutionQueueRepository } from '@agboss/core';
 import { Class } from '@agboss/core';
 import type { ClientSession } from 'mongodb';
@@ -145,6 +146,8 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
     deleteAllByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<void>;
     // (undocumented)
     findByTenantIdAndExecutionId(tenantId: string, executionId: string): Promise<QueuedChildExecution | undefined>;
+    // (undocumented)
+    findQueueDepth(): Promise<ChildExecutionQueueDepth>;
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
@@ -500,12 +503,13 @@ export enum TransactionReadConcern {
 // src/stores/mongo-checkpoint-saver.ts:70:10 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-checkpoint-saver.ts:83:9 - (ae-undocumented) Missing documentation for "put".
 // src/stores/mongo-checkpoint-saver.ts:107:9 - (ae-undocumented) Missing documentation for "putWrites".
-// src/stores/mongo-child-execution-queue.repository.ts:80:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-child-execution-queue.repository.ts:84:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
-// src/stores/mongo-child-execution-queue.repository.ts:111:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
-// src/stores/mongo-child-execution-queue.repository.ts:119:9 - (ae-undocumented) Missing documentation for "claimFirstByStatusQueuedOrderByDepthDesc".
-// src/stores/mongo-child-execution-queue.repository.ts:134:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
-// src/stores/mongo-child-execution-queue.repository.ts:152:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
+// src/stores/mongo-child-execution-queue.repository.ts:102:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-child-execution-queue.repository.ts:106:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
+// src/stores/mongo-child-execution-queue.repository.ts:133:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
+// src/stores/mongo-child-execution-queue.repository.ts:141:9 - (ae-undocumented) Missing documentation for "claimFirstByStatusQueuedOrderByDepthDesc".
+// src/stores/mongo-child-execution-queue.repository.ts:156:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
+// src/stores/mongo-child-execution-queue.repository.ts:174:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
+// src/stores/mongo-child-execution-queue.repository.ts:181:9 - (ae-undocumented) Missing documentation for "findQueueDepth".
 // src/stores/mongo-cost-ledger.repository.ts:66:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-cost-ledger.repository.ts:70:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
 // src/stores/mongo-cost-ledger.repository.ts:75:9 - (ae-undocumented) Missing documentation for "saveAll".

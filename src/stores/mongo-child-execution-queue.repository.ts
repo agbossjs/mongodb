@@ -5,6 +5,7 @@ import {
   ExecutionRecordStatus,
   Injectable,
   type ChildExecutionEnd,
+  type ChildExecutionQueueDepth,
   type QueuedChildExecution,
 } from "@agboss/core";
 import type { Collection } from "mongodb";
@@ -41,6 +42,27 @@ const Stored = z.object({
   endedAt: z.date().optional(),
   failure: z.string().optional(),
 });
+
+/** The queue's depth, as one `$group` gives it (none when no row is queued or running). */
+const Depth = z.object({ queued: z.number(), running: z.number(), oldest: z.date().nullable() });
+
+const isStatus = (status: ExecutionRecordStatus) => ({ $eq: ["$status", status] });
+
+/**
+ * The queue's depth (agbossjs/agboss#485): one aggregation over the `status` prefix of the claims
+ * index — the queued and running documents only, grouped once.
+ */
+const DEPTH = [
+  { $match: { status: { $in: [ExecutionRecordStatus.Queued, ExecutionRecordStatus.Running] } } },
+  {
+    $group: {
+      _id: null,
+      queued: { $sum: { $cond: [isStatus(ExecutionRecordStatus.Queued), 1, 0] } },
+      running: { $sum: { $cond: [isStatus(ExecutionRecordStatus.Running), 1, 0] } },
+      oldest: { $min: { $cond: [isStatus(ExecutionRecordStatus.Queued), "$queuedAt", null] } },
+    },
+  },
+];
 
 /** A document as the contract gives it back. */
 const childOf = (found: unknown): QueuedChildExecution => {
@@ -154,5 +176,12 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
     rootExecutionId: string,
   ): Promise<void> {
     await this.#queue.deleteMany({ tenantId, rootExecutionId });
+  }
+
+  async findQueueDepth(): Promise<ChildExecutionQueueDepth> {
+    const [found] = await this.#queue.aggregate(DEPTH).toArray();
+    if (found === undefined) return { queued: 0, running: 0, oldestQueuedAt: undefined };
+    const { queued, running, oldest } = Depth.parse(found);
+    return { queued, running, oldestQueuedAt: oldest ?? undefined };
   }
 }
