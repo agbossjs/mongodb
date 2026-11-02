@@ -3,10 +3,11 @@ import { seconds } from "@agboss/core/units";
 import { describe, expect, it } from "vitest";
 
 /**
- * agbossjs/agboss#527 — the race the lease contract does not run: two instances' `acquire` of one
- * free lease at once — a tree never leased, one released, one expired —, round after round, in
- * both orders. Exactly one is given the lease, at one epoch. A store that reads the lease, decides
- * in its code and then writes passes every other lease case and fails this one.
+ * agbossjs/agboss#527 — two instances' `acquire` of one free lease at once — a tree never leased,
+ * one released, one expired —, 40 rounds each, in both orders: exactly one is given the lease. The
+ * lease contract runs it since agbossjs/agboss#695 (found here: a store that reads the lease,
+ * decides in its code and then writes passed every lease case before); kept at more rounds, on the
+ * server's real round trips.
  */
 
 /** Two instances' lease stores on one database, emptied first; closed by `close`. */

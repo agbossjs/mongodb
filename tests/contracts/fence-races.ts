@@ -10,8 +10,9 @@ import { describe, expect, it } from "vitest";
 import type { MongoTransaction } from "../../src/index.js";
 
 /**
- * agbossjs/agboss#527 — the takeover inside a zombie's open fenced transaction, the one ordering the
- * contract suites cannot force: the old holder's check passed at its lease's last millisecond, its
+ * agbossjs/agboss#527 — the takeover inside a zombie's open fenced transaction (the fenced-effect
+ * contract runs a hand-over of the same shape since agbossjs/agboss#695, found here); this one by
+ * the lease's expiry, on a store clock moved by hand: the old holder's check passed at its lease's last millisecond, its
  * work still runs, the lease expires and another instance takes it — while the transaction is open.
  * Then either the take waits for the transaction (the lease is locked by the check: the zombie's
  * write lands before the take, which is legal) or the transaction is refused. Never both: the take

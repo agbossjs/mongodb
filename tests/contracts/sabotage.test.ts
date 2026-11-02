@@ -94,17 +94,27 @@ describe("agbossjs/agboss#527: the contract suites bite on MongoDB", () => {
     expect(invariantsOf("leases on the caller's clock")).toContain("one-live-holder");
   });
 
-  it("a check-then-write acquire: two owners of one free lease, in every race (and none of the core's lease cases sees it)", () => {
+  it("a check-then-write acquire: two owners of one free lease — the core's races of two takes (#695) and this repository's", () => {
     const races = found.filter((one) => one.suite === "lease races (a check-then-write acquire)");
+    const core = failedIn("lease contract (a check-then-write acquire)");
 
     expect(races).toHaveLength(3);
     expect(races.every((one) => one.state === "fail")).toBe(true);
-    expect(failedIn("lease contract (a check-then-write acquire)")).toEqual([]);
+    expect(core).toHaveLength(3);
+    expect(
+      core.every((one) => one.name.startsWith("two takes of a free lease at once > #695")),
+    ).toBe(true);
   });
 
   it("a fence check that only reads: a take inside the zombie's open transaction, and the zombie's write landing after it", () => {
     const [race] = failedIn("fence races (a fence check that only reads)");
+    const core = failedIn("fenced effect contract (a fence check that only reads)").map(
+      (one) => one.name,
+    );
 
     expect(race?.error).toContain("takenDuringWork");
+    expect(core).toContain(
+      "a key built by hand, a zombie > #695: the lease released and taken while its holder's write runs: the hand-over waits for the write, or the write is refused — never the take during the work and the write landing after it",
+    );
   });
 });
