@@ -36,11 +36,16 @@ jobs:
           done
           docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
 
-      - name: Resolve the pinned framework SHA
+      # agbossjs/agboss#691: a commit pin packs the core from agbossjs/agboss; a release pin
+      # (`source: "registry"`) downloads the published core, so no checkout is needed
+      - name: Resolve the pinned framework
         id: pin
-        run: echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+          echo "source=$(node -p "require('./.agboss-version.json').source ?? 'commit'")" >> "$GITHUB_OUTPUT"
 
       - name: Check out agbossjs/agboss at the pinned SHA
+        if: steps.pin.outputs.source != 'registry'
         uses: actions/checkout@v4
         with:
           repository: agbossjs/agboss
@@ -55,7 +60,7 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
-      - name: Pack @agboss/core at the pinned SHA and install the tarball
+      - name: Pack @agboss/core as pinned (a commit, or the registry's) and install the tarball
         env:
           AGBOSS_REPO_DIR: .agboss-source
         run: |
@@ -105,11 +110,16 @@ jobs:
           done
           docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
 
-      - name: Resolve the pinned framework SHA
+      # agbossjs/agboss#691: a commit pin packs the core from agbossjs/agboss; a release pin
+      # (`source: "registry"`) downloads the published core, so no checkout is needed
+      - name: Resolve the pinned framework
         id: pin
-        run: echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+          echo "source=$(node -p "require('./.agboss-version.json').source ?? 'commit'")" >> "$GITHUB_OUTPUT"
 
       - name: Check out agbossjs/agboss at the pinned SHA
+        if: steps.pin.outputs.source != 'registry'
         uses: actions/checkout@v4
         with:
           repository: agbossjs/agboss
@@ -124,7 +134,7 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
-      - name: Pack @agboss/core at the pinned SHA and install the tarball
+      - name: Pack @agboss/core as pinned (a commit, or the registry's) and install the tarball
         env:
           AGBOSS_REPO_DIR: .agboss-source
         run: |

@@ -21,5 +21,16 @@ every change starts as an issue there (stage = its `status:*` label: Triage → 
 
 ## Releasing
 
-`@agboss/mongodb` is versioned with `@agboss/core` (a peer dependency range) and published right
-after it. Before that, `npm run install:published` checks the package against the registry's core.
+`@agboss/mongodb` is versioned with `@agboss/core` and published right after it, by the maintainer
+only (agbossjs/agboss `RELEASE_CHECKLIST.md` is the ordered list; agbossjs/agboss#691):
+
+1. Once `@agboss/core@X.Y.Z` is on npm, pin it — `node scripts/pin-framework.mjs --registry X.Y.Z`
+   (`.agboss-version.json` `source: "registry"`: `npm run pack:framework` then downloads the
+   registry's tarballs and checks their integrity) — and bump `package.json` to `X.Y.Z` with the
+   peer dependency `^X.Y.Z`, in one PR; its CI runs everything on the published core.
+2. After it is merged and `main`'s CI is green, push the tag `mongodb-vX.Y.Z` on that commit.
+   `.github/workflows/release.yml` checks the tag, the version, the pin and that CI passed on the
+   commit, then publishes with provenance (`NPM_TOKEN` of the `npm` environment).
+3. Back to a commit pin for development: `node scripts/pin-framework.mjs --sha <agboss main sha>`.
+
+A pull request that touches the release path runs the workflow's dry run (`npm publish --dry-run`).

@@ -207,6 +207,16 @@ What runs:
   primary by a proxy each (a direct connection through it), the store history checked for
   linearizability.
 
+## Releasing
+
+`@agboss/mongodb` is published right after `@agboss/core`, by the maintainer only: a release pins the
+published core (`node scripts/pin-framework.mjs --registry X.Y.Z`, `.agboss-version.json`
+`source: "registry"` — `npm run pack:framework` then downloads the registry's tarballs and checks
+their integrity), and a pushed tag `mongodb-vX.Y.Z` runs `.github/workflows/release.yml`, which
+publishes with provenance only when the tag is the package's version, the commit is on `main` and
+its CI passed. A pull request touching the release path runs the workflow's dry run
+(`npm publish --dry-run`). See [CONTRIBUTING.md](CONTRIBUTING.md) → Releasing.
+
 ## License
 
 Apache-2.0, as the core. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
