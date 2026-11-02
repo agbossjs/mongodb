@@ -80,16 +80,17 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
     );
   }
 
+  /**
+   * The retention sweep: three `deleteMany`s, each atomic per document and none in a transaction —
+   * a backlog of any size is removed, never aborted by the transaction's lifetime. A result removed
+   * before its mark, or the other way round, changes nothing a fenced call decides.
+   */
   async deleteByStoredAtBefore(cutoff: Date): Promise<void> {
     const { db } = this.connection;
-    await this.connection.inTransaction(async ({ session }) => {
-      const before = { $lt: cutoff };
-      await this.#results.deleteMany({ storedAt: before }, { session });
-      await db
-        .collection(Collections.FencedEffectMarks)
-        .deleteMany({ storedAt: before }, { session });
-      await db.collection(Collections.FencedKeyLocks).deleteMany({ lockedAt: before }, { session });
-    });
+    const before = { $lt: cutoff };
+    await this.#results.deleteMany({ storedAt: before });
+    await db.collection(Collections.FencedEffectMarks).deleteMany({ storedAt: before });
+    await db.collection(Collections.FencedKeyLocks).deleteMany({ lockedAt: before });
   }
 
   async #effect<TResult>(

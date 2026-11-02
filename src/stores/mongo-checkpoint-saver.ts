@@ -141,11 +141,10 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     });
   }
 
+  /** The thread's pending writes, then its checkpoints: no transaction, so a thread of any size goes. */
   async deleteThread(threadId: string): Promise<void> {
-    await this.connection.inTransaction(async ({ session }) => {
-      await this.#writes.deleteMany({ threadId }, { session });
-      await this.#checkpoints.deleteMany({ threadId }, { session });
-    });
+    await this.#writes.deleteMany({ threadId });
+    await this.#checkpoints.deleteMany({ threadId });
   }
 
   async #tupleOf(stored: StoredCheckpoint): Promise<CheckpointTuple> {
