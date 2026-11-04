@@ -53,6 +53,9 @@ const StoredCall = z.strictObject({
   businessKeyHash: text.optional(),
   recordedAt: text,
   endedAt: text.optional(),
+  // agbossjs/agboss#658: on the store's time; none on a document written before
+  attemptStartedAt: text.optional(),
+  firstAttemptStartedAt: text.optional(),
 });
 
 const CallDocument = z.object({ record: z.unknown() });
