@@ -18,6 +18,11 @@ interface CounterDocument {
   spentUsd: number;
 }
 
+interface EntryDocument {
+  _id: string;
+  entry: true;
+}
+
 interface MaxSpendDocument {
   _id: string;
   maxSpendUsd: number;
@@ -39,11 +44,31 @@ const counterIdOf = (counter: CostCounter): string =>
 const costOf = (records: readonly UsageRecord[]): number =>
   records.reduce((sum, record) => sum + record.costUsd, 0);
 
+/** The counters' updates for a save of `cost`, one per counter, in one order. */
+function countersOf(
+  counters: readonly CostCounter[],
+  cost: number,
+): AnyBulkWriteOperation<CounterDocument>[] {
+  const times = new Map<string, number>();
+  for (const counter of counters) {
+    const id = counterIdOf(counter);
+    times.set(id, (times.get(id) ?? 0) + 1);
+  }
+  // in one order, so two saves of overlapping counters meet on the same first document
+  return [...times.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : 1))
+    .map(([_id, count]) => ({
+      updateOne: { filter: { _id }, update: { $inc: { spentUsd: count * cost } }, upsert: true },
+    }));
+}
+
 /**
  * `CostLedgerRepository` on MongoDB (agbossjs/agboss#483, #527): one document per counter — budget,
  * scope, scope key and period — so the instances of an application share a tenant's day. `saveAll`
  * adds the calls' cost to every counter it is given with `$inc` (a counter given twice counts twice),
- * all of them in **one transaction**: either every counter of the save counts it, or none does. Two
+ * all of them in **one transaction**: either every counter of the save counts it, or none does — a
+ * record with a `ledgerId` once, its id upserted into `agboss_cost_entries` in that transaction
+ * (agbossjs/agboss#727: a repeated save of the id adds nothing). Two
  * instances' concurrent saves on one counter conflict and the driver runs the loser's transaction
  * again — `$inc` of a committed attempt only, so nothing is lost or counted twice. No other locking:
  * as on PostgreSQL, the core accepts a small overrun of executions racing past one check (nothing is
@@ -57,6 +82,10 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
 
   get #counters(): Collection<CounterDocument> {
     return this.connection.db.collection<CounterDocument>(Collections.CostCounters);
+  }
+
+  get #entries(): Collection<EntryDocument> {
+    return this.connection.db.collection<EntryDocument>(Collections.CostEntries);
   }
 
   get #maxSpend(): Collection<MaxSpendDocument> {
@@ -74,20 +103,29 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
 
   async saveAll(counters: readonly CostCounter[], records: readonly UsageRecord[]): Promise<void> {
     if (counters.length === 0 || records.length === 0) return;
-    const cost = costOf(records);
-    const times = new Map<string, number>();
-    for (const counter of counters) {
-      const id = counterIdOf(counter);
-      times.set(id, (times.get(id) ?? 0) + 1);
-    }
-    // in one order, so two saves of overlapping counters meet on the same first document
-    const operations: AnyBulkWriteOperation<CounterDocument>[] = [...times.entries()]
-      .sort(([left], [right]) => (left < right ? -1 : 1))
-      .map(([_id, count]) => ({
-        updateOne: { filter: { _id }, update: { $inc: { spentUsd: count * cost } }, upsert: true },
-      }));
     await this.connection.inTransaction(async ({ session }) => {
-      await this.#counters.bulkWrite(operations, { session, ordered: true });
+      // each entry once (agbossjs/agboss#727): its id upserted in the transaction that adds its cost
+      // — a racing save of the same id conflicts, and its transaction run again finds the id there
+      const added: UsageRecord[] = [];
+      const seen = new Set<string>();
+      for (const record of records) {
+        const { ledgerId } = record;
+        if (ledgerId === undefined) added.push(record);
+        else if (!seen.has(ledgerId)) {
+          seen.add(ledgerId);
+          const written = await this.#entries.updateOne(
+            { _id: ledgerId },
+            { $setOnInsert: { entry: true } },
+            { session, upsert: true },
+          );
+          if (written.upsertedCount === 1) added.push(record);
+        }
+      }
+      if (added.length === 0) return;
+      await this.#counters.bulkWrite(countersOf(counters, costOf(added)), {
+        session,
+        ordered: true,
+      });
     });
   }
 
