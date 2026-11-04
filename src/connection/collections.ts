@@ -42,6 +42,8 @@ export const Collections = {
   CostCounters: "agboss_cost_counters",
   /** The last `maxSpend()` read per budget, scope and scope key. */
   CostMaxSpend: "agboss_cost_max_spend",
+  /** One document per spend saved under its `ledgerId` (agbossjs/agboss#727): counted once. */
+  CostEntries: "agboss_cost_entries",
   /** One document per kept root execution (agbossjs/agboss#483). */
   ExecutionHistory: "agboss_execution_history",
   /** One document per rate-limit key: its slots. */

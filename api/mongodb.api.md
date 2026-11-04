@@ -100,6 +100,7 @@ export const Collections: {
     readonly ChildExecutionQueue: "agboss_child_execution_queue";
     readonly CostCounters: "agboss_cost_counters";
     readonly CostMaxSpend: "agboss_cost_max_spend";
+    readonly CostEntries: "agboss_cost_entries";
     readonly ExecutionHistory: "agboss_execution_history";
     readonly RateLimitSlots: "agboss_rate_limit_slots";
     readonly RateLimitWindows: "agboss_rate_limit_windows";
@@ -510,11 +511,11 @@ export enum TransactionReadConcern {
 // src/stores/mongo-child-execution-queue.repository.ts:156:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:174:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:181:9 - (ae-undocumented) Missing documentation for "findQueueDepth".
-// src/stores/mongo-cost-ledger.repository.ts:66:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-cost-ledger.repository.ts:70:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
-// src/stores/mongo-cost-ledger.repository.ts:75:9 - (ae-undocumented) Missing documentation for "saveAll".
-// src/stores/mongo-cost-ledger.repository.ts:94:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
-// src/stores/mongo-cost-ledger.repository.ts:99:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
+// src/stores/mongo-cost-ledger.repository.ts:95:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-cost-ledger.repository.ts:99:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
+// src/stores/mongo-cost-ledger.repository.ts:104:9 - (ae-undocumented) Missing documentation for "saveAll".
+// src/stores/mongo-cost-ledger.repository.ts:132:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
+// src/stores/mongo-cost-ledger.repository.ts:137:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
 // src/stores/mongo-execution-history.repository.ts:46:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-history.repository.ts:50:9 - (ae-undocumented) Missing documentation for "save".
 // src/stores/mongo-execution-history.repository.ts:66:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
