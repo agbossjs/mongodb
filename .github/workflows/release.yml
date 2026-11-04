@@ -1,0 +1,181 @@
+name: Release
+
+# agbossjs/agboss#691 — @agboss/mongodb to npm, a car of the train after the core (agbossjs/postgres
+# holds the original of this workflow; keep the copies alike).
+#
+# A pushed tag `mongodb-vX.Y.Z` publishes `@agboss/mongodb@X.Y.Z` with provenance, only when:
+#   - the tag is the package's version, and the commit is on `main`;
+#   - the pin (`.agboss-version.json`) takes `@agboss/core` from the registry (`source: "registry"`,
+#     `node scripts/pin-framework.mjs --registry X.Y.Z`) at a version on npm, the one the peer
+#     dependency names (`scripts/release/release-plan.mjs`);
+#   - the full CI (`ci.yml`: the check and the fault suite) passed on a push of this exact commit
+#     (`scripts/release/ci-gate.mjs`, which waits while it runs).
+# A version already on npm from this commit is left as it is (a re-run); from another commit, the
+# run fails. Pull requests that touch the release path, and a manual dispatch, run the dry run:
+# `npm publish --dry-run`, never a publish. The maintainer pushes the tag (agbossjs/agboss
+# RELEASE_CHECKLIST.md); the secret `NPM_TOKEN` lives in the `npm` environment.
+
+on:
+  push:
+    tags: ["mongodb-v[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/workflows/ci.yml
+      - scripts/release/**
+      - scripts/pack-framework.mjs
+      - scripts/pin-framework.mjs
+      - scripts/install-packed.mjs
+      - .agboss-version.json
+      - package.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: dry run (npm publish --dry-run)
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the pinned framework
+        id: pin
+        run: |
+          echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+          echo "source=$(node -p "require('./.agboss-version.json').source ?? 'commit'")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out agbossjs/agboss at the pinned SHA
+        if: steps.pin.outputs.source != 'registry'
+        uses: actions/checkout@v4
+        with:
+          repository: agbossjs/agboss
+          ref: ${{ steps.pin.outputs.sha }}
+          path: .agboss-source
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: The release plan (a commit pin and an unpublished core are reported, not refused)
+        run: node scripts/release/release-plan.mjs --dry-run
+
+      - name: Pack @agboss/core as pinned and install the tarball
+        env:
+          AGBOSS_REPO_DIR: .agboss-source
+        run: |
+          npm run pack:framework
+          npm run install:packed
+
+      - name: Build
+        run: npm run build
+
+      # npm refuses a dry run over a published version (after a release, until the next bump): it is
+      # dry-run as X.Y.Z-dry-run.<run id>, on this runner only
+      - name: A version already on npm takes a dry-run suffix
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "@agboss/mongodb@$version" version > /dev/null 2>&1; then
+            npm pkg set "version=$version-dry-run.$RUN_ID"
+            echo "@agboss/mongodb@$version is on npm: dry-run as $version-dry-run.$RUN_ID"
+          fi
+
+      - name: npm publish --dry-run
+        run: npm publish --dry-run --access public --tag dry-run
+
+  publish:
+    name: publish @agboss/mongodb
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mongodb-v')
+    runs-on: ubuntu-latest
+    # ci-gate waits for main's CI on this commit (the fault suite's shards take about 45 min)
+    timeout-minutes: 120
+    environment: npm
+    permissions:
+      contents: read
+      actions: read # the CI runs of this commit
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: The tag, the version and the pin
+        run: node scripts/release/release-plan.mjs --tag "$GITHUB_REF_NAME"
+
+      - name: The commit is on main
+        run: |
+          git fetch --quiet origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main"
+            exit 1
+          }
+
+      - name: CI passed on this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release/ci-gate.mjs --sha "$GITHUB_SHA" --workflow ci.yml --timeout-minutes 100
+
+      - name: The published @agboss/core, as pinned, installed
+        run: |
+          npm run pack:framework
+          npm run install:packed
+
+      - name: Build and pack
+        id: pack
+        run: |
+          npm run build
+          npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.json"
+          # npm 10 prints a list, npm 11+ an object by package name
+          echo "integrity=$(node -p "const p = require(process.argv[1]); (Array.isArray(p) ? p[0] : Object.values(p)[0]).integrity" "$RUNNER_TEMP/pack.json")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish (skipped when this commit's version is on npm already)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.pack.outputs.version }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN" || { echo "::error::the npm environment has no NPM_TOKEN secret"; exit 1; }
+          if found="$(npm view "@agboss/mongodb@$VERSION" gitHead 2>/dev/null)" && [ -n "$(npm view "@agboss/mongodb@$VERSION" version 2>/dev/null)" ]; then
+            if [ "$found" = "$GITHUB_SHA" ]; then
+              echo "@agboss/mongodb@$VERSION is on npm from $GITHUB_SHA already: nothing to publish"
+              exit 0
+            fi
+            echo "::error::@agboss/mongodb@$VERSION is on npm from ${found:-an unknown commit}, not $GITHUB_SHA"
+            exit 1
+          fi
+          npm publish --provenance --access public
+
+      - name: The registry serves what was packed
+        env:
+          VERSION: ${{ steps.pack.outputs.version }}
+          PACKED: ${{ steps.pack.outputs.integrity }}
+        run: |
+          for _ in $(seq 10); do
+            listed="$(npm view "@agboss/mongodb@$VERSION" dist.integrity 2>/dev/null || true)"
+            if [ "$listed" = "$PACKED" ]; then echo "@agboss/mongodb@$VERSION: $listed"; exit 0; fi
+            sleep 15
+          done
+          echo "::error::the registry lists ${listed:-nothing} for @agboss/mongodb@$VERSION, packed $PACKED"
+          exit 1

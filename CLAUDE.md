@@ -15,7 +15,10 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
 ## Commands
 
 - `npm run pack:framework && npm run install:packed` — `@agboss/core` and `@agboss/cli` at the SHA
-  pinned in `.agboss-version.json` (pin the current agboss `main` when a store needs a newer core).
+  pinned in `.agboss-version.json` (pin the current agboss `main` when a store needs a newer core:
+  `node scripts/pin-framework.mjs --sha <sha>`; a release pins the published core,
+  `--registry <x.y.z>`, and `.github/workflows/release.yml` publishes on a `mongodb-vX.Y.Z` tag —
+  CONTRIBUTING.md → Releasing, agbossjs/agboss#691).
 - `npm run test:faults` — the core's fault suite (CI: three shards, `AGBOSS_FAULT_SHARD=k/n`).
 - `npm run check` — format, suppressions (budget 0), reviewed installs (`check:installs`: a
   workflow installs with `npm ci`, a script resolves ranges only with `--before`, three days back —

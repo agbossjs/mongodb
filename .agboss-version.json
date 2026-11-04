@@ -1,6 +1,7 @@
 {
   "repository": "agbossjs/agboss",
   "branch": "main",
+  "source": "commit",
   "frameworkSha": "ac2d2dac866b06326095ef5c5ffdedbdc5fc2eff",
   "version": "0.1.0"
 }

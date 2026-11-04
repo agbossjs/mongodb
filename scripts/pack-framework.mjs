@@ -4,8 +4,14 @@
  * agbossjs/agboss-examples pattern): the source is `AGBOSS_REPO_DIR` when set (its HEAD must be the
  * pinned SHA), else a checkout of the pinned SHA in `.agboss-source` (cloned on first use). The
  * CLI is a dev tool here, as in agbossjs/postgres (its `agboss check` for the process tests).
- * The tarballs, their SHA-256 and integrity go to `.packed/manifest.json`; `npm run
- * install:packed` installs them.
+ * The tarballs, their SHA-256 and integrity go to `.packed/manifest.json`;
+ * `npm run install:packed` installs them.
+ *
+ * A release pin (`"source": "registry"`, agbossjs/agboss#691 — `node scripts/pin-framework.mjs
+ * --registry <x.y.z>`) takes the published `@agboss/core@<version>` and `@agboss/cli@<version>`
+ * instead: `npm pack` downloads the registry's tarballs, each checked against the integrity the
+ * registry lists, and the same manifest is written — so the package is built and tested on exactly
+ * what users install, and the release workflow publishes only then.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -22,6 +28,53 @@ process.env["npm_config_cache"] ??= join(PACKED_DIR, NPM_CACHE);
 
 const run = (command, args, cwd) =>
   execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+
+/** The published tarballs of the pin's version, as `.packed/manifest.json` records them. */
+function packRegistry() {
+  const packages = {};
+  for (const [key, name] of [
+    ["package", "@agboss/core"],
+    ["cli", "@agboss/cli"],
+  ]) {
+    const spec = `${name}@${pin.version}`;
+    const listed = run("npm", ["view", spec, "dist.integrity"], ROOT).trim();
+    const packed = JSON.parse(
+      run("npm", ["pack", spec, "--json", "--pack-destination", PACKED_DIR], ROOT),
+    );
+    const info = Array.isArray(packed) ? packed[0] : (packed[name] ?? packed);
+    if (info.version !== pin.version || info.integrity !== listed) {
+      console.error(
+        `[pack-framework] ${spec}: got ${info.version} ${info.integrity}, the registry lists ${listed}`,
+      );
+      process.exit(1);
+    }
+    const tarball = join(PACKED_DIR, info.filename);
+    const sha256 = createHash("sha256").update(readFileSync(tarball)).digest("hex");
+    console.log(`[pack-framework] downloaded ${spec} -> .packed/${info.filename} (${listed})`);
+    packages[key] = {
+      name,
+      version: info.version,
+      filename: info.filename,
+      sha256,
+      integrity: listed,
+    };
+  }
+  return packages;
+}
+
+if (pin.source === "registry") {
+  mkdirSync(PACKED_DIR, { recursive: true });
+  for (const entry of readdirSync(PACKED_DIR))
+    if (entry !== NPM_CACHE) rmSync(join(PACKED_DIR, entry), { recursive: true });
+  const manifest = {
+    packedAt: new Date().toISOString(),
+    source: "registry",
+    sourceCommit: pin.frameworkSha,
+    ...packRegistry(),
+  };
+  writeFileSync(join(PACKED_DIR, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  process.exit(0);
+}
 
 /** The framework's source at the pinned SHA: the given folder, or `.agboss-source`. */
 function sourceDirectory() {
