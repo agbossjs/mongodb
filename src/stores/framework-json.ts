@@ -1,4 +1,5 @@
 import {
+  ComponentKind,
   PauseAnswerer,
   PauseResolution,
   PauseStatus,
@@ -52,13 +53,23 @@ const StoredPause = z.looseObject({
   agent: text,
   channel: text,
   answeredBy: z.enum(PauseAnswerer),
-  ask: z.looseObject({ callId: text, tool: text, summary: text }),
+  // an approval's tool call, or a question role's own ask (agbossjs/agboss#659, #712): the component says
+  ask: z.looseObject({}),
+  component: StoredComponent.optional(),
   status: z.enum(PauseStatus),
   isSent: z.boolean(),
   askedAt: text,
   resolution: z.enum(PauseResolution).optional(),
   resolvedAt: optionalText,
 });
+
+/** The tool call an approval's pause asks about. */
+const StoredApprovalAsk = z.looseObject({ callId: text, tool: text, summary: text });
+
+/** agbossjs/agboss#746: a question's ask is the role's own DTO; every other pause asks a tool call. */
+const isAskOfItsKind = (pause: z.infer<typeof StoredPause>): boolean =>
+  pause.component?.kind === ComponentKind.Question ||
+  StoredApprovalAsk.safeParse(pause.ask).success;
 
 /** A paused run: the fields a resume relies on (`budgetUsd` may be `Infinity`: no cost limit). */
 const StoredRun = z.looseObject({
@@ -73,8 +84,10 @@ const StoredRun = z.looseObject({
 const isPauseAnswer = (value: unknown): value is PauseAnswer =>
   StoredPauseAnswer.safeParse(value).success;
 
-const isPauseRecord = (value: unknown): value is PauseRecord =>
-  StoredPause.safeParse(value).success;
+const isPauseRecord = (value: unknown): value is PauseRecord => {
+  const parsed = StoredPause.safeParse(value);
+  return parsed.success && isAskOfItsKind(parsed.data);
+};
 
 const isPausedRun = (value: unknown): value is PausedExecution["run"] =>
   StoredRun.safeParse(value).success;
