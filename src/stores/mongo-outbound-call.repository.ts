@@ -80,9 +80,10 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
   }
 
   findByKey(key: FencedEffectKey): Promise<OutboundCallRecord | undefined> {
-    return this.#fenced(key, async ({ session }) => {
+    return this.#fenced(key, async ({ session }, now) => {
       const found = await this.#calls.findOne({ _id: callIdOf(key) }, { session });
-      return found === null ? undefined : callRecordOf(found);
+      // read at the store's time the fence decided by (agbossjs/agboss#658), never stored
+      return found === null ? undefined : { ...callRecordOf(found), readAt: now.toISOString() };
     });
   }
 
@@ -90,8 +91,14 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     checkedEffectName(key.name);
     checkedBusinessKey(key);
     const seq = await nextSequence(this.connection.db, Collections.OutboundCalls);
-    return this.#fenced(key, async ({ session }) => {
-      const record = pendingOutboundCallOf(key, intent, this.clock.now());
+    return this.#fenced(key, async ({ session }, now) => {
+      // its first attempt starts at the store's time (agbossjs/agboss#658: the server's own)
+      const startedAt = now.toISOString();
+      const record = {
+        ...pendingOutboundCallOf(key, intent, this.clock.now()),
+        attemptStartedAt: startedAt,
+        firstAttemptStartedAt: startedAt,
+      };
       const document: OutboundCallDocument = {
         _id: callIdOf(key),
         ...{ seq, record, tenantId: key.tenantId, rootExecutionId: intent.rootExecutionId },
@@ -112,19 +119,19 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     expected: OutboundCallState,
     claim: OutboundCallClaim,
   ): Promise<boolean> {
-    return this.#moved(key, expected, {
-      fields: { status: OutboundCallStatus.Pending, ...claim },
-    });
+    // the next attempt starts at the store's time (agbossjs/agboss#658); the first's start is kept
+    return this.#moved(key, expected, (now) => ({
+      fields: { status: OutboundCallStatus.Pending, ...claim, attemptStartedAt: now.toISOString() },
+    }));
   }
 
   markCompleted(key: FencedEffectKey, attemptOwner: string, result: string): Promise<boolean> {
     const endedAt = this.clock.now();
     const status = OutboundCallStatus.Completed;
-    return this.#moved(
-      key,
-      { status: OutboundCallStatus.Pending, attemptOwner },
-      { fields: { status, result, endedAt: endedAt.toISOString() }, endedAt },
-    );
+    return this.#moved(key, { status: OutboundCallStatus.Pending, attemptOwner }, () => ({
+      fields: { status, result, endedAt: endedAt.toISOString() },
+      endedAt,
+    }));
   }
 
   markFailed(
@@ -139,11 +146,10 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
       failure: { name, code, message },
       endedAt: endedAt.toISOString(),
     };
-    return this.#moved(
-      key,
-      { status: OutboundCallStatus.Pending, attemptOwner },
-      { fields, endedAt },
-    );
+    return this.#moved(key, { status: OutboundCallStatus.Pending, attemptOwner }, () => ({
+      fields,
+      endedAt,
+    }));
   }
 
   findAllByTenantIdAndRootExecutionId(
@@ -177,11 +183,13 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
   }
 
   /**
-   * The compare-and-set of `key`'s document, fenced: `change` written under the key's lease and
-   * token only while it is still `from` — one `updateOne`, `true` when it matched.
+   * The compare-and-set of `key`'s document, fenced: `changeAt(now)` — `now` the store's time the
+   * fence decided by — written under the key's lease and token only while it is still `from`; one
+   * `updateOne`, `true` when it matched.
    */
-  #moved(key: FencedEffectKey, from: AsRead, change: Change): Promise<boolean> {
-    return this.#fenced(key, async ({ session }) => {
+  #moved(key: FencedEffectKey, from: AsRead, changeAt: (now: Date) => Change): Promise<boolean> {
+    return this.#fenced(key, async ({ session }, now) => {
+      const change = changeAt(now);
       const fields = { ...change.fields, token: key.token, leaseExecutionId: key.leaseExecutionId };
       const set = Object.fromEntries(
         Object.entries(fields).map(([field, value]) => [`record.${field}`, value]),
@@ -215,7 +223,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
   /** `work` after the fencing checks (the lease locked, the mark raised), in one transaction. */
   async #fenced<TValue>(
     key: FencedEffectKey,
-    work: (transaction: MongoTransaction) => Promise<TValue>,
+    work: (transaction: MongoTransaction, now: Date) => Promise<TValue>,
   ): Promise<TValue> {
     checkedEffectName(key.name);
     // a business key's text (agbossjs/agboss#538): refused by its rule before any command
@@ -223,8 +231,8 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     // this instance's calls on one lease or business key commit in the order they were made
     return inLocalOrder(this, fencedOrderKeysOf(key, callIdOf(key)), () =>
       this.connection.inTransaction(async (transaction) => {
-        await checkFence(transaction.db, transaction.session, key, this.clock);
-        return work(transaction);
+        const now = await checkFence(transaction.db, transaction.session, key, this.clock);
+        return work(transaction, now);
       }),
     );
   }

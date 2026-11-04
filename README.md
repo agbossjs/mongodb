@@ -145,6 +145,13 @@ option in the URL is refused, never silently overridden.
   the transaction's snapshot makes the touch conflict; one not yet made waits for the transaction.
   A business key (#508) is locked the same way (`agboss_fenced_key_locks`), **before** the work
   runs, because no lease serializes two executions on one key.
+- **An attempt's times are the server's** (agbossjs/agboss#658): `saveIfAbsent` writes the first
+  attempt's `attemptStartedAt` and `firstAttemptStartedAt`, `markPending` each next
+  `attemptStartedAt`, and every `findByKey` answers its record with `readAt` — all the `checkedAt`
+  the fence wrote on the lease it locked (`$$NOW`), never a pod's wall clock. So
+  `lookup.attemptStartedAt`, `lookup.keyAge` and a call's `keyRetention` mean the same on every pod
+  and after a takeover. An intent written before has none: its key's age is unknown, and a
+  `keyRetention` refuses its replay.
 - **Retries.** `MongoConnection.inTransaction` is the driver's `withTransaction`:
   - a `TransientTransactionError` (a write conflict, a step-down) aborts the attempt — none of its
     writes is ever seen — and runs it again from the start: a fenced effect's work can run more than

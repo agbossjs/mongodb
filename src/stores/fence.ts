@@ -61,14 +61,15 @@ export async function lockedLeaseOf(
 /**
  * The key's lease is held at its token (not released, live by the store's time) and no newer token
  * wrote its scope — else `ExecutionFencedError`; the mark is raised to the token. The lease stays
- * locked until the caller's transaction ends.
+ * locked until the caller's transaction ends. Answers the store's time it decided by — the lease's
+ * `checkedAt` (agbossjs/agboss#658: what an outbound call's attempt starts and is read at).
  */
 export async function checkFence(
   db: Db,
   session: ClientSession,
   key: FencedEffectKey,
   clock: StoreClock,
-): Promise<void> {
+): Promise<Date> {
   const { scopeKey, token } = key;
   const lease = await lockedLeaseOf(db, session, key.tenantId, key.leaseExecutionId, clock);
   const refused = (observedToken: number | undefined): ExecutionFencedError =>
@@ -88,6 +89,7 @@ export async function checkFence(
     );
   const { highestToken } = Mark.parse(mark);
   if (highestToken > token) throw refused(highestToken);
+  return lease.checkedAt;
 }
 
 /**
