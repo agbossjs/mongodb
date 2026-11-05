@@ -82,7 +82,8 @@ const MARK_ID = "\u0000pruned-before";
 
 interface LedgerDocument {
   _id: string;
-  prunedBefore?: Date;
+  /** A date as the ledger writes it; a number as an operator might, by mistake. */
+  prunedBefore?: Date | number;
 }
 
 /**
@@ -191,7 +192,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
     const ledger = markedLedger();
     const { entries, close } = await entriesCollection();
     try {
-      await entries.replaceOne({ _id: MARK_ID }, { prunedBefore: 0 as unknown as Date });
+      await entries.replaceOne({ _id: MARK_ID }, { prunedBefore: 0 });
 
       await expect(ledger.saveAll([day("ms")], [entry("pass-s", 0)])).rejects.toThrow(
         /has no date in prunedBefore/u,
