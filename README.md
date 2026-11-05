@@ -12,7 +12,7 @@ blindly. Budgets, rate limits, history and mesh deduplication are shared by ever
 > pauses, the child queue, checkpoints, the fenced effect with business keys, the lease log, the
 > cost ledger, the execution history, rate limits, mesh requests and outbound calls. Each passes the
 > core's `storeConformance` (the interleaving explorer included) and the fault suite against a real
-> replica set ([Tests](#tests)). Not published to npm yet.
+> replica set ([Tests](#tests)).
 
 ## Install
 

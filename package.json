@@ -1,6 +1,6 @@
 {
   "name": "@agboss/mongodb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MongoDB stores for AGBoss: several application instances share execution trees on one replica set — leases, records, trees, pauses, the child queue, checkpoints, fenced effects, the lease log, budgets, history, rate limits, mesh requests and outbound calls, with w=majority and the server's time.",
   "type": "module",
   "license": "Apache-2.0",
