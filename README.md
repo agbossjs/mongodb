@@ -169,6 +169,15 @@ option in the URL is refused, never silently overridden.
 - **Order.** What is read "in the order appended" (records, the lease log, outbound calls, pauses,
   pending writes) is ordered by a sequence document's `$inc`, never by a client clock or an
   `ObjectId` (agbossjs/agboss#661, #682).
+- **A child queued by one pod wakes the others** (agbossjs/agboss#777): the child queue's
+  `watchQueued` is a change stream on `agboss_child_execution_queue` — each document that becomes
+  `queued` (inserted, or a resume's or a lost claim's requeue) wakes the claimers of every instance,
+  so an idle pod claims at once instead of at its next sweep (30 s). One stream per instance; idle on
+  an empty queue except one held `getMore` per 10 s (`maxAwaitTimeMS`, no document read). It starts
+  at the cluster time of a `ping` sent before it opens, so a child queued once the watch is open is
+  not missed. The driver resumes it after a resumable error; one the server ends (an `invalidate`)
+  is opened again after a pause (1 s, doubling up to 30 s) and wakes the claimers once. A lost
+  wake-up costs at most a sweep — the child stays queued.
 - **Text.** BSON keeps every text as given, U+0000 included. A composite key is the JSON array of
   its parts, so a separator inside a tenant id cannot join two keys, and a lone surrogate (which the
   driver would write as U+FFFD) is escaped in it.
