@@ -42,7 +42,10 @@ export const Collections = {
   CostCounters: "agboss_cost_counters",
   /** The last `maxSpend()` read per budget, scope and scope key. */
   CostMaxSpend: "agboss_cost_max_spend",
-  /** One document per spend saved under its `ledgerId` (agbossjs/agboss#727): counted once. */
+  /**
+   * One document per spend saved under its `ledgerId` (agbossjs/agboss#727): counted once, dated by
+   * its `madeAt`; and the pruning mark (agbossjs/agboss#771), its `_id` `\u0000pruned-before`.
+   */
   CostEntries: "agboss_cost_entries",
   /** One document per kept root execution (agbossjs/agboss#483). */
   ExecutionHistory: "agboss_execution_history",

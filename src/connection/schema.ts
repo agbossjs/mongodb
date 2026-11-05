@@ -24,6 +24,8 @@ const index = (name: string, key: Record<string, 1 | -1>, unique = false): Index
 /** The secondary indexes of each collection (its `_id` is the primary key). */
 const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription[]>>> = {
   [Collections.FencedEffectMarks]: [index("by_stored_at", ascending("storedAt"))],
+  // the sweep's prune of the ledger's entries (agbossjs/agboss#771)
+  [Collections.CostEntries]: [index("by_made_at", ascending("madeAt"))],
   [Collections.FencedEffectResults]: [index("by_stored_at", ascending("storedAt"))],
   [Collections.OutboundCalls]: [
     index("by_tree", ascending("tenantId", "rootExecutionId", "seq")),
