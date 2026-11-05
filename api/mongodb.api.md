@@ -201,6 +201,8 @@ export interface MongoConnectionSettings {
 export class MongoCostLedgerRepository extends CostLedgerRepository {
     constructor(connection: MongoConnection);
     // (undocumented)
+    deleteEntriesByMadeAtBefore(cutoff: Date): Promise<void>;
+    // (undocumented)
     findMaxSpendByAccount(account: BudgetAccount): Promise<Usd | undefined>;
     // (undocumented)
     findSpentByCounter(counter: CostCounter): Promise<Usd>;
@@ -513,11 +515,12 @@ export enum TransactionReadConcern {
 // src/stores/mongo-child-execution-queue.repository.ts:168:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:186:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:193:9 - (ae-undocumented) Missing documentation for "findQueueDepth".
-// src/stores/mongo-cost-ledger.repository.ts:95:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-cost-ledger.repository.ts:99:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
-// src/stores/mongo-cost-ledger.repository.ts:104:9 - (ae-undocumented) Missing documentation for "saveAll".
-// src/stores/mongo-cost-ledger.repository.ts:132:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
-// src/stores/mongo-cost-ledger.repository.ts:137:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
+// src/stores/mongo-cost-ledger.repository.ts:115:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-cost-ledger.repository.ts:119:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
+// src/stores/mongo-cost-ledger.repository.ts:124:9 - (ae-undocumented) Missing documentation for "saveAll".
+// src/stores/mongo-cost-ledger.repository.ts:189:9 - (ae-undocumented) Missing documentation for "deleteEntriesByMadeAtBefore".
+// src/stores/mongo-cost-ledger.repository.ts:202:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
+// src/stores/mongo-cost-ledger.repository.ts:207:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
 // src/stores/mongo-execution-history.repository.ts:46:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-history.repository.ts:50:9 - (ae-undocumented) Missing documentation for "save".
 // src/stores/mongo-execution-history.repository.ts:66:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
