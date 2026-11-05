@@ -1,5 +1,6 @@
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll } from "vitest";
+import { seedLedgerMark } from "../../src/connection/ledger-mark.js";
 import { Collections, MongoConnection } from "../../src/index.js";
 import { freshDatabaseName, REPLICA_SET_URL } from "./server.js";
 
@@ -67,7 +68,10 @@ afterAll(async () => {
   for (const client of clients) await client.close();
 });
 
-/** Every document of the stores' collections (and the tests' own) removed: a contract case's reset. */
+/**
+ * Every document of the stores' collections (and the tests' own) removed: a contract case's reset —
+ * the ledger's mark seeded again, as a new database has it (agbossjs/agboss#798).
+ */
 export async function emptyAll(url: string, extra: readonly string[] = []): Promise<void> {
   const client = resetClients.get(url) ?? new MongoClient(url);
   resetClients.set(url, client);
@@ -77,4 +81,5 @@ export async function emptyAll(url: string, extra: readonly string[] = []): Prom
       db.collection(name).deleteMany({}, { writeConcern: { w: "majority" } }),
     ),
   );
+  await seedLedgerMark(db);
 }

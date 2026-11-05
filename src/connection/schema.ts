@@ -2,6 +2,7 @@ import type { Db, IndexDescription } from "mongodb";
 import { z } from "zod";
 import { MongoCollationError } from "../errors.js";
 import { Collections, type CollectionName } from "./collections.js";
+import { seedLedgerMark } from "./ledger-mark.js";
 
 /**
  * The stores' collections and indexes (agbossjs/agboss#527), made at the connection's start —
@@ -9,7 +10,8 @@ import { Collections, type CollectionName } from "./collections.js";
  * collection is created with the simple collation; one an operator made with another collation
  * (`{ locale: "en", strength: 2 }` would make `Zoë-17` and `zoe-17` one key, a second charge) is
  * refused with `MongoCollationError` before any store writes. A unique key is always `_id` or a
- * unique index here, never a check in the code.
+ * unique index here, never a check in the code. The ledger's pruning mark is seeded with its
+ * collection, once (agbossjs/agboss#798): a start finds the collection there and leaves it alone.
  */
 
 const ascending = (...fields: readonly string[]): Record<string, 1> =>
@@ -92,21 +94,26 @@ async function collatedCollectionsOf(db: Db): Promise<string[]> {
     .map((info) => info.name);
 }
 
-/** Creates `name` with the simple collation unless it exists. */
-async function createIfMissing(db: Db, name: string, existing: ReadonlySet<string>): Promise<void> {
-  if (existing.has(name)) return;
+/** Creates `name` with the simple collation unless it exists: whether this start created it. */
+async function createIfMissing(
+  db: Db,
+  name: string,
+  existing: ReadonlySet<string>,
+): Promise<boolean> {
+  if (existing.has(name)) return false;
   try {
     await db.createCollection(name, { collation: { locale: "simple" } });
+    return true;
   } catch (error) {
-    // another instance created it in between (NamespaceExists): it is there, as wanted
-    if (z.object({ code: z.literal(48) }).safeParse(error).success) return;
+    // another instance created it in between (NamespaceExists): it is there, as wanted, seeded by it
+    if (z.object({ code: z.literal(48) }).safeParse(error).success) return false;
     throw error;
   }
 }
 
 /**
- * Every collection and index of the stores, made if missing; a collection with a non-simple
- * collation fails with `MongoCollationError`, naming it.
+ * Every collection and index of the stores, made if missing — the ledger's mark with its collection
+ * —; a collection with a non-simple collation fails with `MongoCollationError`, naming it.
  */
 export async function ensureSchema(db: Db): Promise<void> {
   const collated = await collatedCollectionsOf(db);
@@ -115,7 +122,8 @@ export async function ensureSchema(db: Db): Promise<void> {
     (await db.listCollections({}, { nameOnly: true }).toArray()).map((info) => info.name),
   );
   for (const name of Object.values(Collections)) {
-    await createIfMissing(db, name, existing);
+    const created = await createIfMissing(db, name, existing);
+    if (created && name === Collections.CostEntries) await seedLedgerMark(db);
     const indexes = INDEXES[name];
     if (indexes !== undefined) await db.collection(name).createIndexes([...indexes]);
   }
