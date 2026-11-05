@@ -1,8 +1,7 @@
 import { BudgetScope, type CostCounter, type UsageRecord } from "@agboss/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { Collections, MongoCostLedgerRepository } from "../../src/index.js";
-import { dropDatabase, openConnection, testDatabase, urlOnDatabase } from "../support/database.js";
-import { freshDatabaseName, REPLICA_SET_URL } from "../support/server.js";
+import { openConnection, testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
 
 /**
@@ -84,94 +83,101 @@ interface LedgerDocument {
   prunedBefore?: Date;
 }
 
-/** A database of its own (a fresh schema), its ledger and a way to reach its entries by hand. */
-async function freshLedger() {
-  const name = freshDatabaseName();
-  const url = urlOnDatabase(REPLICA_SET_URL, name);
-  const connection = await openConnection(url);
+/**
+ * One database of its own for these cases (a fresh schema, so its mark is the seeded one), its
+ * mark put back at the epoch after each case: a case deletes it by hand.
+ */
+const ledgerDatabase = testDatabase();
+
+async function entriesCollection() {
+  const connection = await openConnection(ledgerDatabase.url());
   const entries = connection.db.collection<LedgerDocument>(Collections.CostEntries);
-  return {
-    url,
-    entries,
-    ledger: new MongoCostLedgerRepository(connectionTo(url)),
-    close: async () => {
-      await connection.onDestroy();
-      await dropDatabase(name);
-    },
-  };
+  return { entries, close: () => connection.onDestroy() };
 }
 
+const markedLedger = (): MongoCostLedgerRepository =>
+  new MongoCostLedgerRepository(connectionTo(ledgerDatabase.url()));
+
 describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (agbossjs/agboss#798)", () => {
+  // after its first case, which reads the mark as the start seeded it
+  afterEach(async () => {
+    const { entries, close } = await entriesCollection();
+    await entries.deleteOne({ _id: MARK_ID });
+    await entries.insertOne({ _id: MARK_ID, prunedBefore: new Date(0) });
+    await close();
+  });
+
   it("a new database's ledger has its mark, at the epoch: nothing pruned yet", async () => {
-    const fresh = await freshLedger();
+    const { entries, close } = await entriesCollection();
     try {
-      expect(await fresh.entries.findOne({ _id: MARK_ID })).toEqual({
+      expect(await entries.findOne({ _id: MARK_ID })).toEqual({
         _id: MARK_ID,
         prunedBefore: new Date(0),
       });
     } finally {
-      await fresh.close();
+      await close();
     }
   });
 
   it("the mark deleted after a prune: a pruned entry saved again is refused, never counted twice", async () => {
-    const fresh = await freshLedger();
+    const ledger = markedLedger();
+    const { entries, close } = await entriesCollection();
     try {
-      await fresh.ledger.saveAll([day("gone")], [entry("pass-m", 0)]);
-      await fresh.ledger.deleteEntriesByMadeAtBefore(new Date(START + 1000));
-      await fresh.entries.deleteOne({ _id: MARK_ID });
+      await ledger.saveAll([day("gone")], [entry("pass-m", 0)]);
+      await ledger.deleteEntriesByMadeAtBefore(new Date(START + 1000));
+      await entries.deleteOne({ _id: MARK_ID });
 
-      await expect(fresh.ledger.saveAll([day("gone")], [entry("pass-m", 0)])).rejects.toMatchObject(
-        {
-          code: "mongodb.ledger-mark-missing",
-          name: "MongoLedgerMarkMissingError",
-        },
-      );
-      expect(await fresh.ledger.findSpentByCounter(day("gone"))).toBe(0.125);
+      await expect(ledger.saveAll([day("gone")], [entry("pass-m", 0)])).rejects.toMatchObject({
+        code: "mongodb.ledger-mark-missing",
+        name: "MongoLedgerMarkMissingError",
+      });
+      expect(await ledger.findSpentByCounter(day("gone"))).toBe(0.125);
     } finally {
-      await fresh.close();
+      await close();
     }
   });
 
   it("without its mark a new entry adds nothing either, and a prune deletes nothing", async () => {
-    const fresh = await freshLedger();
+    const ledger = markedLedger();
+    const { entries, close } = await entriesCollection();
     try {
-      await fresh.ledger.saveAll([day("none")], [entry("pass-n", 0)]);
-      await fresh.entries.deleteOne({ _id: MARK_ID });
+      await ledger.saveAll([day("none")], [entry("pass-n", 0)]);
+      await entries.deleteOne({ _id: MARK_ID });
 
-      await expect(fresh.ledger.saveAll([day("none")], [entry("pass-n", 1)])).rejects.toMatchObject(
-        { code: "mongodb.ledger-mark-missing" },
-      );
+      await expect(ledger.saveAll([day("none")], [entry("pass-n", 1)])).rejects.toMatchObject({
+        code: "mongodb.ledger-mark-missing",
+      });
       await expect(
-        fresh.ledger.deleteEntriesByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z")),
+        ledger.deleteEntriesByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z")),
       ).rejects.toMatchObject({ code: "mongodb.ledger-mark-missing" });
-      expect(await fresh.ledger.findSpentByCounter(day("none"))).toBe(0.125);
-      expect(await fresh.entries.findOne({ _id: "pass-n:0" })).not.toBeNull();
-      expect(await fresh.entries.findOne({ _id: MARK_ID })).toBeNull();
+      expect(await ledger.findSpentByCounter(day("none"))).toBe(0.125);
+      expect(await entries.findOne({ _id: "pass-n:0" })).not.toBeNull();
+      expect(await entries.findOne({ _id: MARK_ID })).toBeNull();
     } finally {
-      await fresh.close();
+      await close();
     }
   });
 
   it("a restart does not seed a deleted mark again; the remedy in the message puts it back", async () => {
-    const fresh = await freshLedger();
+    const ledger = markedLedger();
+    const { entries, close } = await entriesCollection();
     try {
-      await fresh.ledger.saveAll([day("back")], [entry("pass-b", 0)]);
-      await fresh.ledger.deleteEntriesByMadeAtBefore(new Date(START + 1000));
-      await fresh.entries.deleteOne({ _id: MARK_ID });
-      await (await openConnection(fresh.url)).onDestroy();
+      await ledger.saveAll([day("back")], [entry("pass-b", 0)]);
+      await ledger.deleteEntriesByMadeAtBefore(new Date(START + 1000));
+      await entries.deleteOne({ _id: MARK_ID });
+      await (await openConnection(ledgerDatabase.url())).onDestroy();
 
-      const refused = fresh.ledger.saveAll([day("back")], [entry("pass-b", 0)]);
+      const refused = ledger.saveAll([day("back")], [entry("pass-b", 0)]);
       await expect(refused).rejects.toThrow(/insertOne\(\{ _id: "\\u0000pruned-before"/u);
-      await fresh.entries.insertOne({ _id: MARK_ID, prunedBefore: new Date(START + 1000) });
+      await entries.insertOne({ _id: MARK_ID, prunedBefore: new Date(START + 1000) });
 
-      await expect(fresh.ledger.saveAll([day("back")], [entry("pass-b", 0)])).rejects.toMatchObject(
-        { code: "cost-ledger.entry-expired" },
-      );
-      await fresh.ledger.saveAll([day("back")], [entry("pass-b", 1)]);
-      expect(await fresh.ledger.findSpentByCounter(day("back"))).toBe(0.25);
+      await expect(ledger.saveAll([day("back")], [entry("pass-b", 0)])).rejects.toMatchObject({
+        code: "cost-ledger.entry-expired",
+      });
+      await ledger.saveAll([day("back")], [entry("pass-b", 1)]);
+      expect(await ledger.findSpentByCounter(day("back"))).toBe(0.25);
     } finally {
-      await fresh.close();
+      await close();
     }
   });
 });
