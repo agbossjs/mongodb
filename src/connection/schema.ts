@@ -2,7 +2,7 @@ import type { Db, IndexDescription } from "mongodb";
 import { z } from "zod";
 import { MongoCollationError } from "../errors.js";
 import { Collections, type CollectionName } from "./collections.js";
-import { seedLedgerMark } from "./ledger-mark.js";
+import { createLedgerEntries } from "./ledger-mark.js";
 
 /**
  * The stores' collections and indexes (agbossjs/agboss#527), made at the connection's start —
@@ -10,8 +10,9 @@ import { seedLedgerMark } from "./ledger-mark.js";
  * collection is created with the simple collation; one an operator made with another collation
  * (`{ locale: "en", strength: 2 }` would make `Zoë-17` and `zoe-17` one key, a second charge) is
  * refused with `MongoCollationError` before any store writes. A unique key is always `_id` or a
- * unique index here, never a check in the code. The ledger's pruning mark is seeded with its
- * collection, once (agbossjs/agboss#798): a start finds the collection there and leaves it alone.
+ * unique index here, never a check in the code. The ledger's pruning mark is made with its
+ * collection, in one transaction (agbossjs/agboss#798): a start that finds the collection leaves it
+ * alone — a mark missing there was deleted, and is never seeded again.
  */
 
 const ascending = (...fields: readonly string[]): Record<string, 1> =>
@@ -94,19 +95,15 @@ async function collatedCollectionsOf(db: Db): Promise<string[]> {
     .map((info) => info.name);
 }
 
-/** Creates `name` with the simple collation unless it exists: whether this start created it. */
-async function createIfMissing(
-  db: Db,
-  name: string,
-  existing: ReadonlySet<string>,
-): Promise<boolean> {
-  if (existing.has(name)) return false;
+/** Creates `name` with the simple collation unless it exists — the ledger's with its mark. */
+async function createIfMissing(db: Db, name: string, existing: ReadonlySet<string>): Promise<void> {
+  if (existing.has(name)) return;
+  if (name === Collections.CostEntries) return createLedgerEntries(db);
   try {
     await db.createCollection(name, { collation: { locale: "simple" } });
-    return true;
   } catch (error) {
-    // another instance created it in between (NamespaceExists): it is there, as wanted, seeded by it
-    if (z.object({ code: z.literal(48) }).safeParse(error).success) return false;
+    // another instance created it in between (NamespaceExists): it is there, as wanted
+    if (z.object({ code: z.literal(48) }).safeParse(error).success) return;
     throw error;
   }
 }
@@ -122,8 +119,7 @@ export async function ensureSchema(db: Db): Promise<void> {
     (await db.listCollections({}, { nameOnly: true }).toArray()).map((info) => info.name),
   );
   for (const name of Object.values(Collections)) {
-    const created = await createIfMissing(db, name, existing);
-    if (created && name === Collections.CostEntries) await seedLedgerMark(db);
+    await createIfMissing(db, name, existing);
     const indexes = INDEXES[name];
     if (indexes !== undefined) await db.collection(name).createIndexes([...indexes]);
   }

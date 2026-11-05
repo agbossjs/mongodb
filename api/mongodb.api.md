@@ -359,7 +359,9 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
 
 // @public
 export class MongoLedgerMarkMissingError extends AGBossError {
-    constructor();
+    constructor(found?: {
+        readonly malformed?: boolean;
+    });
     // (undocumented)
     static readonly code: string;
     // (undocumented)
@@ -513,8 +515,8 @@ export enum TransactionReadConcern {
 // src/errors.ts:49:12 - (ae-undocumented) Missing documentation for "name".
 // src/errors.ts:65:3 - (ae-undocumented) Missing documentation for "code".
 // src/errors.ts:66:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:86:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:87:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:87:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:88:12 - (ae-undocumented) Missing documentation for "name".
 // src/stores/mongo-checkpoint-saver.ts:61:9 - (ae-undocumented) Missing documentation for "getTuple".
 // src/stores/mongo-checkpoint-saver.ts:70:10 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-checkpoint-saver.ts:83:9 - (ae-undocumented) Missing documentation for "put".

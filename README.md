@@ -128,11 +128,11 @@ a read below `majority`, or from a secondary, can see a write that is later roll
 option in the URL is refused, never silently overridden.
 
 **The ledger's pruning mark** (agbossjs/agboss#771, #798) is the document `"\u0000pruned-before"` of
-`agboss_cost_entries`, seeded once with the collection. Keep it when you prune or empty that
+`agboss_cost_entries`, made with the collection in one transaction. Keep it when you prune or empty that
 collection by hand: without it a save cannot tell an entry the ledger pruned from a new one, so
-every save and prune fails closed with `MongoLedgerMarkMissingError` (`mongodb.ledger-mark-missing`)
+(or with a `prunedBefore` that is no date) every save and prune fails closed with `MongoLedgerMarkMissingError` (`mongodb.ledger-mark-missing`)
 — nothing counted, nothing deleted — and a restart does not seed it again. The error's message is
-the remedy: insert it with a mark no lower than any prune's cutoff (`now − ledgerEntryRetention`).
+the remedy: put it back with a mark no lower than any prune's cutoff (`now − ledgerEntryRetention`).
 
 ### What MongoDB itself must give
 
