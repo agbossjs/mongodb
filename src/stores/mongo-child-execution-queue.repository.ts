@@ -6,6 +6,7 @@ import {
   Injectable,
   type ChildExecutionEnd,
   type ChildExecutionQueueDepth,
+  type ChildExecutionQueueWatch,
   type QueuedChildExecution,
 } from "@agboss/core";
 import type { Collection } from "mongodb";
@@ -13,6 +14,7 @@ import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { DUPLICATE_KEY, hasCode, idOf } from "./keys.js";
+import { MongoQueueWatch } from "./queue-watch.js";
 
 /** One queued child: the contract's fields, `_id` its tenant and execution. */
 interface QueuedDocument extends Omit<
@@ -83,6 +85,9 @@ const childOf = (found: unknown): QueuedChildExecution => {
  *   write conflict, and it finds the next one.
  * - A completion is one update matching this instance's running child.
  *
+ * - `watchQueued` is a change stream on the collection (agbossjs/agboss#777, `queue-watch.ts`):
+ *   every document that becomes `queued` wakes the instance's claimers.
+ *
  * Times are the framework clock's.
  */
 @Injectable({ deps: [MongoConnection, Clock, ApplicationContext] })
@@ -128,6 +133,13 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
       if (hasCode(error, DUPLICATE_KEY)) return false;
       throw error;
     }
+  }
+
+  /** Wakes `onQueued` whenever any instance queues a child (agbossjs/agboss#777). */
+  override watchQueued(onQueued: () => void): Promise<ChildExecutionQueueWatch> {
+    const { db } = this.connection;
+    const queue = db.collection(Collections.ChildExecutionQueue);
+    return MongoQueueWatch.open(db, queue, this.clock, onQueued);
   }
 
   async findByTenantIdAndExecutionId(
