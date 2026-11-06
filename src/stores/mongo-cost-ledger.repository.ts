@@ -1,3 +1,4 @@
+import { isDate } from "node:util/types";
 import {
   assertLedgerEntries,
   BudgetScope,
@@ -163,6 +164,9 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
   }
 
   async deleteByMadeAtBefore(cutoff: Date): Promise<void> {
+    // a cutoff that is no date would lower the mark: refused (agbossjs/agboss#817)
+    if (!isDate(cutoff) || Number.isNaN(cutoff.getTime()))
+      throw new TypeError(`the cutoff is no valid Date: ${String(cutoff)}`);
     await this.connection.inTransaction(async ({ session }) => {
       // the mark raised (never lowered), then the entries made before it, in one transaction
       const prunedBefore = await raisedLedgerMark(this.connection.db, cutoff, session);
