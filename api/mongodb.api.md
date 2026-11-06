@@ -358,6 +358,17 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
 }
 
 // @public
+export class MongoLedgerMarkMissingError extends AGBossError {
+    constructor(found?: {
+        readonly malformed?: boolean;
+    });
+    // (undocumented)
+    static readonly code: string;
+    // (undocumented)
+    name: string;
+}
+
+// @public
 export class MongoMeshRequestRepository extends MeshRequestRepository {
     constructor(connection: MongoConnection);
     // (undocumented)
@@ -504,6 +515,8 @@ export enum TransactionReadConcern {
 // src/errors.ts:49:12 - (ae-undocumented) Missing documentation for "name".
 // src/errors.ts:65:3 - (ae-undocumented) Missing documentation for "code".
 // src/errors.ts:66:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:87:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:88:12 - (ae-undocumented) Missing documentation for "name".
 // src/stores/mongo-checkpoint-saver.ts:61:9 - (ae-undocumented) Missing documentation for "getTuple".
 // src/stores/mongo-checkpoint-saver.ts:70:10 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-checkpoint-saver.ts:83:9 - (ae-undocumented) Missing documentation for "put".
@@ -515,12 +528,12 @@ export enum TransactionReadConcern {
 // src/stores/mongo-child-execution-queue.repository.ts:168:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:186:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:193:9 - (ae-undocumented) Missing documentation for "findQueueDepth".
-// src/stores/mongo-cost-ledger.repository.ts:115:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-cost-ledger.repository.ts:119:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
-// src/stores/mongo-cost-ledger.repository.ts:124:9 - (ae-undocumented) Missing documentation for "saveAll".
-// src/stores/mongo-cost-ledger.repository.ts:189:9 - (ae-undocumented) Missing documentation for "deleteEntriesByMadeAtBefore".
-// src/stores/mongo-cost-ledger.repository.ts:202:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
-// src/stores/mongo-cost-ledger.repository.ts:207:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
+// src/stores/mongo-cost-ledger.repository.ts:103:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-cost-ledger.repository.ts:107:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
+// src/stores/mongo-cost-ledger.repository.ts:112:9 - (ae-undocumented) Missing documentation for "saveAll".
+// src/stores/mongo-cost-ledger.repository.ts:171:9 - (ae-undocumented) Missing documentation for "deleteEntriesByMadeAtBefore".
+// src/stores/mongo-cost-ledger.repository.ts:179:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
+// src/stores/mongo-cost-ledger.repository.ts:184:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
 // src/stores/mongo-execution-history.repository.ts:46:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-history.repository.ts:50:9 - (ae-undocumented) Missing documentation for "save".
 // src/stores/mongo-execution-history.repository.ts:66:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".

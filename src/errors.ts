@@ -74,3 +74,26 @@ export class MongoCollationError extends AGBossError {
     this.collections = collections;
   }
 }
+
+/**
+ * The ledger's pruning mark (agbossjs/agboss#771, the document `\u0000pruned-before` of
+ * `agboss_cost_entries`, made with the collection — agbossjs/agboss#798) is gone, deleted by hand,
+ * or its `prunedBefore` is not a date: without it a save cannot tell an entry the ledger pruned
+ * from a new one, so it adds nothing and fails, and a prune deletes nothing. A restart never seeds
+ * it again. Put it back with a mark no lower than any prune's cutoff (`now − ledgerEntryRetention`
+ * covers every prune the sweep made).
+ */
+export class MongoLedgerMarkMissingError extends AGBossError {
+  static override readonly code: string = "mongodb.ledger-mark-missing";
+  override name = "MongoLedgerMarkMissingError";
+
+  constructor(found: { readonly malformed?: boolean } = {}) {
+    const what =
+      found.malformed === true
+        ? 'agboss_cost_entries\'s "\\u0000pruned-before" document has no date in prunedBefore'
+        : 'agboss_cost_entries has no "\\u0000pruned-before" document';
+    super(
+      `the ledger's pruning mark is missing (${what}): nothing was added — put it back with a mark no lower than any prune's cutoff, e.g. db.agboss_cost_entries.replaceOne({ _id: "\\u0000pruned-before" }, { prunedBefore: new Date(Date.now() - 86400000) }, { upsert: true }) for the default ledgerEntryRetention of a day`,
+    );
+  }
+}

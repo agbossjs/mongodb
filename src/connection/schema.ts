@@ -2,6 +2,7 @@ import type { Db, IndexDescription } from "mongodb";
 import { z } from "zod";
 import { MongoCollationError } from "../errors.js";
 import { Collections, type CollectionName } from "./collections.js";
+import { createLedgerEntries } from "./ledger-mark.js";
 
 /**
  * The stores' collections and indexes (agbossjs/agboss#527), made at the connection's start —
@@ -9,7 +10,9 @@ import { Collections, type CollectionName } from "./collections.js";
  * collection is created with the simple collation; one an operator made with another collation
  * (`{ locale: "en", strength: 2 }` would make `Zoë-17` and `zoe-17` one key, a second charge) is
  * refused with `MongoCollationError` before any store writes. A unique key is always `_id` or a
- * unique index here, never a check in the code.
+ * unique index here, never a check in the code. The ledger's pruning mark is made with its
+ * collection, in one transaction (agbossjs/agboss#798): a start that finds the collection leaves it
+ * alone — a mark missing there was deleted, and is never seeded again.
  */
 
 const ascending = (...fields: readonly string[]): Record<string, 1> =>
@@ -92,9 +95,10 @@ async function collatedCollectionsOf(db: Db): Promise<string[]> {
     .map((info) => info.name);
 }
 
-/** Creates `name` with the simple collation unless it exists. */
+/** Creates `name` with the simple collation unless it exists — the ledger's with its mark. */
 async function createIfMissing(db: Db, name: string, existing: ReadonlySet<string>): Promise<void> {
   if (existing.has(name)) return;
+  if (name === Collections.CostEntries) return createLedgerEntries(db);
   try {
     await db.createCollection(name, { collation: { locale: "simple" } });
   } catch (error) {
@@ -105,8 +109,8 @@ async function createIfMissing(db: Db, name: string, existing: ReadonlySet<strin
 }
 
 /**
- * Every collection and index of the stores, made if missing; a collection with a non-simple
- * collation fails with `MongoCollationError`, naming it.
+ * Every collection and index of the stores, made if missing — the ledger's mark with its collection
+ * —; a collection with a non-simple collation fails with `MongoCollationError`, naming it.
  */
 export async function ensureSchema(db: Db): Promise<void> {
   const collated = await collatedCollectionsOf(db);

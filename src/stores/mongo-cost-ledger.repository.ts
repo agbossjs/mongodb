@@ -11,6 +11,7 @@ import { usd, type Usd } from "@agboss/core/units";
 import type { AnyBulkWriteOperation, ClientSession, Collection } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
+import { prunedBeforeOf, raisedLedgerMark } from "../connection/ledger-mark.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { idOf } from "./keys.js";
 
@@ -25,17 +26,6 @@ interface EntryDocument {
   /** When its spend was made (agbossjs/agboss#771); absent on an entry of before: never pruned. */
   madeAt?: Date;
 }
-
-/** The pruning mark (agbossjs/agboss#771): one document of the entries' collection. */
-interface MarkDocument {
-  _id: string;
-  prunedBefore: Date;
-}
-
-/** The mark's `_id`: `\u0000` never occurs in a `ledgerId`. */
-const MARK_ID = "\u0000pruned-before";
-
-const Mark = z.object({ prunedBefore: z.date() });
 
 interface MaxSpendDocument {
   _id: string;
@@ -84,7 +74,9 @@ function countersOf(
  * record with a `ledgerId` once, its id upserted into `agboss_cost_entries` in that transaction
  * (agbossjs/agboss#727: a repeated save of the id adds nothing), dated by its `madeAt`; the pruning
  * mark — a document of that collection — is read in the same transaction, and an entry made before
- * it that is not held refuses the save (agbossjs/agboss#771). Two
+ * it that is not held refuses the save (agbossjs/agboss#771); without the mark — seeded with the
+ * collection, deleted by hand — a save and a prune fail closed with `MongoLedgerMarkMissingError`,
+ * nothing added or deleted (agbossjs/agboss#798). Two
  * instances' concurrent saves on one counter conflict and the driver runs the loser's transaction
  * again — `$inc` of a committed attempt only, so nothing is lost or counted twice. No other locking:
  * as on PostgreSQL, the core accepts a small overrun of executions racing past one check (nothing is
@@ -102,10 +94,6 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
 
   get #entries(): Collection<EntryDocument> {
     return this.connection.db.collection<EntryDocument>(Collections.CostEntries);
-  }
-
-  get #marks(): Collection<MarkDocument> {
-    return this.connection.db.collection<MarkDocument>(Collections.CostEntries);
   }
 
   get #maxSpend(): Collection<MaxSpendDocument> {
@@ -126,7 +114,7 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
     await this.connection.inTransaction(async ({ session }) => {
       // the mark read in the transaction (agbossjs/agboss#771): a prune that removed an entry this
       // save holds in its snapshot conflicts with it, so the save runs again and reads the new mark
-      const prunedBefore = await this.#prunedBefore(session);
+      const prunedBefore = await prunedBeforeOf(this.connection.db, session);
       const added = await this.#newEntriesOf(records, prunedBefore, session);
       if (added.length === 0) return;
       await this.#counters.bulkWrite(countersOf(counters, costOf(added)), {
@@ -134,12 +122,6 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
         ordered: true,
       });
     });
-  }
-
-  /** The pruning mark in `session` (ms), `-Infinity` before the first prune. */
-  async #prunedBefore(session: ClientSession): Promise<number> {
-    const found = await this.#marks.findOne({ _id: MARK_ID }, { session });
-    return found === null ? Number.NEGATIVE_INFINITY : Mark.parse(found).prunedBefore.getTime();
   }
 
   /**
@@ -189,12 +171,7 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
   async deleteEntriesByMadeAtBefore(cutoff: Date): Promise<void> {
     await this.connection.inTransaction(async ({ session }) => {
       // the mark raised (never lowered), then the entries made before it, in one transaction
-      const mark = await this.#marks.findOneAndUpdate(
-        { _id: MARK_ID },
-        { $max: { prunedBefore: cutoff } },
-        { session, upsert: true, returnDocument: "after" },
-      );
-      const { prunedBefore } = Mark.parse(mark);
+      const prunedBefore = await raisedLedgerMark(this.connection.db, cutoff, session);
       await this.#entries.deleteMany({ madeAt: { $lt: prunedBefore } }, { session });
     });
   }

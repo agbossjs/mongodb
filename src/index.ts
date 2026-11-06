@@ -13,6 +13,7 @@ export { MongoTopology } from "./connection/deployment.js";
 export {
   MongoCollationError,
   MongoConcernTooWeakError,
+  MongoLedgerMarkMissingError,
   MongoReplicaSetRequiredError,
   MongoSettingsError,
 } from "./errors.js";
