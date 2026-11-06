@@ -47,6 +47,7 @@ import { FencedEffectRepository } from '@agboss/core';
 import { FencedEffectSettings } from '@agboss/core';
 import { FencedEffectWork } from '@agboss/core';
 import { IdGenerator } from '@agboss/core';
+import { LedgerEntry } from '@agboss/core';
 import { MeshRequestKey } from '@agboss/core';
 import { MeshRequestRecord } from '@agboss/core';
 import { MeshRequestRepository } from '@agboss/core';
@@ -84,7 +85,6 @@ import type { Summary } from '@agboss/core';
 import type { Tern } from '@agboss/core';
 import type { TernOutcome } from '@agboss/core';
 import { TransactionOptions } from 'mongodb';
-import { UsageRecord } from '@agboss/core';
 import { Usd } from '@agboss/core/units';
 import type { VersionScore } from '@agboss/core';
 
@@ -239,7 +239,7 @@ export interface MongoConnectionSettings {
 export class MongoCostLedgerRepository extends CostLedgerRepository {
     constructor(connection: MongoConnection);
     // (undocumented)
-    deleteEntriesByMadeAtBefore(cutoff: Date): Promise<void>;
+    deleteByMadeAtBefore(cutoff: Date): Promise<void>;
     // (undocumented)
     findMaxSpendByAccount(account: BudgetAccount): Promise<Usd | undefined>;
     // (undocumented)
@@ -247,7 +247,7 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
-    saveAll(counters: readonly CostCounter[], records: readonly UsageRecord[]): Promise<void>;
+    saveAll(counters: readonly CostCounter[], entries: readonly LedgerEntry[]): Promise<void>;
     // (undocumented)
     saveMaxSpend(account: BudgetAccount, maxSpend: Usd): Promise<void>;
 }
@@ -573,12 +573,12 @@ export enum TransactionReadConcern {
 // src/stores/mongo-child-execution-queue.repository.ts:168:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:186:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:193:9 - (ae-undocumented) Missing documentation for "findQueueDepth".
-// src/stores/mongo-cost-ledger.repository.ts:103:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-cost-ledger.repository.ts:107:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
-// src/stores/mongo-cost-ledger.repository.ts:112:9 - (ae-undocumented) Missing documentation for "saveAll".
-// src/stores/mongo-cost-ledger.repository.ts:171:9 - (ae-undocumented) Missing documentation for "deleteEntriesByMadeAtBefore".
-// src/stores/mongo-cost-ledger.repository.ts:179:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
-// src/stores/mongo-cost-ledger.repository.ts:184:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
+// src/stores/mongo-cost-ledger.repository.ts:102:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-cost-ledger.repository.ts:106:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
+// src/stores/mongo-cost-ledger.repository.ts:111:9 - (ae-undocumented) Missing documentation for "saveAll".
+// src/stores/mongo-cost-ledger.repository.ts:165:9 - (ae-undocumented) Missing documentation for "deleteByMadeAtBefore".
+// src/stores/mongo-cost-ledger.repository.ts:173:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
+// src/stores/mongo-cost-ledger.repository.ts:178:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
 // src/stores/mongo-execution-history.repository.ts:46:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-history.repository.ts:50:9 - (ae-undocumented) Missing documentation for "save".
 // src/stores/mongo-execution-history.repository.ts:66:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
