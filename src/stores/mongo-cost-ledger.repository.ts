@@ -1,11 +1,13 @@
 import {
+  assertLedgerEntries,
   BudgetScope,
   CostLedgerEntryExpiredError,
   CostLedgerRepository,
   Injectable,
+  totalCost,
   type BudgetAccount,
   type CostCounter,
-  type UsageRecord,
+  type LedgerEntry,
 } from "@agboss/core";
 import { usd, type Usd } from "@agboss/core/units";
 import type { AnyBulkWriteOperation, ClientSession, Collection } from "mongodb";
@@ -44,10 +46,6 @@ const accountIdOf = (account: BudgetAccount): string =>
 const counterIdOf = (counter: CostCounter): string =>
   idOf(counter.budget, scopeOf(counter), counter.key, counter.period);
 
-/** What the calls cost together, in USD. */
-const costOf = (records: readonly UsageRecord[]): number =>
-  records.reduce((sum, record) => sum + record.costUsd, 0);
-
 /** The counters' updates for a save of `cost`, one per counter, in one order. */
 function countersOf(
   counters: readonly CostCounter[],
@@ -70,8 +68,9 @@ function countersOf(
  * `CostLedgerRepository` on MongoDB (agbossjs/agboss#483, #527): one document per counter — budget,
  * scope, scope key and period — so the instances of an application share a tenant's day. `saveAll`
  * adds the calls' cost to every counter it is given with `$inc` (a counter given twice counts twice),
- * all of them in **one transaction**: either every counter of the save counts it, or none does — a
- * record with a `ledgerId` once, its id upserted into `agboss_cost_entries` in that transaction
+ * all of them in **one transaction**: either every counter of the save counts it, or none does —
+ * ledger entries only (agbossjs/agboss#817: anything else refused by `assertLedgerEntries` first),
+ * each once by its `ledgerId`, its id upserted into `agboss_cost_entries` in that transaction
  * (agbossjs/agboss#727: a repeated save of the id adds nothing), dated by its `madeAt`; the pruning
  * mark — a document of that collection — is read in the same transaction, and an entry made before
  * it that is not held refuses the save (agbossjs/agboss#771); without the mark — seeded with the
@@ -109,15 +108,17 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
     return usd(found === null ? 0 : Spent.parse(found).spentUsd);
   }
 
-  async saveAll(counters: readonly CostCounter[], records: readonly UsageRecord[]): Promise<void> {
-    if (counters.length === 0 || records.length === 0) return;
+  async saveAll(counters: readonly CostCounter[], entries: readonly LedgerEntry[]): Promise<void> {
+    // a JS caller's record without an identity is refused before anything (agbossjs/agboss#817)
+    assertLedgerEntries(entries);
+    if (counters.length === 0 || entries.length === 0) return;
     await this.connection.inTransaction(async ({ session }) => {
       // the mark read in the transaction (agbossjs/agboss#771): a prune that removed an entry this
       // save holds in its snapshot conflicts with it, so the save runs again and reads the new mark
       const prunedBefore = await prunedBeforeOf(this.connection.db, session);
-      const added = await this.#newEntriesOf(records, prunedBefore, session);
+      const added = await this.#unrecordedEntriesOf(entries, prunedBefore, session);
       if (added.length === 0) return;
-      await this.#counters.bulkWrite(countersOf(counters, costOf(added)), {
+      await this.#counters.bulkWrite(countersOf(counters, totalCost(added)), {
         session,
         ordered: true,
       });
@@ -125,36 +126,29 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
   }
 
   /**
-   * Of `records`, what the save adds: each record without a `ledgerId`, and each entry upserted now
-   * (agbossjs/agboss#727: a repeated id adds nothing); an entry made before the mark is never
-   * inserted — held, it adds nothing; not held, the save is refused (agbossjs/agboss#771).
+   * Of `entries`, what the save adds: each entry upserted now (agbossjs/agboss#727: a repeated id
+   * adds nothing); an entry made before the mark is never inserted — held, it adds nothing; not
+   * held, the save is refused (agbossjs/agboss#771).
    */
-  async #newEntriesOf(
-    records: readonly UsageRecord[],
-    prunedBefore: number,
+  async #unrecordedEntriesOf(
+    entries: readonly LedgerEntry[],
+    prunedBefore: Date,
     session: ClientSession,
-  ): Promise<UsageRecord[]> {
-    const added: UsageRecord[] = [];
+  ): Promise<LedgerEntry[]> {
+    const added: LedgerEntry[] = [];
     const expired: string[] = [];
     const seen = new Set<string>();
-    for (const record of records) {
-      const { ledgerId } = record;
-      if (ledgerId === undefined) added.push(record);
-      else if (!seen.has(ledgerId)) {
-        seen.add(ledgerId);
-        // an entry without a date is the oldest
-        const madeAt = new Date(record.madeAt ?? 0);
-        if (madeAt.getTime() < prunedBefore) {
-          if ((await this.#entries.findOne({ _id: ledgerId }, { session })) === null)
-            expired.push(ledgerId);
-        } else if (await this.#isNew(ledgerId, madeAt, session)) added.push(record);
-      }
+    for (const entry of entries) {
+      const { ledgerId, madeAt } = entry;
+      if (seen.has(ledgerId)) continue;
+      seen.add(ledgerId);
+      if (madeAt.getTime() < prunedBefore.getTime()) {
+        if ((await this.#entries.findOne({ _id: ledgerId }, { session })) === null)
+          expired.push(ledgerId);
+      } else if (await this.#isNew(ledgerId, madeAt, session)) added.push(entry);
     }
     if (expired.length > 0)
-      throw new CostLedgerEntryExpiredError({
-        ledgerIds: expired,
-        prunedBefore: new Date(prunedBefore),
-      });
+      throw new CostLedgerEntryExpiredError({ ledgerIds: expired, prunedBefore });
     return added;
   }
 
@@ -168,7 +162,7 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
     return written.upsertedCount === 1;
   }
 
-  async deleteEntriesByMadeAtBefore(cutoff: Date): Promise<void> {
+  async deleteByMadeAtBefore(cutoff: Date): Promise<void> {
     await this.connection.inTransaction(async ({ session }) => {
       // the mark raised (never lowered), then the entries made before it, in one transaction
       const prunedBefore = await raisedLedgerMark(this.connection.db, cutoff, session);
