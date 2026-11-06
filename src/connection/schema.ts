@@ -42,6 +42,8 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
   [Collections.ExecutionRecords]: [
     index("by_seq", ascending("seq"), true),
     index("by_thread", ascending("tenantId", "threadId", "seq")),
+    // agbossjs/agboss#808: a run's record by its id (findByTenantIdAndRunId)
+    index("by_run", ascending("tenantId", "runId", "seq")),
     index("by_status", ascending("status", "seq")),
     index("by_version", ascending("bundle", "promptVersion", "seq")),
     index("by_workflow", ascending("bundle", "seq")),

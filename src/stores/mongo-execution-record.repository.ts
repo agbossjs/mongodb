@@ -90,6 +90,9 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   lastTerns(tenantId: string, threadId: string, limit: number): Promise<rows.StoredRecord[]> {
     return reads.lastRecordsOf(this.connection.db, tenantId, threadId, limit);
   }
+  findByTenantIdAndRunId(tenantId: string, runId: string): Promise<rows.StoredRecord | undefined> {
+    return reads.recordByRunIdOf(this.connection.db, tenantId, runId);
+  }
   byIds(ids: readonly string[]): Promise<rows.StoredRecord[]> {
     return reads.recordsByIds(this.connection.db, ids);
   }

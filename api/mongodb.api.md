@@ -294,6 +294,8 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     // (undocumented)
     findByStatus(status: ExecutionRecordStatus, limit: number, after?: string): Promise<rows.StoredRecord[]>;
     // (undocumented)
+    findByTenantIdAndRunId(tenantId: string, runId: string): Promise<rows.StoredRecord | undefined>;
+    // (undocumented)
     findPauseAnswersByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<rows.PauseAnswer[]>;
     // (undocumented)
     hasThread(workflow: string, tenantId: string, threadId: string): Promise<boolean>;
@@ -561,24 +563,25 @@ export enum TransactionReadConcern {
 // src/stores/mongo-execution-record.repository.ts:80:9 - (ae-undocumented) Missing documentation for "complete".
 // src/stores/mongo-execution-record.repository.ts:83:3 - (ae-undocumented) Missing documentation for "completeIfStatus".
 // src/stores/mongo-execution-record.repository.ts:90:3 - (ae-undocumented) Missing documentation for "lastTerns".
-// src/stores/mongo-execution-record.repository.ts:93:3 - (ae-undocumented) Missing documentation for "byIds".
-// src/stores/mongo-execution-record.repository.ts:96:3 - (ae-undocumented) Missing documentation for "findByStatus".
-// src/stores/mongo-execution-record.repository.ts:103:3 - (ae-undocumented) Missing documentation for "byVersion".
-// src/stores/mongo-execution-record.repository.ts:106:3 - (ae-undocumented) Missing documentation for "unscored".
-// src/stores/mongo-execution-record.repository.ts:113:3 - (ae-undocumented) Missing documentation for "saveScore".
-// src/stores/mongo-execution-record.repository.ts:116:3 - (ae-undocumented) Missing documentation for "meanScore".
-// src/stores/mongo-execution-record.repository.ts:119:3 - (ae-undocumented) Missing documentation for "summary".
-// src/stores/mongo-execution-record.repository.ts:122:3 - (ae-undocumented) Missing documentation for "rememberConfig".
-// src/stores/mongo-execution-record.repository.ts:131:3 - (ae-undocumented) Missing documentation for "configSnapshots".
-// src/stores/mongo-execution-record.repository.ts:134:3 - (ae-undocumented) Missing documentation for "recentOriginals".
-// src/stores/mongo-execution-record.repository.ts:137:3 - (ae-undocumented) Missing documentation for "uncovered".
-// src/stores/mongo-execution-record.repository.ts:140:3 - (ae-undocumented) Missing documentation for "before".
-// src/stores/mongo-execution-record.repository.ts:148:3 - (ae-undocumented) Missing documentation for "turnNumber".
-// src/stores/mongo-execution-record.repository.ts:151:3 - (ae-undocumented) Missing documentation for "addSummary".
-// src/stores/mongo-execution-record.repository.ts:154:3 - (ae-undocumented) Missing documentation for "latestSummaries".
-// src/stores/mongo-execution-record.repository.ts:162:3 - (ae-undocumented) Missing documentation for "summaryCount".
-// src/stores/mongo-execution-record.repository.ts:165:3 - (ae-undocumented) Missing documentation for "savePauseAnswer".
-// src/stores/mongo-execution-record.repository.ts:172:9 - (ae-undocumented) Missing documentation for "findPauseAnswersByTenantIdAndRootExecutionId".
+// src/stores/mongo-execution-record.repository.ts:93:3 - (ae-undocumented) Missing documentation for "findByTenantIdAndRunId".
+// src/stores/mongo-execution-record.repository.ts:96:3 - (ae-undocumented) Missing documentation for "byIds".
+// src/stores/mongo-execution-record.repository.ts:99:3 - (ae-undocumented) Missing documentation for "findByStatus".
+// src/stores/mongo-execution-record.repository.ts:106:3 - (ae-undocumented) Missing documentation for "byVersion".
+// src/stores/mongo-execution-record.repository.ts:109:3 - (ae-undocumented) Missing documentation for "unscored".
+// src/stores/mongo-execution-record.repository.ts:116:3 - (ae-undocumented) Missing documentation for "saveScore".
+// src/stores/mongo-execution-record.repository.ts:119:3 - (ae-undocumented) Missing documentation for "meanScore".
+// src/stores/mongo-execution-record.repository.ts:122:3 - (ae-undocumented) Missing documentation for "summary".
+// src/stores/mongo-execution-record.repository.ts:125:3 - (ae-undocumented) Missing documentation for "rememberConfig".
+// src/stores/mongo-execution-record.repository.ts:134:3 - (ae-undocumented) Missing documentation for "configSnapshots".
+// src/stores/mongo-execution-record.repository.ts:137:3 - (ae-undocumented) Missing documentation for "recentOriginals".
+// src/stores/mongo-execution-record.repository.ts:140:3 - (ae-undocumented) Missing documentation for "uncovered".
+// src/stores/mongo-execution-record.repository.ts:143:3 - (ae-undocumented) Missing documentation for "before".
+// src/stores/mongo-execution-record.repository.ts:151:3 - (ae-undocumented) Missing documentation for "turnNumber".
+// src/stores/mongo-execution-record.repository.ts:154:3 - (ae-undocumented) Missing documentation for "addSummary".
+// src/stores/mongo-execution-record.repository.ts:157:3 - (ae-undocumented) Missing documentation for "latestSummaries".
+// src/stores/mongo-execution-record.repository.ts:165:3 - (ae-undocumented) Missing documentation for "summaryCount".
+// src/stores/mongo-execution-record.repository.ts:168:3 - (ae-undocumented) Missing documentation for "savePauseAnswer".
+// src/stores/mongo-execution-record.repository.ts:175:9 - (ae-undocumented) Missing documentation for "findPauseAnswersByTenantIdAndRootExecutionId".
 // src/stores/mongo-execution-tree.repository.ts:50:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-tree.repository.ts:54:9 - (ae-undocumented) Missing documentation for "saveIfAbsentInTree".
 // src/stores/mongo-execution-tree.repository.ts:69:9 - (ae-undocumented) Missing documentation for "findByIdInTree".
