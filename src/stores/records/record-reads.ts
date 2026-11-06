@@ -46,6 +46,13 @@ export const lastRecordsOf = (
   limit: number,
 ): Promise<StoredRecord[]> => newest(db, { tenantId, threadId }, limit);
 
+/** The latest record a run of the tenant wrote (agbossjs/agboss#808), however old; `undefined`: none. */
+export const recordByRunIdOf = async (
+  db: Db,
+  tenantId: string,
+  runId: string,
+): Promise<StoredRecord | undefined> => (await newest(db, { tenantId, runId }, 1))[0];
+
 /** The records of `ids`, in the order they were appended. */
 export const recordsByIds = (db: Db, ids: readonly string[]): Promise<StoredRecord[]> =>
   oldest(db, { _id: { $in: [...ids] } });
