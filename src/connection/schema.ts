@@ -73,6 +73,12 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
     index("by_ended_at", ascending("endedAt")),
   ],
   [Collections.MeshRequests]: [index("by_created_at", ascending("createdAt"))],
+  // agbossjs/agboss#824: ListTasks (a caller's tasks, newest status first) and the retention sweep
+  [Collections.A2ATasks]: [
+    index("by_owner", { tenantId: 1, ownerId: 1, statusAt: -1, taskId: -1 }),
+    index("by_finished", ascending("state", "statusAt")),
+  ],
+  [Collections.A2AMessages]: [index("by_task", ascending("tenantId", "taskId"))],
   [Collections.Checkpoints]: [
     index("by_thread", { threadId: 1, namespace: 1, checkpointId: -1 }),
     index("by_checkpoint", { checkpointId: -1 }),

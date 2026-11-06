@@ -42,7 +42,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p .",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.a2a.json",
+    "check:types": "node scripts/check-types.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -52,7 +53,7 @@
     "coverage": "node scripts/check-test-run.mjs --expect test-run.json -- vitest run --coverage",
     "check:api": "npm run build && node scripts/api-report.mjs",
     "api:update": "npm run build && node scripts/api-report.mjs --write",
-    "check": "npm run format:check && npm run check:suppressions && npm run check:installs && npm run check:real-time && npm run lint && npm run typecheck && npm run coverage && npm run test:failover && npm run check:api",
+    "check": "npm run format:check && npm run check:suppressions && npm run check:installs && npm run check:real-time && npm run check:types && npm run lint && npm run typecheck && npm run coverage && npm run test:failover && npm run check:api",
     "pack:framework": "node scripts/pack-framework.mjs",
     "install:packed": "node scripts/install-packed.mjs",
     "install:published": "node scripts/install-published.mjs",

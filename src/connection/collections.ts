@@ -57,6 +57,13 @@ export const Collections = {
   RateLimitPauses: "agboss_rate_limit_pauses",
   /** One document per trusted mesh request (agbossjs/agboss#483). */
   MeshRequests: "agboss_mesh_requests",
+  /**
+   * One document per A2A task an application serves (agbossjs/agboss#824), `_id` its tenant and
+   * task id: shared by the instances.
+   */
+  A2ATasks: "agboss_a2a_tasks",
+  /** One document per accepted A2A message, `_id` its tenant, owner and message id (#824). */
+  A2AMessages: "agboss_a2a_messages",
   /** LangGraph's checkpoints. */
   Checkpoints: "agboss_checkpoints",
   /** LangGraph's pending writes of a checkpoint. */
