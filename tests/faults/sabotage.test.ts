@@ -27,7 +27,7 @@ describe("agbossjs/agboss#657, #658: a broken payment integration fails effects-
   it("the core's sabotages: an error taken for a definite one, a key retention left out", () => {
     expect(FAULT_SABOTAGE_SCENARIOS.map((scenario) => scenario.id)).toEqual([
       "s14-sabotage-every-error-definite",
-      "s15-sabotage-retention-undeclared",
+      "s15-sabotage-replay-trusted-as-lookup",
     ]);
   });
 

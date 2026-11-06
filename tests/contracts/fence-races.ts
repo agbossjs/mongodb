@@ -1,7 +1,7 @@
 import {
   ExecutionFencedError,
   type ExecutionLeaseRepository,
-  type FencedEffectKey,
+  type EffectKey,
   type FencedEffectRepository,
 } from "@agboss/core";
 import { seconds } from "@agboss/core/units";
@@ -40,7 +40,7 @@ export function fenceRaceCases(name: string, build: () => Promise<FenceRaceInsta
       const lease = await first.leases.acquire("default", "zombie-1", LEASE);
       if (lease === undefined) throw new Error("the first take was refused");
       await advance(LEASE - 1);
-      const key: FencedEffectKey = {
+      const key: EffectKey = {
         scopeKey: "default:zombie-1",
         tenantId: "default",
         leaseExecutionId: "zombie-1",

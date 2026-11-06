@@ -89,7 +89,7 @@ gets the transaction — `{ session, db }` — and writes its business documents
 a write without it is outside the guarantee:
 
 ```ts no-check: a fragment of a component
-await effects.saveResultIfAbsent(fencedEffectKeyOf(executionContext, "charge"), async ({ db, session }) => {
+await effects.saveResultIfAbsent(effectKeyOf(executionContext, "charge"), async ({ db, session }) => {
   await db.collection("charges").insertOne({ orderId, amount }, { session });
   return { receipt: orderId };
 });
@@ -156,9 +156,9 @@ the remedy: put it back with a mark no lower than any prune's cutoff (`now − l
   attempt's `attemptStartedAt` and `firstAttemptStartedAt`, `markPending` each next
   `attemptStartedAt`, and every `findByKey` answers its record with `readAt` — all the `checkedAt`
   the fence wrote on the lease it locked (`$$NOW`), never a pod's wall clock. So
-  `lookup.attemptStartedAt`, `lookup.keyAge` and a call's `keyRetention` mean the same on every pod
-  and after a takeover. An intent written before has none: its key's age is unknown, and a
-  `keyRetention` refuses its replay.
+  `lookup.attemptStartedAt`, `lookup.keyAge` and a `NotSentTrust.KeyReplay`'s `keyRetention` mean
+  the same on every pod and after a takeover. An intent written before has none: its key's age is
+  unknown, and a `KeyReplay` refuses its replay.
 - **Retries.** `MongoConnection.inTransaction` is the driver's `withTransaction`:
   - a `TransientTransactionError` (a write conflict, a step-down) aborts the attempt — none of its
     writes is ever seen — and runs it again from the start: a fenced effect's work can run more than

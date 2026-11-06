@@ -1,7 +1,7 @@
 import {
-  fencedKeyIdentityOf,
+  effectKeyIdentityOf,
   OutboundCallStatus,
-  type FencedEffectKey,
+  type EffectKey,
   type OutboundCallRecord,
 } from "@agboss/core";
 import { z } from "zod";
@@ -65,7 +65,7 @@ export const callRecordOf = (found: unknown): OutboundCallRecord =>
   StoredCall.parse(CallDocument.parse(found).record);
 
 /** The `_id` of `key`'s intent. */
-export const callIdOf = (key: FencedEffectKey): string => idOf(fencedKeyIdentityOf(key));
+export const callIdOf = (key: EffectKey): string => idOf(effectKeyIdentityOf(key));
 
 /** The record's fields that a move leaves out: its last ending (`result`, `failure`, `endedAt`). */
 export const ENDING_FIELDS = ["record.result", "record.failure", "record.endedAt"] as const;

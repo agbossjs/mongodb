@@ -1,14 +1,14 @@
 import {
   checkedBusinessKey,
   checkedEffectName,
-  fencedKeyIdentityOf,
+  effectKeyIdentityOf,
   FencedEffectRepository,
   FencedEffectSettings,
   FencedEffectStatus,
   Injectable,
   StoreClock,
   type Class,
-  type FencedEffectKey,
+  type EffectKey,
   type FencedEffectOutcome,
   type FencedEffectWork,
 } from "@agboss/core";
@@ -68,14 +68,14 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
   }
 
   protected runInTransaction<TResult>(
-    key: FencedEffectKey,
+    key: EffectKey,
     work: FencedEffectWork<MongoTransaction, TResult>,
   ): Promise<FencedEffectOutcome<TResult>> {
     checkedEffectName(key.name);
     // a business key's text (agbossjs/agboss#538): refused by its rule before any command
     checkedBusinessKey(key);
     // this instance's calls on one lease or business key commit in the order they were made
-    return inLocalOrder(this, fencedOrderKeysOf(key, idOf(fencedKeyIdentityOf(key))), () =>
+    return inLocalOrder(this, fencedOrderKeysOf(key, idOf(effectKeyIdentityOf(key))), () =>
       this.connection.inTransaction((transaction) => this.#effect(transaction, key, work)),
     );
   }
@@ -95,13 +95,13 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
 
   async #effect<TResult>(
     transaction: MongoTransaction,
-    key: FencedEffectKey,
+    key: EffectKey,
     work: FencedEffectWork<MongoTransaction, TResult>,
   ): Promise<FencedEffectOutcome<TResult>> {
     const { db, session } = transaction;
     const now = this.clock.now();
     await checkFence(db, session, key, this.clock);
-    const id = idOf(fencedKeyIdentityOf(key));
+    const id = idOf(effectKeyIdentityOf(key));
     if (key.businessKey !== undefined) await lockKey(db, session, id, now);
     const stored = await this.#results.findOne({ _id: id }, { session });
     if (stored !== null) return replayOf(key, stored);

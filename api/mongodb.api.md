@@ -20,6 +20,7 @@ import type { ConfigSnapshot } from '@agboss/core';
 import { CostCounter } from '@agboss/core';
 import { CostLedgerRepository } from '@agboss/core';
 import { Db } from 'mongodb';
+import { EffectKey } from '@agboss/core';
 import { ExecutionHistoryPage } from '@agboss/core';
 import { ExecutionHistoryRecord } from '@agboss/core';
 import { ExecutionHistoryRepository } from '@agboss/core';
@@ -33,7 +34,6 @@ import { ExecutionRecordStatus } from '@agboss/core';
 import { ExecutionTree } from '@agboss/core';
 import { ExecutionTreeRepository } from '@agboss/core';
 import { ExecutionTreeValue } from '@agboss/core';
-import { FencedEffectKey } from '@agboss/core';
 import { FencedEffectOutcome } from '@agboss/core';
 import { FencedEffectRepository } from '@agboss/core';
 import { FencedEffectSettings } from '@agboss/core';
@@ -356,7 +356,7 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
-    protected runInTransaction<TResult>(key: FencedEffectKey, work: FencedEffectWork<MongoTransaction, TResult>): Promise<FencedEffectOutcome<TResult>>;
+    protected runInTransaction<TResult>(key: EffectKey, work: FencedEffectWork<MongoTransaction, TResult>): Promise<FencedEffectOutcome<TResult>>;
 }
 
 // @public
@@ -398,21 +398,21 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     // (undocumented)
     findAllByTenantIdAndStatus(tenantId: string, status: OutboundCallStatus): Promise<readonly OutboundCallRecord[]>;
     // (undocumented)
-    findByKey(key: FencedEffectKey): Promise<OutboundCallRecord | undefined>;
+    findByKey(key: EffectKey): Promise<OutboundCallRecord | undefined>;
     // (undocumented)
     static readonly leaseRepository: Class | undefined;
     // (undocumented)
     leaseStateOf(lease: OutboundCallLease): Promise<OutboundCallLeaseState>;
     // (undocumented)
-    markCompleted(key: FencedEffectKey, attemptOwner: string, result: string): Promise<boolean>;
+    markCompleted(key: EffectKey, attemptOwner: string, result: string): Promise<boolean>;
     // (undocumented)
-    markFailed(key: FencedEffectKey, attemptOwner: string, failure: OutboundCallFailure): Promise<boolean>;
+    markFailed(key: EffectKey, attemptOwner: string, failure: OutboundCallFailure): Promise<boolean>;
     // (undocumented)
-    markPending(key: FencedEffectKey, expected: OutboundCallState, claim: OutboundCallClaim): Promise<boolean>;
+    markPending(key: EffectKey, expected: OutboundCallState, claim: OutboundCallClaim): Promise<boolean>;
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
-    saveIfAbsent(key: FencedEffectKey, intent: OutboundCallIntent): Promise<boolean>;
+    saveIfAbsent(key: EffectKey, intent: OutboundCallIntent): Promise<boolean>;
 }
 
 // @public
@@ -602,10 +602,10 @@ export enum TransactionReadConcern {
 // src/stores/mongo-outbound-call.repository.ts:117:3 - (ae-undocumented) Missing documentation for "markPending".
 // src/stores/mongo-outbound-call.repository.ts:128:3 - (ae-undocumented) Missing documentation for "markCompleted".
 // src/stores/mongo-outbound-call.repository.ts:137:3 - (ae-undocumented) Missing documentation for "markFailed".
-// src/stores/mongo-outbound-call.repository.ts:155:3 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionId".
-// src/stores/mongo-outbound-call.repository.ts:162:3 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndStatus".
-// src/stores/mongo-outbound-call.repository.ts:169:9 - (ae-undocumented) Missing documentation for "deleteByEndedAtBefore".
-// src/stores/mongo-outbound-call.repository.ts:174:3 - (ae-undocumented) Missing documentation for "leaseStateOf".
+// src/stores/mongo-outbound-call.repository.ts:151:3 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionId".
+// src/stores/mongo-outbound-call.repository.ts:158:3 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndStatus".
+// src/stores/mongo-outbound-call.repository.ts:165:9 - (ae-undocumented) Missing documentation for "deleteByEndedAtBefore".
+// src/stores/mongo-outbound-call.repository.ts:170:3 - (ae-undocumented) Missing documentation for "leaseStateOf".
 // src/stores/mongo-paused-execution.repository.ts:63:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-paused-execution.repository.ts:67:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndThreadId".
 // src/stores/mongo-paused-execution.repository.ts:81:9 - (ae-undocumented) Missing documentation for "save".

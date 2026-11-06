@@ -4,9 +4,9 @@ import {
   ExecutionFencedError,
   FencedEffectSettings,
   FencedEffectStatus,
-  fencedKeyIdentityOf,
+  effectKeyIdentityOf,
   type ExecutionLease,
-  type FencedEffectKey,
+  type EffectKey,
   type FencedEffectOutcome,
   type FencedEffectWork,
 } from "@agboss/core";
@@ -133,7 +133,7 @@ class ReadOnlyFenceEffects extends MongoFencedEffectRepository {
   }
 
   protected override runInTransaction<TResult>(
-    key: FencedEffectKey,
+    key: EffectKey,
     work: FencedEffectWork<MongoTransaction, TResult>,
   ): Promise<FencedEffectOutcome<TResult>> {
     return this.mongo.inTransaction(async (transaction) => {
@@ -154,7 +154,7 @@ class ReadOnlyFenceEffects extends MongoFencedEffectRepository {
         );
       const highest = mark?.highestToken ?? 0;
       if (highest > key.token) throw refused(highest);
-      const id = JSON.stringify([fencedKeyIdentityOf(key)]);
+      const id = JSON.stringify([effectKeyIdentityOf(key)]);
       if (key.businessKey !== undefined) await lockKey(db, session, id, now);
       const results = db.collection<ResultDocument>(Collections.FencedEffectResults);
       const stored = await results.findOne({ _id: id }, { session });
