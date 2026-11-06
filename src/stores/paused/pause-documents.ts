@@ -8,6 +8,7 @@ import type { Collection, Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { pauseRecordOf } from "../framework-json.js";
+import { pauseFieldsOfVersion } from "./pause-kind.js";
 import { DUPLICATE_KEY, hasCode, idOf } from "../keys.js";
 import { nextSequence } from "../sequence.js";
 
@@ -57,7 +58,7 @@ const ClosingFields = z.record(z.string(), z.unknown());
 export function pauseOfDocument(found: unknown): PauseRecord {
   const stored = Stored.parse(found);
   const closing = stored.closing === null ? {} : ClosingFields.parse(JSON.parse(stored.closing));
-  const created = ClosingFields.parse(JSON.parse(stored.record));
+  const created = pauseFieldsOfVersion(ClosingFields.parse(JSON.parse(stored.record)));
   return pauseRecordOf({ ...created, ...closing, status: stored.status, isSent: stored.isSent });
 }
 

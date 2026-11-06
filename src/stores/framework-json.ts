@@ -1,6 +1,6 @@
 import {
-  ComponentKind,
   PauseAnswerer,
+  PauseKind,
   PauseResolution,
   PauseStatus,
   type PausedExecution,
@@ -50,10 +50,12 @@ const StoredPause = z.looseObject({
   nodeId: text,
   visitNumber: z.number(),
   copyNumber: z.number(),
-  agent: text,
+  // agbossjs/agboss#801: stored as written, never inferred (`pauseFieldsOfVersion` reads an older record)
+  kind: z.enum(PauseKind),
+  step: text,
   channel: text,
   answeredBy: z.enum(PauseAnswerer),
-  // an approval's tool call, or a question role's own ask (agbossjs/agboss#659, #712): the component says
+  // an approval's tool call, or a question role's own ask (agbossjs/agboss#659, #712): `kind` says
   ask: z.looseObject({}),
   component: StoredComponent.optional(),
   status: z.enum(PauseStatus),
@@ -66,10 +68,9 @@ const StoredPause = z.looseObject({
 /** The tool call an approval's pause asks about. */
 const StoredApprovalAsk = z.looseObject({ callId: text, tool: text, summary: text });
 
-/** agbossjs/agboss#746: a question's ask is the role's own DTO; every other pause asks a tool call. */
+/** agbossjs/agboss#746: a question's ask is the role's own DTO; an approval's is a tool call. */
 const isAskOfItsKind = (pause: z.infer<typeof StoredPause>): boolean =>
-  pause.component?.kind === ComponentKind.Question ||
-  StoredApprovalAsk.safeParse(pause.ask).success;
+  pause.kind === PauseKind.Question || StoredApprovalAsk.safeParse(pause.ask).success;
 
 /** A paused run: the fields a resume relies on (`budgetUsd` may be `Infinity`: no cost limit). */
 const StoredRun = z.looseObject({

@@ -1,7 +1,9 @@
 import {
   ComponentKind,
   PauseAnswerer,
+  PauseKind,
   PauseResolution,
+  questionAskOf,
   PauseStatus,
   type PauseRecord,
 } from "@agboss/core";
@@ -35,7 +37,8 @@ const pauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
   visitNumber: 1,
   itemIndex: undefined,
   copyNumber: 1,
-  agent: "clerk-agent",
+  kind: PauseKind.Approval,
+  step: "clerk-agent",
   channel: "refund-approval-channel",
   answeredBy: PauseAnswerer.Channel,
   ask: { callId: "call-1", tool: "charge", arguments: { text: "10 USD" }, summary: "charge" },
@@ -48,7 +51,8 @@ const pauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
 const questionPauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
   ...pauseOf(pauseId, stepKey),
   nodeId: "ship-question",
-  agent: "ship-question",
+  kind: PauseKind.Question,
+  step: "ship-question",
   channel: "ship-question",
   component: {
     name: "ship-question",
@@ -56,7 +60,7 @@ const questionPauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
     promptHash: undefined,
     schemaHash: "ddb0c5dd",
   },
-  ask: { name: "box-1" },
+  ask: questionAskOf({ name: "box-1" }),
 });
 
 /** Rewrites the stored record of `pauseId` with `edit` — a document no store write makes. */
@@ -112,13 +116,10 @@ describe("MongoPausedExecutionRepository", () => {
     );
   });
 
-  it("a pause whose component is not a question asks a tool call: a question's ask on it fails loudly", async () => {
+  it("agbossjs/agboss#801: an approval's pause asks a tool call: a question's ask on it fails loudly", async () => {
     const pauses = pausesOn();
     await pauses.findOrCreateByStepKey(questionPauseOf("p-unkinded", "step-unkinded"));
-    await editRecord("p-unkinded", (record) => ({
-      ...record,
-      component: { name: "clerk-agent", kind: ComponentKind.Agent },
-    }));
+    await editRecord("p-unkinded", (record) => ({ ...record, kind: PauseKind.Approval }));
 
     await expect(pauses.findByTenantIdAndPauseId("default", "p-unkinded")).rejects.toThrow(
       /a stored pause is not readable/,
@@ -132,6 +133,40 @@ describe("MongoPausedExecutionRepository", () => {
 
     await expect(pauses.findByTenantIdAndPauseId("default", "p-text-ask")).rejects.toThrow(
       /a stored pause is not readable/,
+    );
+  });
+
+  it("agbossjs/agboss#801: a stored kind is read as written — a question whose component is an agent's stays a question", async () => {
+    const pauses = pausesOn();
+    await pauses.findOrCreateByStepKey(questionPauseOf("p-kept", "step-kept"));
+    await editRecord("p-kept", (record) => ({
+      ...record,
+      component: { name: "clerk-agent", kind: ComponentKind.Agent },
+    }));
+
+    expect(await pauses.findByTenantIdAndPauseId("default", "p-kept")).toMatchObject({
+      kind: PauseKind.Question,
+      ask: { name: "box-1" },
+    });
+  });
+
+  it("agbossjs/agboss#801: a record written before (agent, no kind) is read by the rule it was written under", async () => {
+    const pauses = pausesOn();
+    const before = (record: Record<string, unknown>): Record<string, unknown> => {
+      const { step, ...rest } = record;
+      const kept = Object.entries(rest).filter(([field]) => field !== "kind");
+      return { ...Object.fromEntries(kept), agent: step };
+    };
+    await pauses.findOrCreateByStepKey(pauseOf("p-old-approval", "step-old-approval"));
+    await pauses.findOrCreateByStepKey(questionPauseOf("p-old-question", "step-old-question"));
+    await editRecord("p-old-approval", before);
+    await editRecord("p-old-question", before);
+
+    expect(await pauses.findByTenantIdAndPauseId("default", "p-old-approval")).toEqual(
+      pauseOf("p-old-approval", "step-old-approval"),
+    );
+    expect(await pauses.findByTenantIdAndPauseId("default", "p-old-question")).toEqual(
+      questionPauseOf("p-old-question", "step-old-question"),
     );
   });
 });
