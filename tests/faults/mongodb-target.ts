@@ -76,7 +76,6 @@ export function mongoFaultTarget(): FaultSuiteOptions {
     name: "MongoDB",
     stores: MONGODB_FAULT_STORES,
     timeScale: 1,
-    storeTimeScale: 1,
     scenarios: scenariosOf(faultShardOf(process.env.AGBOSS_FAULT_SHARD)),
     database: {
       get url() {
