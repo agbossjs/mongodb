@@ -7,7 +7,7 @@ import {
   pendingOutboundCallOf,
   StoreClock,
   type Class,
-  type FencedEffectKey,
+  type EffectKey,
   type OutboundCallClaim,
   type OutboundCallFailure,
   type OutboundCallIntent,
@@ -79,7 +79,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     return this.connection.ping();
   }
 
-  findByKey(key: FencedEffectKey): Promise<OutboundCallRecord | undefined> {
+  findByKey(key: EffectKey): Promise<OutboundCallRecord | undefined> {
     return this.#fenced(key, async ({ session }, now) => {
       const found = await this.#calls.findOne({ _id: callIdOf(key) }, { session });
       // read at the store's time the fence decided by (agbossjs/agboss#658), never stored
@@ -87,7 +87,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     });
   }
 
-  async saveIfAbsent(key: FencedEffectKey, intent: OutboundCallIntent): Promise<boolean> {
+  async saveIfAbsent(key: EffectKey, intent: OutboundCallIntent): Promise<boolean> {
     checkedEffectName(key.name);
     checkedBusinessKey(key);
     const seq = await nextSequence(this.connection.db, Collections.OutboundCalls);
@@ -115,7 +115,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
   }
 
   markPending(
-    key: FencedEffectKey,
+    key: EffectKey,
     expected: OutboundCallState,
     claim: OutboundCallClaim,
   ): Promise<boolean> {
@@ -125,7 +125,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     }));
   }
 
-  markCompleted(key: FencedEffectKey, attemptOwner: string, result: string): Promise<boolean> {
+  markCompleted(key: EffectKey, attemptOwner: string, result: string): Promise<boolean> {
     const endedAt = this.clock.now();
     const status = OutboundCallStatus.Completed;
     return this.#moved(key, { status: OutboundCallStatus.Pending, attemptOwner }, () => ({
@@ -134,11 +134,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     }));
   }
 
-  markFailed(
-    key: FencedEffectKey,
-    attemptOwner: string,
-    failure: OutboundCallFailure,
-  ): Promise<boolean> {
+  markFailed(key: EffectKey, attemptOwner: string, failure: OutboundCallFailure): Promise<boolean> {
     const endedAt = this.clock.now();
     const { name, code, message } = failure;
     const fields = {
@@ -187,7 +183,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
    * fence decided by — written under the key's lease and token only while it is still `from`; one
    * `updateOne`, `true` when it matched.
    */
-  #moved(key: FencedEffectKey, from: AsRead, changeAt: (now: Date) => Change): Promise<boolean> {
+  #moved(key: EffectKey, from: AsRead, changeAt: (now: Date) => Change): Promise<boolean> {
     return this.#fenced(key, async ({ session }, now) => {
       const change = changeAt(now);
       const fields = { ...change.fields, token: key.token, leaseExecutionId: key.leaseExecutionId };
@@ -222,7 +218,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
 
   /** `work` after the fencing checks (the lease locked, the mark raised), in one transaction. */
   async #fenced<TValue>(
-    key: FencedEffectKey,
+    key: EffectKey,
     work: (transaction: MongoTransaction, now: Date) => Promise<TValue>,
   ): Promise<TValue> {
     checkedEffectName(key.name);

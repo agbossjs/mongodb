@@ -1,9 +1,9 @@
 import {
-  fencedKeyIdentityOf,
+  effectKeyIdentityOf,
   FencedEffectStatus,
   replayedFromOf,
   storedKeyFactsOf,
-  type FencedEffectKey,
+  type EffectKey,
   type FencedEffectOutcome,
 } from "@agboss/core";
 import { z } from "zod";
@@ -29,10 +29,7 @@ const StoredResult = z.object({
 });
 
 /** The replay of a stored document: its result, its token, the step it names (a business key's). */
-export function replayOf<TResult>(
-  key: FencedEffectKey,
-  found: unknown,
-): FencedEffectOutcome<TResult> {
+export function replayOf<TResult>(key: EffectKey, found: unknown): FencedEffectOutcome<TResult> {
   const stored = StoredResult.parse(found);
   const replayedFrom = replayedFromOf(key, {
     fingerprint: stored.fingerprint ?? null,
@@ -48,9 +45,9 @@ export function replayOf<TResult>(
 }
 
 /** The document `key`'s result is stored as. */
-export function resultDocumentOf(key: FencedEffectKey, text: string, now: Date): ResultDocument {
+export function resultDocumentOf(key: EffectKey, text: string, now: Date): ResultDocument {
   const stored: ResultDocument = {
-    _id: idOf(fencedKeyIdentityOf(key)),
+    _id: idOf(effectKeyIdentityOf(key)),
     token: key.token,
     result: text,
     storedAt: now,

@@ -10,7 +10,7 @@ import {
   Clock,
   DatabaseStoreClock,
   type ExecutionLease,
-  type FencedEffectKey,
+  type EffectKey,
   type StoreClock,
 } from "@agboss/core";
 import { ClockSkew, SkewedClock, TestStoreClock } from "@agboss/core/testing";
@@ -59,7 +59,7 @@ async function instanceOn(clock: Clock, time: Time, index: number) {
   };
 }
 
-const keyOf = (lease: ExecutionLease): FencedEffectKey => ({
+const keyOf = (lease: ExecutionLease): EffectKey => ({
   scopeKey: `${lease.tenantId}:${lease.rootExecutionId}`,
   tenantId: lease.tenantId,
   leaseExecutionId: lease.rootExecutionId,

@@ -1,4 +1,4 @@
-import { ExecutionFencedError, type FencedEffectKey, type StoreClock } from "@agboss/core";
+import { ExecutionFencedError, type EffectKey, type StoreClock } from "@agboss/core";
 import type { ClientSession, Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
@@ -67,7 +67,7 @@ export async function lockedLeaseOf(
 export async function checkFence(
   db: Db,
   session: ClientSession,
-  key: FencedEffectKey,
+  key: EffectKey,
   clock: StoreClock,
 ): Promise<Date> {
   const { scopeKey, token } = key;

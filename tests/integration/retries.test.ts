@@ -4,12 +4,7 @@
  * CI's run): a transient transaction error, a commit whose outcome is unknown, a write applied but
  * its reply lost. Each is retried by the driver, and each must leave exactly one effect.
  */
-import {
-  FencedEffectSettings,
-  FencedEffectStatus,
-  StoreClock,
-  type FencedEffectKey,
-} from "@agboss/core";
+import { FencedEffectSettings, FencedEffectStatus, StoreClock, type EffectKey } from "@agboss/core";
 import { minutes } from "@agboss/core/units";
 import { MongoClient, type Document } from "mongodb";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -67,7 +62,7 @@ const leasesOf = (instanceId: string): MongoExecutionLeaseRepository =>
   );
 
 /** A fenced-effect key under `lease`'s token. */
-const keyOf = (rootExecutionId: string, token: number): FencedEffectKey => ({
+const keyOf = (rootExecutionId: string, token: number): EffectKey => ({
   scopeKey: `default:${encodeURIComponent(rootExecutionId)}`,
   tenantId: "default",
   leaseExecutionId: rootExecutionId,
