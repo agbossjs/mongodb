@@ -168,6 +168,7 @@ async function acceptedIn(db: Db, session: ClientSession, task: NewA2ATask): Pro
     acceptedAt: task.acceptedAt,
     statusAt: task.acceptedAt,
     ...(task.callerPeer === undefined ? {} : { callerPeer: task.callerPeer }),
+    ...(task.meshBodyHash === undefined ? {} : { meshBodyHash: task.meshBodyHash }),
   };
   await messagesOf(db).insertOne(messageDocumentOf({ ...task, savedAt: task.acceptedAt }), {
     session,

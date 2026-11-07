@@ -32,6 +32,8 @@ export interface A2ATaskDocument {
   acceptedAt: Date;
   statusAt: Date;
   callerPeer?: string;
+  /** agbossjs/agboss#810: a trusted task's first message's `bodyHash`; absent on one saved before. */
+  meshBodyHash?: string;
 }
 
 export interface A2AMessageDocument {
@@ -56,8 +58,12 @@ export const taskIdOf = (key: A2ATaskKey): string => idOf(key.tenantId, key.task
 export const messageIdOf = (key: A2AMessageKey): string =>
   idOf(key.tenantId, ownerColumnOf(key.ownerId), key.messageId);
 
-/** A status as written: a corrupt one is refused, never read as a task's state. */
-const Status = z.object({
+/**
+ * A status as written: a corrupt one is refused, never read as a task's state — and so is a field
+ * this store does not know (strict): a status the core grew is never read back without it
+ * (agbossjs/agboss#810: a mesh refusal's facts and a completion's spend were dropped so).
+ */
+const Status = z.strictObject({
   state: z.enum(A2ATaskState),
   message: z.string().optional(),
   pendingPauses: z.array(
@@ -66,6 +72,9 @@ const Status = z.object({
   finish: z.string().optional(),
   output: z.unknown().optional(),
   errorCode: z.string().optional(),
+  // agbossjs/agboss#810: a mesh limit's facts (REJECTED), the execution's spend (COMPLETED)
+  errorDetails: z.unknown().optional(),
+  spentUsd: z.number().nonnegative().optional(),
   cancelRequestedAt: z.iso.datetime().optional(),
 });
 
@@ -81,6 +90,7 @@ const StoredTask = z.object({
   acceptedAt: z.date(),
   statusAt: z.date(),
   callerPeer: z.string().optional(),
+  meshBodyHash: z.string().optional(),
 });
 
 const StoredMessage = z.object({
@@ -106,6 +116,7 @@ export const taskDocumentOf = (task: A2ATaskRecord): A2ATaskDocument => ({
   acceptedAt: task.acceptedAt,
   statusAt: task.statusAt,
   ...(task.callerPeer === undefined ? {} : { callerPeer: task.callerPeer }),
+  ...(task.meshBodyHash === undefined ? {} : { meshBodyHash: task.meshBodyHash }),
 });
 
 export const messageDocumentOf = (message: A2AMessageRecord): A2AMessageDocument => ({
@@ -139,6 +150,7 @@ export function taskOf(document: unknown): A2ATaskRecord {
     acceptedAt: stored.acceptedAt,
     statusAt: stored.statusAt,
     ...(stored.callerPeer === undefined ? {} : { callerPeer: stored.callerPeer }),
+    ...(stored.meshBodyHash === undefined ? {} : { meshBodyHash: stored.meshBodyHash }),
   };
 }
 
