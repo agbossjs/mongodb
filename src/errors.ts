@@ -78,22 +78,30 @@ export class MongoCollationError extends AGBossError {
 /**
  * The ledger's pruning mark (agbossjs/agboss#771, the document `\u0000pruned-before` of
  * `agboss_cost_entries`, made with the collection — agbossjs/agboss#798) is gone, deleted by hand,
- * or its `prunedBefore` is not a date: without it a save cannot tell an entry the ledger pruned
- * from a new one, so it adds nothing and fails, and a prune deletes nothing. A restart never seeds
- * it again. Put it back with a mark no lower than any prune's cutoff (`now − retention.costLedgerEntries`
- * covers every prune the sweep made).
+ * or its `prunedBefore` is not a date — or the collection was dropped and a start made it again
+ * while `agboss_cost_counters` held spend (agbossjs/agboss#832: its entries are gone, so it cannot
+ * tell a counted or pruned entry from a new one): a save adds nothing and fails, and a prune
+ * deletes nothing. A restart never seeds it again. Put it back with a mark no lower than any
+ * prune's cutoff (`now − retention.costLedgerEntries` covers every prune the sweep made); for a dropped
+ * collection, the time it was made again.
  */
 export class MongoLedgerMarkMissingError extends AGBossError {
   static override readonly code: string = "mongodb.ledger-mark-missing";
   override name = "MongoLedgerMarkMissingError";
 
-  constructor(found: { readonly malformed?: boolean } = {}) {
+  constructor(found: { readonly malformed?: boolean; readonly recreatedAt?: Date } = {}) {
+    super(MongoLedgerMarkMissingError.#messageOf(found));
+  }
+
+  static #messageOf(found: { readonly malformed?: boolean; readonly recreatedAt?: Date }): string {
+    if (found.recreatedAt !== undefined) {
+      const at = found.recreatedAt.toISOString();
+      return `the ledger's pruning mark is missing (agboss_cost_entries was dropped and made again at ${at} while agboss_cost_counters held spend: the entries it counted and the mark are gone): nothing was added — put the mark back at that time, so an entry made before it is refused and never counted again: db.agboss_cost_entries.replaceOne({ _id: "\\u0000pruned-before" }, { prunedBefore: new Date("${at}") })`;
+    }
     const what =
       found.malformed === true
         ? 'agboss_cost_entries\'s "\\u0000pruned-before" document has no date in prunedBefore'
         : 'agboss_cost_entries has no "\\u0000pruned-before" document';
-    super(
-      `the ledger's pruning mark is missing (${what}): nothing was added — put it back with a mark no lower than any prune's cutoff, e.g. db.agboss_cost_entries.replaceOne({ _id: "\\u0000pruned-before" }, { prunedBefore: new Date(Date.now() - 86400000) }, { upsert: true }) for the default retention.costLedgerEntries of a day`,
-    );
+    return `the ledger's pruning mark is missing (${what}): nothing was added — put it back with a mark no lower than any prune's cutoff, e.g. db.agboss_cost_entries.replaceOne({ _id: "\\u0000pruned-before" }, { prunedBefore: new Date(Date.now() - 86400000) }, { upsert: true }) for the default retention.costLedgerEntries of a day`;
   }
 }

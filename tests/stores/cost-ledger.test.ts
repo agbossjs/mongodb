@@ -258,3 +258,122 @@ describe("MongoCostLedgerRepository: the mark is made with its collection (agbos
     });
   });
 });
+
+/** `agboss_cost_entries` dropped on `url`, as an operator would (`db.agboss_cost_entries.drop()`). */
+async function dropLedgerEntries(url: string): Promise<void> {
+  const client = new MongoClient(url);
+  try {
+    await client.db().collection(Collections.CostEntries).drop();
+  } finally {
+    await client.close();
+  }
+}
+
+/** A start on `url` (a new connection's `onInit`: the schema made where it is missing), then closed. */
+const restartOn = async (url: string): Promise<void> => (await openConnection(url)).onDestroy();
+
+describe("MongoCostLedgerRepository: a dropped ledger is never made again as never pruned (agbossjs/agboss#832)", () => {
+  it("dropped after a prune and made again by the next start: a pruned entry saved again is refused, never counted twice", async () => {
+    await onFreshDatabase(async (url) => {
+      const before = await openConnection(url);
+      await new MongoCostLedgerRepository(before).saveAll([day("drop")], [entry("pass-d", 0)]);
+      await new MongoCostLedgerRepository(before).deleteByMadeAtBefore(new Date(START + 1000));
+      await before.onDestroy();
+      await dropLedgerEntries(url);
+
+      const connection = await openConnection(url);
+      try {
+        const ledger = new MongoCostLedgerRepository(connection);
+        await expect(ledger.saveAll([day("drop")], [entry("pass-d", 0)])).rejects.toMatchObject({
+          code: "mongodb.ledger-mark-missing",
+          name: "MongoLedgerMarkMissingError",
+        });
+        await expect(ledger.saveAll([day("drop")], [entry("pass-d", 0)])).rejects.toThrow(
+          /dropped and made again at .* while agboss_cost_counters held spend/u,
+        );
+        await expect(
+          ledger.deleteByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z")),
+        ).rejects.toMatchObject({ code: "mongodb.ledger-mark-missing" });
+        expect(await ledger.findSpentByCounter(day("drop"))).toBe(0.125);
+      } finally {
+        await connection.onDestroy();
+      }
+    });
+  });
+
+  it("the entries it kept are gone too: an entry counted before the drop and saved again is refused", async () => {
+    await onFreshDatabase(async (url) => {
+      const before = await openConnection(url);
+      await new MongoCostLedgerRepository(before).saveAll([day("kept")], [entry("pass-k", 5)]);
+      await before.onDestroy();
+      await dropLedgerEntries(url);
+      await restartOn(url);
+
+      const connection = await openConnection(url);
+      try {
+        const ledger = new MongoCostLedgerRepository(connection);
+        await expect(ledger.saveAll([day("kept")], [entry("pass-k", 5)])).rejects.toMatchObject({
+          code: "mongodb.ledger-mark-missing",
+        });
+        expect(await ledger.findSpentByCounter(day("kept"))).toBe(0.125);
+      } finally {
+        await connection.onDestroy();
+      }
+    });
+  });
+
+  it("another restart never seeds it; the remedy in the message puts the mark back at the time it was made again", async () => {
+    await onFreshDatabase(async (url) => {
+      const before = await openConnection(url);
+      await new MongoCostLedgerRepository(before).saveAll([day("cure")], [entry("pass-u", 0)]);
+      await before.onDestroy();
+      await dropLedgerEntries(url);
+      await restartOn(url);
+      await restartOn(url);
+
+      const connection = await openConnection(url);
+      try {
+        const ledger = new MongoCostLedgerRepository(connection);
+        const refusal: unknown = await ledger
+          .saveAll([day("cure")], [entry("pass-u", 0)])
+          .catch((error: unknown) => error);
+        const at = /prunedBefore: new Date\("([^"]+)"\)/u.exec(String(refusal))?.[1];
+        expect(at).toBeDefined();
+        await connection.db
+          .collection<LedgerDocument>(Collections.CostEntries)
+          .replaceOne({ _id: MARK_ID }, { prunedBefore: new Date(at ?? "") });
+
+        await expect(ledger.saveAll([day("cure")], [entry("pass-u", 0)])).rejects.toMatchObject({
+          code: "cost-ledger.entry-expired",
+        });
+        const fresh: LedgerEntry = { ...entry("pass-u", 1), madeAt: new Date(Date.now() + 60_000) };
+        await ledger.saveAll([day("cure")], [fresh]);
+        expect(await ledger.findSpentByCounter(day("cure"))).toBe(0.25);
+      } finally {
+        await connection.onDestroy();
+      }
+    });
+  });
+
+  it("a new database, its counters collection there but empty: the mark at the epoch, as before", async () => {
+    await onFreshDatabase(async (url) => {
+      await restartOn(url);
+      await dropLedgerEntries(url);
+      await restartOn(url);
+
+      const connection = await openConnection(url);
+      try {
+        const marks = await connection.db
+          .collection<LedgerDocument>(Collections.CostEntries)
+          .find({ _id: MARK_ID })
+          .toArray();
+        expect(marks).toEqual([{ _id: MARK_ID, prunedBefore: new Date(0) }]);
+        const ledger = new MongoCostLedgerRepository(connection);
+        await ledger.saveAll([day("new")], [entry("pass-f", 0)]);
+        expect(await ledger.findSpentByCounter(day("new"))).toBe(0.125);
+      } finally {
+        await connection.onDestroy();
+      }
+    });
+  });
+});

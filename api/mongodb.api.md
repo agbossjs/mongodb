@@ -399,6 +399,7 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
 export class MongoLedgerMarkMissingError extends AGBossError {
     constructor(found?: {
         readonly malformed?: boolean;
+        readonly recreatedAt?: Date;
     });
     // (undocumented)
     static readonly code: string;
@@ -550,8 +551,8 @@ export enum TransactionReadConcern {
 // src/errors.ts:49:12 - (ae-undocumented) Missing documentation for "name".
 // src/errors.ts:65:3 - (ae-undocumented) Missing documentation for "code".
 // src/errors.ts:66:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:87:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:88:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:89:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:90:12 - (ae-undocumented) Missing documentation for "name".
 // src/stores/mongo-a2a-task.repository.ts:72:3 - (ae-undocumented) Missing documentation for "store".
 // src/stores/mongo-a2a-task.repository.ts:78:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-a2a-task.repository.ts:82:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
