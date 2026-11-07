@@ -64,9 +64,9 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
   // checked at the application's assembly (agbossjs/agboss#511): a contract without mongodbUrl
   // fails with [environment.missing-field] before anything starts
   environmentFields: {
-    mongodbUrl: EnvironmentField.Secret,
-    mongodbDatabase: EnvironmentField.OptionalText,
-    mongodbTransactionReadConcern: EnvironmentField.OptionalText,
+    mongodbUrl: EnvironmentField.secret(),
+    mongodbDatabase: EnvironmentField.text({ optional: true }),
+    mongodbTransactionReadConcern: EnvironmentField.text({ optional: true }),
   },
 })
 export class MongoConnection implements OnInit, OnDestroy {

@@ -141,7 +141,7 @@ option in the URL is refused, never silently overridden.
 collection by hand: without it a save cannot tell an entry the ledger pruned from a new one, so
 (or with a `prunedBefore` that is no date) every save and prune fails closed with `MongoLedgerMarkMissingError` (`mongodb.ledger-mark-missing`)
 — nothing counted, nothing deleted — and a restart does not seed it again. The error's message is
-the remedy: put it back with a mark no lower than any prune's cutoff (`now − ledgerEntryRetention`).
+the remedy: put it back with a mark no lower than any prune's cutoff (`now − retention.costLedgerEntries`).
 
 ### What MongoDB itself must give
 
