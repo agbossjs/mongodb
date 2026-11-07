@@ -1,3 +1,4 @@
+import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import {
   ExecutionFencedError,
   type ExecutionLeaseRepository,
@@ -40,14 +41,14 @@ export function fenceRaceCases(name: string, build: () => Promise<FenceRaceInsta
       const lease = await first.leases.acquire("default", "zombie-1", LEASE);
       if (lease === undefined) throw new Error("the first take was refused");
       await advance(LEASE - 1);
-      const key: EffectKey = {
+      const key: EffectKey = effectKeyForTesting({
         scopeKey: "default:zombie-1",
         tenantId: "default",
         leaseExecutionId: "zombie-1",
         token: lease.leaseEpoch,
         idempotencyKey: "zombie-1:charge-action:1",
         name: "charge",
-      };
+      });
       let takenDuringWork = false;
       let taking: Promise<unknown> | undefined;
       const write = first.effects.saveResultIfAbsent(key, async ({ db, session }) => {

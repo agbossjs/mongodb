@@ -5,6 +5,7 @@ import {
   StoreClock,
   type ExecutionIdentity,
   type ExecutionLease,
+  type StoreDescriptor,
 } from "@agboss/core";
 import type { Milliseconds } from "@agboss/core/units";
 import type { Collection } from "mongodb";
@@ -55,7 +56,7 @@ interface ExecutionIdDocument {
 @Injectable({ deps: [MongoConnection, StoreClock, ApplicationContext] })
 export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
   /** One transactional backend with the other MongoDB stores (agbossjs/agboss#526). */
-  static override readonly backend: string | undefined = "mongodb";
+  static override readonly store: StoreDescriptor = { backend: "mongodb" };
 
   constructor(
     private readonly connection: MongoConnection,

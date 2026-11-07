@@ -82,7 +82,7 @@ const OutboundCall = z.strictObject({
   step: Step,
   replayedFrom: Origin.optional(),
   supersededBy: z.number().int().optional(),
-  supersededLease: z
+  closedLease: z
     .strictObject({
       rootExecutionId: z.string(),
       leaseExecutionId: z.string(),
@@ -95,6 +95,28 @@ const Record = z.discriminatedUnion("kind", [Takeover, HandedOver, FencedEffect,
 
 const EventDocument = z.object({ record: z.string() });
 
+/** An outbound call's outcomes a document written before agbossjs/agboss#825 names by their old values. */
+const RENAMED_OUTCOMES: Readonly<Partial<Record<string, OutboundCallEventOutcome>>> = {
+  superseded: OutboundCallEventOutcome.AttemptSuperseded,
+  "lease-superseded": OutboundCallEventOutcome.LeaseClosed,
+};
+
+/**
+ * A document's record under this version's names (agbossjs/agboss#825, the migration of what is stored, read in
+ * place): an outbound call's `superseded` is `attempt-superseded`, its `lease-superseded`
+ * `lease-closed` and its `supersededLease` `closedLease`; anything else as it is, checked after.
+ */
+function currentNamesOf(record: unknown): unknown {
+  if (typeof record !== "object" || record === null) return record;
+  const { outcome, supersededLease, ...rest } = record as {
+    readonly outcome?: unknown;
+    readonly supersededLease?: unknown;
+  };
+  const renamed = typeof outcome === "string" ? (RENAMED_OUTCOMES[outcome] ?? outcome) : outcome;
+  const closed = supersededLease === undefined ? {} : { closedLease: supersededLease };
+  return { ...rest, ...(outcome === undefined ? {} : { outcome: renamed }), ...closed };
+}
+
 /** The record of a document. */
 export const leaseEventOf = (found: unknown): ExecutionLeaseEventRecord =>
-  Record.parse(JSON.parse(EventDocument.parse(found).record));
+  Record.parse(currentNamesOf(JSON.parse(EventDocument.parse(found).record)));

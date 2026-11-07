@@ -1,13 +1,11 @@
 import {
-  checkedBusinessKey,
-  checkedEffectName,
   effectKeyIdentityOf,
   FencedEffectRepository,
   FencedEffectSettings,
   FencedEffectStatus,
   Injectable,
   StoreClock,
-  type Class,
+  type StoreDescriptor,
   type EffectKey,
   type FencedEffectOutcome,
   type FencedEffectWork,
@@ -19,12 +17,12 @@ import type { MongoTransaction } from "../connection/transaction.js";
 import { checkFence, lockKey } from "./fence.js";
 import { idOf } from "./keys.js";
 import { fencedOrderKeysOf, inLocalOrder } from "./local-order.js";
-import { MongoExecutionLeaseRepository } from "./mongo-execution-lease.repository.js";
 import {
   replayOf,
   resultDocumentOf,
   type ResultDocument,
 } from "./fenced-effects/result-documents.js";
+import { assertKeyAtEntry } from "./key-entry.js";
 
 /**
  * `FencedEffectRepository<MongoTransaction>` on MongoDB (#500, agbossjs/agboss#527): each scope's
@@ -48,8 +46,7 @@ import {
 @Injectable({ deps: [MongoConnection, StoreClock, FencedEffectSettings] })
 export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTransaction> {
   /** One transactional backend with the other MongoDB stores (agbossjs/agboss#526). */
-  static override readonly backend: string | undefined = "mongodb";
-  static override readonly leaseRepository: Class | undefined = MongoExecutionLeaseRepository;
+  static override readonly store: StoreDescriptor = { backend: "mongodb" };
 
   constructor(
     private readonly connection: MongoConnection,
@@ -71,9 +68,8 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
     key: EffectKey,
     work: FencedEffectWork<MongoTransaction, TResult>,
   ): Promise<FencedEffectOutcome<TResult>> {
-    checkedEffectName(key.name);
-    // a business key's text (agbossjs/agboss#538): refused by its rule before any command
-    checkedBusinessKey(key);
+    // the key's name, business key and fingerprint decision (agbossjs/agboss#508, #538, #825)
+    assertKeyAtEntry(key);
     // this instance's calls on one lease or business key commit in the order they were made
     return inLocalOrder(this, fencedOrderKeysOf(key, idOf(effectKeyIdentityOf(key))), () =>
       this.connection.inTransaction((transaction) => this.#effect(transaction, key, work)),

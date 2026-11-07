@@ -11,6 +11,7 @@ import {
   type A2ATaskSave,
   type A2ATaskStatus,
   type NewA2ATask,
+  type StoreDescriptor,
 } from "@agboss/core";
 import type { ClientSession, Collection, Db } from "mongodb";
 import { Collections } from "../connection/collections.js";
@@ -68,7 +69,7 @@ const messagesOf = (db: Db): Collection<A2AMessageDocument> =>
  */
 @Injectable({ deps: [MongoConnection] })
 export class MongoA2ATaskRepository extends A2ATaskRepository {
-  static override readonly backend: string | undefined = "mongodb";
+  static override readonly store: StoreDescriptor = { backend: "mongodb" };
 
   constructor(private readonly connection: MongoConnection) {
     super();

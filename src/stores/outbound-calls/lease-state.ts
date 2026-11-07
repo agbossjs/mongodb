@@ -31,5 +31,5 @@ export async function leaseStateIn(
       { $set: { released: true, superseded: true } },
       { session },
     );
-  return OutboundCallLeaseState.Superseded;
+  return OutboundCallLeaseState.LeaseClosed;
 }
