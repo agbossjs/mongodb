@@ -1,6 +1,6 @@
 import type { Secret } from "@agboss/core";
 import { secret } from "@agboss/core";
-import { FaultStoreTime, type FaultStores } from "@agboss/core/testing/faults";
+import { FaultStoreTime, type FaultStoreSet } from "@agboss/core/testing/faults";
 import {
   MongoCheckpointSaver,
   MongoChildExecutionQueueRepository,
@@ -33,7 +33,7 @@ export class MongoFaultEnvironment {
 /** The collection of the fixture's business documents. */
 export const FAULT_BUSINESS_ROWS = "fault_business_rows";
 
-export const faultStores: FaultStores<MongoTransaction> = {
+export const faultStores: FaultStoreSet<MongoTransaction> = {
   // agbossjs/agboss#799: the leases expire by the server's $$NOW, at the real rate — the fault suite
   // reads the history on it, whatever the pods' timeScale
   storeTime: FaultStoreTime.Database,

@@ -1,5 +1,6 @@
 import { RandomIdGenerator } from "@agboss/core";
-import { storeConformance } from "@agboss/core/testing/contracts";
+import { storeConformance, StoreCapability } from "@agboss/core/testing/contracts";
+import { minutes } from "@agboss/core/units";
 import {
   MongoCheckpointSaver,
   MongoChildExecutionQueueRepository,
@@ -33,15 +34,19 @@ storeConformance<MongoTransaction>({
   name: "MongoDB",
   // agbossjs/agboss#533, #590: every schedule of two instances 4 steps deep, 50 seeded walks of
   // three; a search out of its time limit fails with what it explored
-  interleavings: { depth: 4, walks: 50, timeLimit: 900_000 },
+  interleavings: { depth: 4, walks: 50, timeLimit: minutes(15) },
   reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
   stores: {
     checkpointSaver: mongoStore(database, (connection) => new MongoCheckpointSaver(connection)),
-    childExecutionQueue: mongoStore(
-      database,
-      (connection, seam) =>
-        new MongoChildExecutionQueueRepository(connection, seam.clock, seam.application),
-    ),
+    // agbossjs/agboss#831: the queue has a watch (LISTEN / a change stream / pub/sub): declared
+    childExecutionQueue: {
+      ...mongoStore(
+        database,
+        (connection, seam) =>
+          new MongoChildExecutionQueueRepository(connection, seam.clock, seam.application),
+      ),
+      capabilities: [StoreCapability.WatchQueued],
+    },
     costLedger: mongoStore(database, (connection) => new MongoCostLedgerRepository(connection)),
     executionHistory: mongoStore(
       database,

@@ -1,4 +1,4 @@
-import type { ConformanceStore, StoreSeam } from "@agboss/core/testing/contracts";
+import type { ContractTarget, StoreInstanceContext } from "@agboss/core/testing/contracts";
 import { afterAll } from "vitest";
 import type { MongoConnection } from "../../src/index.js";
 import { openConnection, type TestDatabase } from "../support/database.js";
@@ -15,7 +15,7 @@ import { openConnection, type TestDatabase } from "../support/database.js";
 /** How a test builds one instance's store on that instance's connection. */
 export type MongoStoreFactory<TStore> = (
   connection: MongoConnection,
-  seam: StoreSeam,
+  seam: StoreInstanceContext,
 ) => TStore | Promise<TStore>;
 
 /** Each instance's connection, by database and instance id. */
@@ -41,7 +41,7 @@ export function instanceConnection(
 export function mongoStore<TStore extends object>(
   database: TestDatabase,
   make: MongoStoreFactory<TStore>,
-): ConformanceStore<TStore> {
+): Omit<ContractTarget<TStore>, "name"> {
   return {
     instance: async (seam) => make(await instanceConnection(database, seam.instanceId), seam),
   };
