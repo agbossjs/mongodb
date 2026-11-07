@@ -10,6 +10,7 @@ import {
   MongoExecutionRecordRepository,
   MongoExecutionTreeRepository,
   MongoMeshRequestRepository,
+  MongoA2ATaskRepository,
   MongoOutboundCallRepository,
   MongoPausedExecutionRepository,
   MongoRateLimitRepository,
@@ -20,7 +21,7 @@ import { CONTRACT_ROWS, fencedEffectsOn } from "./mongodb-sets.js";
 import { mongoStore } from "./mongodb-store.js";
 
 /**
- * Every MongoDB store through the core's `storeConformance` (agbossjs/agboss#526): the 13
+ * Every MongoDB store through the core's `storeConformance` (agbossjs/agboss#526): the 14
  * published contract suites, each as `<contract> (MongoDB)`, and `store set (MongoDB)` — the three
  * fencing stores declare one backend. One database for the file, emptied before each case; each
  * instance on a client of its own. Nothing is left out (`without`). The interleaving explorer
@@ -71,6 +72,8 @@ storeConformance<MongoTransaction>({
     ),
     fencedEffect: mongoStore(database, fencedEffectsOn),
     meshRequest: mongoStore(database, (connection) => new MongoMeshRequestRepository(connection)),
+    // agbossjs/agboss#824: the A2A tasks, shared by the instances
+    a2aTask: mongoStore(database, (connection) => new MongoA2ATaskRepository(connection)),
     outboundCall: mongoStore(database, (connection, seam) => ({
       calls: new MongoOutboundCallRepository(connection, seam.storeClock),
       leases: new MongoExecutionLeaseRepository(connection, seam.storeClock, seam.application),

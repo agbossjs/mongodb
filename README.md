@@ -28,6 +28,7 @@ Dependencies: the official `mongodb` driver (7.x), `zod`.
 ```ts no-check: needs the package's build
 import { Application } from "@agboss/core";
 import {
+  MongoA2ATaskRepository,
   MongoCheckpointSaver,
   MongoChildExecutionQueueRepository,
   MongoCostLedgerRepository,
@@ -49,6 +50,7 @@ import {
   environment: AppEnvironment,
   workflows: [DeskWorkflow],
   providers: [
+    MongoA2ATaskRepository, // A2A tasks: a message resent to another pod gets the same task
     MongoCheckpointSaver,
     MongoChildExecutionQueueRepository,
     MongoCostLedgerRepository,
@@ -82,6 +84,13 @@ export class DeskApplication {}
 | `MongoExecutionHistoryRepository`    | a replace with upsert                                                                                                                                                          | `agboss_execution_history`                                                                 |
 | `MongoRateLimitRepository`           | one update pipeline on the key's single document (slots, windows)                                                                                                              | `agboss_rate_limit_slots`, `…_windows`, `…_pauses`                                         |
 | `MongoMeshRequestRepository`         | an upsert with `$setOnInsert`                                                                                                                                                  | `agboss_mesh_requests`                                                                     |
+| `MongoA2ATaskRepository`             | **a transaction** to accept a message with its task (agbossjs/agboss#824); a status a compare-and-set on its version                                                           | `agboss_a2a_tasks`, `agboss_a2a_messages`                                                  |
+
+**A2A tasks are shared** (agbossjs/agboss#824). `MongoA2ATaskRepository` keeps the tasks an
+application serves over A2A on the replica set: the same `messageId` sent to two pods at once starts
+one execution and both answer the same task; `GetTask` and `ListTasks` read any pod's tasks. An
+application that serves A2A on `MongoExecutionLeaseRepository` without it does not assemble
+(`[a2a.task-store-not-shared]`): each pod's in-memory default would run a resent message again.
 
 **One backend.** The lease, fenced-effect and outbound-call stores declare
 `static backend = "mongodb"` (agbossjs/agboss#526): list the three together. A fenced effect's work

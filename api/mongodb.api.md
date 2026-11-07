@@ -4,6 +4,15 @@
 
 ```ts
 
+import { A2AMessageKey } from '@agboss/core';
+import { A2AMessageRecord } from '@agboss/core';
+import { A2ATaskKey } from '@agboss/core';
+import { A2ATaskPage } from '@agboss/core';
+import { A2ATaskQuery } from '@agboss/core';
+import { A2ATaskRecord } from '@agboss/core';
+import { A2ATaskRepository } from '@agboss/core';
+import { A2ATaskSave } from '@agboss/core';
+import { A2ATaskStatus } from '@agboss/core';
 import { AGBossError } from '@agboss/core';
 import { ApplicationContext } from '@agboss/core';
 import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
@@ -44,6 +53,7 @@ import { MeshRequestRecord } from '@agboss/core';
 import { MeshRequestRepository } from '@agboss/core';
 import type { Milliseconds } from '@agboss/core/units';
 import { MongoClient } from 'mongodb';
+import { NewA2ATask } from '@agboss/core';
 import type { NewSummary } from '@agboss/core';
 import type { NewTern } from '@agboss/core';
 import type { NewThread } from '@agboss/core';
@@ -107,6 +117,8 @@ export const Collections: {
     readonly RateLimitWindows: "agboss_rate_limit_windows";
     readonly RateLimitPauses: "agboss_rate_limit_pauses";
     readonly MeshRequests: "agboss_mesh_requests";
+    readonly A2ATasks: "agboss_a2a_tasks";
+    readonly A2AMessages: "agboss_a2a_messages";
     readonly Checkpoints: "agboss_checkpoints";
     readonly CheckpointWrites: "agboss_checkpoint_writes";
     readonly Sequences: "agboss_sequences";
@@ -114,6 +126,31 @@ export const Collections: {
 
 // @public
 export const DEFAULT_DATABASE = "agboss";
+
+// @public
+export class MongoA2ATaskRepository extends A2ATaskRepository {
+    constructor(connection: MongoConnection);
+    // (undocumented)
+    static readonly backend: string | undefined;
+    // (undocumented)
+    compareAndSetStatus(key: A2ATaskKey, expectedVersion: number, status: A2ATaskStatus, statusAt: Date): Promise<A2ATaskRecord | undefined>;
+    // (undocumented)
+    deleteTerminalByStatusAtBefore(cutoff: Date): Promise<void>;
+    // (undocumented)
+    findById(key: A2ATaskKey): Promise<A2ATaskRecord | undefined>;
+    // (undocumented)
+    findByMessage(key: A2AMessageKey): Promise<A2AMessageRecord | undefined>;
+    // (undocumented)
+    list(query: A2ATaskQuery): Promise<A2ATaskPage>;
+    // (undocumented)
+    ping(): Promise<void>;
+    // (undocumented)
+    saveIfAbsent(task: NewA2ATask): Promise<A2ATaskSave>;
+    // (undocumented)
+    saveMessageIfAbsent(message: A2AMessageRecord): Promise<A2AMessageRecord | undefined>;
+    // (undocumented)
+    saveReplyIfAbsent(key: A2AMessageKey, reply: unknown): Promise<boolean>;
+}
 
 // @public
 export class MongoCheckpointSaver extends BaseCheckpointSaver {
@@ -519,6 +556,16 @@ export enum TransactionReadConcern {
 // src/errors.ts:66:12 - (ae-undocumented) Missing documentation for "name".
 // src/errors.ts:87:3 - (ae-undocumented) Missing documentation for "code".
 // src/errors.ts:88:12 - (ae-undocumented) Missing documentation for "name".
+// src/stores/mongo-a2a-task.repository.ts:71:3 - (ae-undocumented) Missing documentation for "backend".
+// src/stores/mongo-a2a-task.repository.ts:77:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-a2a-task.repository.ts:81:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
+// src/stores/mongo-a2a-task.repository.ts:94:3 - (ae-undocumented) Missing documentation for "saveMessageIfAbsent".
+// src/stores/mongo-a2a-task.repository.ts:98:9 - (ae-undocumented) Missing documentation for "saveReplyIfAbsent".
+// src/stores/mongo-a2a-task.repository.ts:106:9 - (ae-undocumented) Missing documentation for "findById".
+// src/stores/mongo-a2a-task.repository.ts:111:9 - (ae-undocumented) Missing documentation for "findByMessage".
+// src/stores/mongo-a2a-task.repository.ts:116:9 - (ae-undocumented) Missing documentation for "compareAndSetStatus".
+// src/stores/mongo-a2a-task.repository.ts:133:3 - (ae-undocumented) Missing documentation for "list".
+// src/stores/mongo-a2a-task.repository.ts:137:9 - (ae-undocumented) Missing documentation for "deleteTerminalByStatusAtBefore".
 // src/stores/mongo-checkpoint-saver.ts:61:9 - (ae-undocumented) Missing documentation for "getTuple".
 // src/stores/mongo-checkpoint-saver.ts:70:10 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-checkpoint-saver.ts:83:9 - (ae-undocumented) Missing documentation for "put".
