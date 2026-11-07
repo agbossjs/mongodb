@@ -237,7 +237,8 @@ What runs:
 - `tests/integration/retries.test.ts` — transient errors, unknown commit results, lost replies.
 - `tests/faults/` — the core's fault suite: real pods killed, stopped, frozen and cut off the
   primary by a proxy each (a direct connection through it), the store history checked for
-  linearizability.
+  linearizability; then the core's sabotages, each passing only when it charges twice
+  (agbossjs/agboss#831). CI shards it (`AGBOSS_FAULT_SHARD=k/3`, read by the suite).
 
 ## Releasing
 

@@ -11,7 +11,7 @@ import {
   type FencedEffectWork,
 } from "@agboss/core";
 import { TestStoreClock } from "@agboss/core/testing";
-import { storeConformance, type StoreSeam } from "@agboss/core/testing/contracts";
+import { storeConformance, type StoreInstanceContext } from "@agboss/core/testing/contracts";
 import type { Milliseconds } from "@agboss/core/units";
 import {
   Collections,
@@ -57,7 +57,7 @@ interface Lease {
 class CheckThenWriteLeases extends MongoExecutionLeaseRepository {
   constructor(
     private readonly mongo: MongoConnection,
-    private readonly seam: Pick<StoreSeam, "storeClock" | "application" | "instanceId">,
+    private readonly seam: Pick<StoreInstanceContext, "storeClock" | "application" | "instanceId">,
   ) {
     super(mongo, seam.storeClock, seam.application);
   }
@@ -127,7 +127,7 @@ const previousOf = (
 class ReadOnlyFenceEffects extends MongoFencedEffectRepository {
   constructor(
     private readonly mongo: MongoConnection,
-    private readonly seam: Pick<StoreSeam, "storeClock">,
+    private readonly seam: Pick<StoreInstanceContext, "storeClock">,
   ) {
     super(mongo, seam.storeClock, new FencedEffectSettings());
   }

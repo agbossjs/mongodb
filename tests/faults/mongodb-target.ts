@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { FAULT_SCENARIOS, type FaultSuiteOptions } from "@agboss/core/testing/faults";
+import type { FaultSuiteOptions } from "@agboss/core/testing/faults";
 import { MongoClient } from "mongodb";
 import { afterAll } from "vitest";
 import { z } from "zod";
@@ -16,38 +16,14 @@ import { freshDatabaseName, REPLICA_SET_URL } from "../support/server.js";
  * the pod talks to, not what an acknowledgement means.
  *
  * Time is the real clock (agbossjs/agboss#607): MongoDB decides a lease's expiry by its own `$$NOW`
- * (agbossjs/agboss#533), at the real rate, so the pods run at 1, and CI shards the scenarios over
- * parallel jobs (`AGBOSS_FAULT_SHARD`, `k/n`) to fit.
+ * (agbossjs/agboss#533), at the real rate, so the pods run at 1, and CI shards the scenarios (and the
+ * sabotages) over parallel jobs (`shard: "env"`, `AGBOSS_FAULT_SHARD=k/n`) to fit.
  */
 
 /** The store set's module, imported by every pod. */
 export const MONGODB_FAULT_STORES = fileURLToPath(
   new URL("./mongodb.fault-stores.ts", import.meta.url),
 );
-
-/** One shard of the scenarios: `k/n` (1 ≤ k ≤ n), every `n`-th from the `k`-th, in the suite's order. */
-export interface FaultShard {
-  readonly index: number;
-  readonly count: number;
-}
-
-/** The shard `text` names (`AGBOSS_FAULT_SHARD`); `undefined` for none, a `RangeError` when malformed. */
-export function faultShardOf(text: string | undefined): FaultShard | undefined {
-  if (text === undefined || text === "") return undefined;
-  const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(text);
-  const [index, count] = [Number(match?.[1]), Number(match?.[2])];
-  if (match === null || index > count)
-    throw new RangeError(`AGBOSS_FAULT_SHARD is "${text}": expected k/n with 1 ≤ k ≤ n`);
-  return { index, count };
-}
-
-/** The ids of the scenarios of `shard` (every scenario without one). */
-export function scenariosOf(shard: FaultShard | undefined): readonly string[] | undefined {
-  if (shard === undefined) return undefined;
-  return FAULT_SCENARIOS.filter((_, at) => at % shard.count === shard.index - 1).map(
-    (scenario) => scenario.id,
-  );
-}
 
 const Hello = z.object({ primary: z.string() });
 
@@ -74,9 +50,11 @@ export function mongoFaultTarget(): FaultSuiteOptions {
   });
   return {
     name: "MongoDB",
-    stores: MONGODB_FAULT_STORES,
+    storesModule: MONGODB_FAULT_STORES,
     timeScale: 1,
-    scenarios: scenariosOf(faultShardOf(process.env.AGBOSS_FAULT_SHARD)),
+    // CI's parallel jobs: AGBOSS_FAULT_SHARD=k/n, read by the suite (agbossjs/agboss#831) — the
+    // core's sabotages included, each passing only when it breaks its invariant
+    shard: "env",
     database: {
       get url() {
         return url;

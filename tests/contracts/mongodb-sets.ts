@@ -1,5 +1,5 @@
 import { FencedEffectSettings } from "@agboss/core";
-import type { FencedEffectStores, StoreSeam } from "@agboss/core/testing/contracts";
+import type { FencedEffectTarget, StoreInstanceContext } from "@agboss/core/testing/contracts";
 import {
   MongoExecutionLeaseRepository,
   MongoFencedEffectRepository,
@@ -20,13 +20,13 @@ let inserted = 0;
  */
 export function fencedEffectsOn(
   connection: MongoConnection,
-  seam: StoreSeam,
+  seam: StoreInstanceContext,
   effects = new MongoFencedEffectRepository(
     connection,
     seam.storeClock,
     new FencedEffectSettings(),
   ),
-): FencedEffectStores<MongoTransaction> {
+): FencedEffectTarget<MongoTransaction> {
   const rows = connection.db.collection<{ row: string; at: number }>(CONTRACT_ROWS);
   return {
     effects,
