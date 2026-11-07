@@ -4,6 +4,7 @@
  * CI's run): a transient transaction error, a commit whose outcome is unknown, a write applied but
  * its reply lost. Each is retried by the driver, and each must leave exactly one effect.
  */
+import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { FencedEffectSettings, FencedEffectStatus, StoreClock, type EffectKey } from "@agboss/core";
 import { minutes } from "@agboss/core/units";
 import { MongoClient, type Document } from "mongodb";
@@ -62,14 +63,15 @@ const leasesOf = (instanceId: string): MongoExecutionLeaseRepository =>
   );
 
 /** A fenced-effect key under `lease`'s token. */
-const keyOf = (rootExecutionId: string, token: number): EffectKey => ({
-  scopeKey: `default:${encodeURIComponent(rootExecutionId)}`,
-  tenantId: "default",
-  leaseExecutionId: rootExecutionId,
-  token,
-  idempotencyKey: `${rootExecutionId}:charge-action:1`,
-  name: "charge",
-});
+const keyOf = (rootExecutionId: string, token: number): EffectKey =>
+  effectKeyForTesting({
+    scopeKey: `default:${encodeURIComponent(rootExecutionId)}`,
+    tenantId: "default",
+    leaseExecutionId: rootExecutionId,
+    token,
+    idempotencyKey: `${rootExecutionId}:charge-action:1`,
+    name: "charge",
+  });
 
 /** The business documents of `root`'s charge. */
 const chargesOf = (root: string): Promise<number> =>

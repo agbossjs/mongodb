@@ -6,9 +6,11 @@
  * ahead and one two days behind, read the same times, close to the server's own. It bites: the same
  * store handed the caller's clock as its time (`TestStoreClock`) writes the skewed time.
  */
+import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import {
   Clock,
   DatabaseStoreClock,
+  FingerprintRequiredError,
   type ExecutionLease,
   type EffectKey,
   type StoreClock,
@@ -59,14 +61,15 @@ async function instanceOn(clock: Clock, time: Time, index: number) {
   };
 }
 
-const keyOf = (lease: ExecutionLease): EffectKey => ({
-  scopeKey: `${lease.tenantId}:${lease.rootExecutionId}`,
-  tenantId: lease.tenantId,
-  leaseExecutionId: lease.rootExecutionId,
-  token: lease.leaseEpoch,
-  idempotencyKey: `${lease.rootExecutionId}:charge-action:1`,
-  name: "charge",
-});
+const keyOf = (lease: ExecutionLease): EffectKey =>
+  effectKeyForTesting({
+    scopeKey: `${lease.tenantId}:${lease.rootExecutionId}`,
+    tenantId: lease.tenantId,
+    leaseExecutionId: lease.rootExecutionId,
+    token: lease.leaseEpoch,
+    idempotencyKey: `${lease.rootExecutionId}:charge-action:1`,
+    name: "charge",
+  });
 
 const Hello = z.object({ localTime: z.date() });
 
@@ -125,5 +128,33 @@ describe("agbossjs/agboss#658 on MongoDB: an attempt's start and its read are th
 
     expect(times.started - times.before).toBeGreaterThan(TWO_DAYS - seconds(60));
     expect(times.started - times.readAt).toBeGreaterThan(2 * TWO_DAYS - seconds(60));
+  });
+});
+
+describe("agbossjs/agboss#825 on MongoDB: the key checked at the store's entry", () => {
+  it("a business key without its fingerprint decision is refused, nothing written", async () => {
+    const instance = await instanceOn(host, "database", 3);
+    const lease = await instance.leases.acquire("default", "unfingerprinted", hours(1));
+    if (lease === undefined) throw new Error("the lease is held");
+    const key = effectKeyForTesting(keyOf(lease), { businessKey: "order:825" });
+    const intent = {
+      rootExecutionId: "unfingerprinted",
+      executionId: "unfingerprinted",
+      workflow: "charge-workflow",
+      target: "payments",
+      operation: "charge",
+      idempotencyKey: `${key.idempotencyKey}:charge`,
+      request: "{}",
+      attempt: 1,
+      attemptOwner: "owner-1",
+      step: { nodeId: "charge-action", visitNumber: 1 },
+    };
+
+    await expect(instance.calls.saveIfAbsent(key, intent)).rejects.toBeInstanceOf(
+      FingerprintRequiredError,
+    );
+    expect(
+      await instance.calls.findAllByTenantIdAndRootExecutionId("default", "unfingerprinted"),
+    ).toEqual([]);
   });
 });

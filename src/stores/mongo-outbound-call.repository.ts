@@ -1,27 +1,27 @@
 import {
-  checkedBusinessKey,
-  checkedEffectName,
   Injectable,
   OutboundCallRepository,
   OutboundCallStatus,
   pendingOutboundCallOf,
   StoreClock,
-  type Class,
+  type StoreDescriptor,
   type EffectKey,
   type OutboundCallClaim,
   type OutboundCallFailure,
   type OutboundCallIntent,
   type OutboundCallLease,
   type OutboundCallLeaseState,
+  type OutboundCallPage,
   type OutboundCallRecord,
+  type OutboundCallStatusQuery,
   type OutboundCallState,
 } from "@agboss/core";
 import type { Collection, Filter } from "mongodb";
+import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import type { MongoTransaction } from "../connection/transaction.js";
 import { checkFence } from "./fence.js";
-import { MongoExecutionLeaseRepository } from "./mongo-execution-lease.repository.js";
 import { fencedOrderKeysOf, inLocalOrder } from "./local-order.js";
 import { leaseStateIn } from "./outbound-calls/lease-state.js";
 import {
@@ -31,6 +31,8 @@ import {
   type OutboundCallDocument,
 } from "./outbound-calls/outbound-call-documents.js";
 import { nextSequence } from "./sequence.js";
+import { pageLimitOf, seqOfCursor } from "./outbound-call-pages.js";
+import { assertKeyAtEntry } from "./key-entry.js";
 
 /** The state the document must still be in: its status and attempt owner, its attempt when given. */
 interface AsRead {
@@ -44,6 +46,9 @@ interface Change {
   readonly fields: Partial<OutboundCallRecord>;
   readonly endedAt?: Date;
 }
+
+/** A page's last document's place in the record order (agbossjs/agboss#825), checked: documents are never trusted. */
+const SeqOf = z.object({ seq: z.number().int().positive() });
 
 /**
  * `OutboundCallRepository` on MongoDB (agbossjs/agboss#505, #508, #527): one document per intent in
@@ -61,8 +66,7 @@ interface Change {
 @Injectable({ deps: [MongoConnection, StoreClock] })
 export class MongoOutboundCallRepository extends OutboundCallRepository {
   /** One transactional backend with the other MongoDB stores (agbossjs/agboss#526). */
-  static override readonly backend: string | undefined = "mongodb";
-  static override readonly leaseRepository: Class | undefined = MongoExecutionLeaseRepository;
+  static override readonly store: StoreDescriptor = { backend: "mongodb" };
 
   constructor(
     private readonly connection: MongoConnection,
@@ -88,8 +92,8 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
   }
 
   async saveIfAbsent(key: EffectKey, intent: OutboundCallIntent): Promise<boolean> {
-    checkedEffectName(key.name);
-    checkedBusinessKey(key);
+    // the key's name, business key and fingerprint decision (agbossjs/agboss#508, #538, #825)
+    assertKeyAtEntry(key);
     const seq = await nextSequence(this.connection.db, Collections.OutboundCalls);
     return this.#fenced(key, async ({ session }, now) => {
       // its first attempt starts at the store's time (agbossjs/agboss#658: the server's own)
@@ -155,11 +159,26 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     return this.#where({ tenantId, rootExecutionId });
   }
 
-  findAllByTenantIdAndStatus(
-    tenantId: string,
-    status: OutboundCallStatus,
-  ): Promise<readonly OutboundCallRecord[]> {
-    return this.#where({ tenantId, status });
+  /**
+   * A page of a tenant's calls in `status` (agbossjs/agboss#825): keyset on `seq` — drawn once per intent from the
+   * sequence, never reused, never changed by a move — on the index `by_status`; the cursor is the
+   * page's last `seq`, as text.
+   */
+  async findAllByTenantIdAndStatus(query: OutboundCallStatusQuery): Promise<OutboundCallPage> {
+    const { tenantId, status, after } = query;
+    const limit = pageLimitOf(query.limit);
+    const from = after === undefined ? 0 : seqOfCursor(after);
+    const found = await this.#calls
+      .find({ tenantId, status, seq: { $gt: from } })
+      .sort({ seq: 1 })
+      .limit(limit + 1)
+      .toArray();
+    const page = found.slice(0, limit);
+    const calls = page.map(callRecordOf);
+    const last = page.at(-1);
+    return last === undefined || found.length <= limit
+      ? { calls }
+      : { calls, next: String(SeqOf.parse(last).seq) };
   }
 
   async deleteByEndedAtBefore(cutoff: Date): Promise<void> {
@@ -221,9 +240,8 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     key: EffectKey,
     work: (transaction: MongoTransaction, now: Date) => Promise<TValue>,
   ): Promise<TValue> {
-    checkedEffectName(key.name);
-    // a business key's text (agbossjs/agboss#538): refused by its rule before any command
-    checkedBusinessKey(key);
+    // the key's name, business key and fingerprint decision (agbossjs/agboss#508, #538, #825)
+    assertKeyAtEntry(key);
     // this instance's calls on one lease or business key commit in the order they were made
     return inLocalOrder(this, fencedOrderKeysOf(key, callIdOf(key)), () =>
       this.connection.inTransaction(async (transaction) => {

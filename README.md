@@ -93,7 +93,7 @@ application that serves A2A on `MongoExecutionLeaseRepository` without it does n
 (`[a2a.task-store-not-shared]`): each pod's in-memory default would run a resent message again.
 
 **One backend.** The lease, fenced-effect and outbound-call stores declare
-`static backend = "mongodb"` (agbossjs/agboss#526): list the three together. A fenced effect's work
+`static store = { backend: "mongodb" }` (agbossjs/agboss#526, #825): list the three together. A fenced effect's work
 gets the transaction — `{ session, db }` — and writes its business documents **with the session**;
 a write without it is outside the guarantee:
 
