@@ -142,6 +142,11 @@ collection by hand: without it a save cannot tell an entry the ledger pruned fro
 (or with a `prunedBefore` that is no date) every save and prune fails closed with `MongoLedgerMarkMissingError` (`mongodb.ledger-mark-missing`)
 — nothing counted, nothing deleted — and a restart does not seed it again. The error's message is
 the remedy: put it back with a mark no lower than any prune's cutoff (`now − retention.costLedgerEntries`).
+**Dropping** `agboss_cost_entries` loses its entries with the mark (agbossjs/agboss#832): a start that
+makes it again while `agboss_cost_counters` holds spend writes no date — its mark says when it was made
+again (`recreatedAt`) — so every save and prune fails closed the same way, and the message names that
+time as the mark to put back (an entry made before it is refused, never counted again). Only a
+database with no counters starts at the epoch, "never pruned".
 
 ### What MongoDB itself must give
 
