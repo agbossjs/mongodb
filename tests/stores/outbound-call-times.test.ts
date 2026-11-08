@@ -9,13 +9,13 @@
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import {
   Clock,
-  DatabaseStoreClock,
   FingerprintRequiredError,
   type ExecutionLease,
   type EffectKey,
-  type StoreClock,
+  StoreClock,
+  StoreTimeSource,
 } from "@agboss/core";
-import { ClockSkew, SkewedClock, TestStoreClock } from "@agboss/core/testing";
+import { ClockSkew, SkewedClock } from "@agboss/core/testing";
 import { hours, seconds, type Milliseconds } from "@agboss/core/units";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -47,7 +47,9 @@ type Time = "database" | "caller";
 
 async function instanceOn(clock: Clock, time: Time, index: number) {
   const storeClock: StoreClock =
-    time === "database" ? new DatabaseStoreClock(clock) : new TestStoreClock(clock);
+    time === "database"
+      ? new StoreClock(StoreTimeSource.Database, clock)
+      : new StoreClock(StoreTimeSource.Test, clock);
   const instanceId = `instance-${String(index)}`;
   const connection = await instanceConnection(database, instanceId);
   return {
@@ -66,7 +68,7 @@ const keyOf = (lease: ExecutionLease): EffectKey =>
     scopeKey: `${lease.tenantId}:${lease.rootExecutionId}`,
     tenantId: lease.tenantId,
     leaseExecutionId: lease.rootExecutionId,
-    token: lease.leaseEpoch,
+    token: lease.token,
     idempotencyKey: `${lease.rootExecutionId}:charge-action:1`,
     name: "charge",
   });

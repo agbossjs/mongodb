@@ -19,7 +19,7 @@ import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
 import { BudgetAccount } from '@agboss/core';
 import { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 import { ChildExecutionEnd } from '@agboss/core';
-import { ChildExecutionQueueDepth } from '@agboss/core';
+import { ChildExecutionQueueCounts } from '@agboss/core';
 import { ChildExecutionQueueRepository } from '@agboss/core';
 import { ChildExecutionQueueWatch } from '@agboss/core';
 import type { ClientSession } from 'mongodb';
@@ -183,11 +183,11 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
     // (undocumented)
     completeByTenantIdAndExecutionId(tenantId: string, executionId: string, end: ChildExecutionEnd): Promise<boolean>;
     // (undocumented)
+    countByStatus(): Promise<ChildExecutionQueueCounts>;
+    // (undocumented)
     deleteAllByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<void>;
     // (undocumented)
     findByTenantIdAndExecutionId(tenantId: string, executionId: string): Promise<QueuedChildExecution | undefined>;
-    // (undocumented)
-    findQueueDepth(): Promise<ChildExecutionQueueDepth>;
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
@@ -290,22 +290,22 @@ export class MongoExecutionLeaseEventRepository extends ExecutionLeaseEventRepos
 export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     constructor(connection: MongoConnection, clock: StoreClock, applicationContext: ApplicationContext);
     // (undocumented)
-    acquire(tenantId: string, rootExecutionId: string, lease: Milliseconds): Promise<ExecutionLease | undefined>;
+    acquire(tenantId: string, rootExecutionId: string, duration: Milliseconds): Promise<ExecutionLease | undefined>;
     // (undocumented)
-    finish(held: ExecutionLease): Promise<void>;
+    claimExecutionId(input: ExecutionIdentity): Promise<boolean>;
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
-    reclaim(held: ExecutionLease, lease: Milliseconds): Promise<ExecutionLease | undefined>;
+    reclaim(held: ExecutionLease, duration: Milliseconds): Promise<ExecutionLease | undefined>;
     // (undocumented)
     release(held: ExecutionLease): Promise<void>;
     // (undocumented)
-    renew(held: ExecutionLease, lease: Milliseconds): Promise<Milliseconds | undefined>;
+    renew(held: ExecutionLease, duration: Milliseconds): Promise<Milliseconds | undefined>;
     // (undocumented)
-    saveExecutionIdIfAbsent(input: ExecutionIdentity): Promise<boolean>;
+    retire(held: ExecutionLease): Promise<void>;
     static readonly store: StoreDescriptor;
     // (undocumented)
-    yield(held: ExecutionLease): Promise<boolean>;
+    yield(held: ExecutionLease): Promise<Milliseconds | undefined>;
 }
 
 // @public
@@ -573,7 +573,7 @@ export enum TransactionReadConcern {
 // src/stores/mongo-child-execution-queue.repository.ts:153:9 - (ae-undocumented) Missing documentation for "claimFirstByStatusQueuedOrderByDepthDesc".
 // src/stores/mongo-child-execution-queue.repository.ts:168:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:186:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
-// src/stores/mongo-child-execution-queue.repository.ts:193:9 - (ae-undocumented) Missing documentation for "findQueueDepth".
+// src/stores/mongo-child-execution-queue.repository.ts:193:9 - (ae-undocumented) Missing documentation for "countByStatus".
 // src/stores/mongo-cost-ledger.repository.ts:103:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-cost-ledger.repository.ts:107:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
 // src/stores/mongo-cost-ledger.repository.ts:112:9 - (ae-undocumented) Missing documentation for "saveAll".
@@ -592,14 +592,14 @@ export enum TransactionReadConcern {
 // src/stores/mongo-execution-lease-event.repository.ts:44:9 - (ae-undocumented) Missing documentation for "save".
 // src/stores/mongo-execution-lease-event.repository.ts:55:9 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionIdOrderByOccurredAt".
 // src/stores/mongo-execution-lease-event.repository.ts:66:9 - (ae-undocumented) Missing documentation for "deleteByOccurredAtBefore".
-// src/stores/mongo-execution-lease.repository.ts:73:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-execution-lease.repository.ts:77:9 - (ae-undocumented) Missing documentation for "saveExecutionIdIfAbsent".
-// src/stores/mongo-execution-lease.repository.ts:89:9 - (ae-undocumented) Missing documentation for "acquire".
-// src/stores/mongo-execution-lease.repository.ts:123:9 - (ae-undocumented) Missing documentation for "renew".
-// src/stores/mongo-execution-lease.repository.ts:131:9 - (ae-undocumented) Missing documentation for "release".
-// src/stores/mongo-execution-lease.repository.ts:136:9 - (ae-undocumented) Missing documentation for "finish".
-// src/stores/mongo-execution-lease.repository.ts:142:9 - (ae-undocumented) Missing documentation for "yield".
-// src/stores/mongo-execution-lease.repository.ts:149:9 - (ae-undocumented) Missing documentation for "reclaim".
+// src/stores/mongo-execution-lease.repository.ts:77:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-execution-lease.repository.ts:81:9 - (ae-undocumented) Missing documentation for "claimExecutionId".
+// src/stores/mongo-execution-lease.repository.ts:93:9 - (ae-undocumented) Missing documentation for "acquire".
+// src/stores/mongo-execution-lease.repository.ts:127:9 - (ae-undocumented) Missing documentation for "renew".
+// src/stores/mongo-execution-lease.repository.ts:136:9 - (ae-undocumented) Missing documentation for "release".
+// src/stores/mongo-execution-lease.repository.ts:144:9 - (ae-undocumented) Missing documentation for "retire".
+// src/stores/mongo-execution-lease.repository.ts:151:9 - (ae-undocumented) Missing documentation for "yield".
+// src/stores/mongo-execution-lease.repository.ts:164:9 - (ae-undocumented) Missing documentation for "reclaim".
 // src/stores/mongo-execution-record.repository.ts:45:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-record.repository.ts:67:9 - (ae-undocumented) Missing documentation for "hasThread".
 // src/stores/mongo-execution-record.repository.ts:70:3 - (ae-undocumented) Missing documentation for "threadOwner".

@@ -45,7 +45,7 @@ export function fenceRaceCases(name: string, build: () => Promise<FenceRaceInsta
         scopeKey: "default:zombie-1",
         tenantId: "default",
         leaseExecutionId: "zombie-1",
-        token: lease.leaseEpoch,
+        token: lease.token,
         idempotencyKey: "zombie-1:charge-action:1",
         name: "charge",
       });

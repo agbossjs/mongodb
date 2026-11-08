@@ -5,7 +5,13 @@
  * its reply lost. Each is retried by the driver, and each must leave exactly one effect.
  */
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
-import { FencedEffectSettings, FencedEffectStatus, StoreClock, type EffectKey } from "@agboss/core";
+import {
+  FencedEffectSettings,
+  FencedEffectStatus,
+  StoreClock,
+  StoreTimeSource,
+  type EffectKey,
+} from "@agboss/core";
 import { minutes } from "@agboss/core/units";
 import { MongoClient, type Document } from "mongodb";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -24,12 +30,8 @@ let connection: MongoConnection;
 let admin: MongoClient;
 
 /** The server's own clock, as production stores read it. */
-class ServerClock extends StoreClock {
-  readonly isDatabaseTime = true;
-  now(): Date {
-    return new Date();
-  }
-}
+const serverClock = (): StoreClock =>
+  new StoreClock(StoreTimeSource.Database, { now: () => new Date() });
 
 beforeAll(async () => {
   // the fail points name this client by its appName: the other files' clients never fail
@@ -58,7 +60,7 @@ async function failNext(commands: readonly string[], data: Document, times = 1):
 const leasesOf = (instanceId: string): MongoExecutionLeaseRepository =>
   new MongoExecutionLeaseRepository(
     connection,
-    new ServerClock(),
+    serverClock(),
     new TestApplicationContext({}, instanceId),
   );
 
@@ -82,14 +84,14 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
     const lease = await leasesOf("instance-1").acquire("default", "transient-1", minutes(1));
     const effects = new MongoFencedEffectRepository(
       connection,
-      new ServerClock(),
+      serverClock(),
       new FencedEffectSettings(),
     );
     await failNext(["insert"], { errorCode: 112, errorLabels: ["TransientTransactionError"] });
     let runs = 0;
 
     const outcome = await effects.saveResultIfAbsent(
-      keyOf("transient-1", lease?.leaseEpoch ?? 0),
+      keyOf("transient-1", lease?.token ?? 0),
       async ({ db, session }) => {
         runs += 1;
         await db.collection("retry_charges").insertOne({ root: "transient-1" }, { session });
@@ -107,7 +109,7 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-1", minutes(1));
     const effects = new MongoFencedEffectRepository(
       connection,
-      new ServerClock(),
+      serverClock(),
       new FencedEffectSettings(),
     );
     await failNext(["commitTransaction"], {
@@ -116,7 +118,7 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
     let runs = 0;
 
     const outcome = await effects.saveResultIfAbsent(
-      keyOf("unknown-1", lease?.leaseEpoch ?? 0),
+      keyOf("unknown-1", lease?.token ?? 0),
       async ({ db, session }) => {
         runs += 1;
         await db.collection("retry_charges").insertOne({ root: "unknown-1" }, { session });
@@ -131,10 +133,10 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
 
   it("a commit that keeps failing rejects; the next call replays what the first one committed", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-2", minutes(1));
-    const key = keyOf("unknown-2", lease?.leaseEpoch ?? 0);
+    const key = keyOf("unknown-2", lease?.token ?? 0);
     const effects = new MongoFencedEffectRepository(
       connection,
-      new ServerClock(),
+      serverClock(),
       new FencedEffectSettings(),
     );
     // applied every time, answered with a non-retryable error: the caller cannot tell it committed
@@ -168,11 +170,11 @@ describe("a single-document write whose reply is lost is retried exactly once", 
     await failNext(["findAndModify"], { writeConcernError: { code: 91, errmsg: "shutting down" } });
     const lease = await leasesOf("instance-1").acquire("default", "lost-1", minutes(1));
     const stored = await connection.db
-      .collection<{ _id: string; leaseEpoch: number }>("agboss_execution_leases")
+      .collection<{ _id: string; token: number }>("agboss_execution_leases")
       .findOne({ _id: JSON.stringify(["default", "lost-1"]) });
 
-    expect(lease?.leaseEpoch).toBe(2);
-    expect(stored?.leaseEpoch).toBe(2);
+    expect(lease?.token).toBe(2);
+    expect(stored?.token).toBe(2);
     expect(await leasesOf("instance-2").acquire("default", "lost-1", minutes(1))).toBeUndefined();
   });
 
@@ -180,28 +182,28 @@ describe("a single-document write whose reply is lost is retried exactly once", 
     await failNext(["findAndModify"], { closeConnection: true });
     const lease = await leasesOf("instance-1").acquire("default", "cut-1", minutes(1));
 
-    expect(lease?.leaseEpoch).toBe(1);
+    expect(lease?.token).toBe(1);
     expect(await leasesOf("instance-2").acquire("default", "cut-1", minutes(1))).toBeUndefined();
   });
 
-  it("saveExecutionIdIfAbsent: applied, its reply an error — the retry is told true, the id kept once", async () => {
+  it("claimExecutionId: applied, its reply an error — the retry is told true, the id kept once", async () => {
     await failNext(["insert"], { writeConcernError: { code: 91, errmsg: "shutting down" } });
     const leases = leasesOf("instance-1");
 
-    expect(
-      await leases.saveExecutionIdIfAbsent({ executionId: "kept-1", tenantId: "default" }),
-    ).toBe(true);
-    expect(
-      await leases.saveExecutionIdIfAbsent({ executionId: "kept-1", tenantId: "default" }),
-    ).toBe(false);
+    expect(await leases.claimExecutionId({ executionId: "kept-1", tenantId: "default" })).toBe(
+      true,
+    );
+    expect(await leases.claimExecutionId({ executionId: "kept-1", tenantId: "default" })).toBe(
+      false,
+    );
   });
 });
 
 describe("an outbound call's intent on a transient error", () => {
   it("saveIfAbsent conflicting once is run again: recorded once, true", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "call-1", minutes(1));
-    const calls = new MongoOutboundCallRepository(connection, new ServerClock());
-    const key = keyOf("call-1", lease?.leaseEpoch ?? 0);
+    const calls = new MongoOutboundCallRepository(connection, serverClock());
+    const key = keyOf("call-1", lease?.token ?? 0);
     await failNext(["update"], { errorCode: 112, errorLabels: ["TransientTransactionError"] });
 
     const saved = await calls.saveIfAbsent(key, {

@@ -9,8 +9,9 @@ import {
   type EffectKey,
   type FencedEffectOutcome,
   type FencedEffectWork,
+  StoreClock,
+  StoreTimeSource,
 } from "@agboss/core";
-import { TestStoreClock } from "@agboss/core/testing";
 import { storeConformance, type StoreInstanceContext } from "@agboss/core/testing/contracts";
 import type { Milliseconds } from "@agboss/core/units";
 import {
@@ -43,7 +44,7 @@ interface Lease {
   _id: string;
   holderInstanceId: string;
   superseded: boolean;
-  leaseEpoch: number;
+  token: number;
   expiresAt: Date;
   released: boolean;
   finished: boolean;
@@ -76,7 +77,7 @@ class CheckThenWriteLeases extends MongoExecutionLeaseRepository {
     const previous = previousOf(stored);
     const taken: ExecutionLease = {
       ...{ tenantId, rootExecutionId, holderInstanceId: this.seam.instanceId },
-      leaseEpoch: (stored?.leaseEpoch ?? 0) + 1,
+      token: (stored?.token ?? 0) + 1,
       expiresAt: new Date(now.getTime() + lease),
       remaining: lease,
       ...(previous === undefined ? {} : { takenOverFrom: previous }),
@@ -86,10 +87,10 @@ class CheckThenWriteLeases extends MongoExecutionLeaseRepository {
       {
         $set: {
           ...{ tenantId, rootExecutionId, holderInstanceId: taken.holderInstanceId },
-          ...{ leaseEpoch: taken.leaseEpoch, expiresAt: taken.expiresAt },
+          ...{ token: taken.token, expiresAt: taken.expiresAt },
           ...{ released: false, yielded: false, superseded: false, finished: false },
           previousHolder: previous?.holderInstanceId ?? null,
-          previousEpoch: previous?.leaseEpoch ?? null,
+          previousEpoch: previous?.token ?? null,
         },
       },
       { upsert: true },
@@ -102,7 +103,7 @@ class CheckThenWriteLeases extends MongoExecutionLeaseRepository {
 const isHeldAt = (lease: Lease | null, token: number, now: Date): boolean =>
   lease !== null &&
   !lease.released &&
-  lease.leaseEpoch === token &&
+  lease.token === token &&
   lease.expiresAt.getTime() > now.getTime();
 
 /** Whether a read lease is free to take at `now`: none, or not finished and released or expired. */
@@ -113,9 +114,9 @@ const isFree = (stored: Lease | null, now: Date): boolean =>
 /** The holder a take of `stored` takes over from: one that ended without a release. */
 const previousOf = (
   stored: Lease | null,
-): { holderInstanceId: string; leaseEpoch: number } | undefined =>
+): { holderInstanceId: string; token: number } | undefined =>
   stored !== null && (!stored.released || stored.superseded)
-    ? { holderInstanceId: stored.holderInstanceId, leaseEpoch: stored.leaseEpoch }
+    ? { holderInstanceId: stored.holderInstanceId, token: stored.token }
     : undefined;
 
 /**
@@ -144,7 +145,7 @@ class ReadOnlyFenceEffects extends MongoFencedEffectRepository {
         .findOne({ _id: JSON.stringify([key.tenantId, key.leaseExecutionId]) }, { session });
       const refused = (observedToken?: number): ExecutionFencedError =>
         new ExecutionFencedError({ scopeKey: key.scopeKey, token: key.token, observedToken });
-      if (!isHeldAt(lease, key.token, now)) throw refused(lease?.leaseEpoch);
+      if (!isHeldAt(lease, key.token, now)) throw refused(lease?.token);
       const mark = await db
         .collection<{ _id: string; highestToken: number }>(Collections.FencedEffectMarks)
         .findOneAndUpdate(
@@ -182,15 +183,18 @@ storeConformance({
       (connection, seam) =>
         new MongoExecutionLeaseRepository(
           connection,
-          new TestStoreClock(seam.clock),
+          new StoreClock(StoreTimeSource.Test, seam.clock),
           seam.application,
         ),
     ),
     outboundCall: mongoStore(database, (connection, seam) => ({
-      calls: new MongoOutboundCallRepository(connection, new TestStoreClock(seam.clock)),
+      calls: new MongoOutboundCallRepository(
+        connection,
+        new StoreClock(StoreTimeSource.Test, seam.clock),
+      ),
       leases: new MongoExecutionLeaseRepository(
         connection,
-        new TestStoreClock(seam.clock),
+        new StoreClock(StoreTimeSource.Test, seam.clock),
         seam.application,
       ),
     })),

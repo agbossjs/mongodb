@@ -181,7 +181,7 @@ database with no counters starts at the epoch, "never pruned".
     again;
   - past 120 s, or on an error without either label, the call rejects — and the transaction may
     have committed: the next call on the key replays what it stored (tested).
-  - A single-document write (`acquire`, `renew`, `saveExecutionIdIfAbsent`, …) is a retryable
+  - A single-document write (`acquire`, `renew`, `claimExecutionId`, …) is a retryable
     write: one whose reply was lost is retried once, and the server answers the first outcome — no
     epoch counted twice, no id told `false` for its own insert (tested with the server's fail points).
 - **One instance's calls on one lease or business key** run in the order they were made: MongoDB's
