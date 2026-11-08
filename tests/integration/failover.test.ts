@@ -11,7 +11,7 @@
  *   the step-down interrupts it, the driver retries it once on the new primary, and there is one
  *   owner — the other instance is refused.
  */
-import { StoreClock } from "@agboss/core";
+import { StoreClock, StoreTimeSource } from "@agboss/core";
 import { minutes } from "@agboss/core/units";
 import { MongoClient, type Db } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -27,12 +27,8 @@ import { REPLICA_SET_URL } from "../support/server.js";
 
 const database = testDatabase();
 
-class ServerClock extends StoreClock {
-  readonly isDatabaseTime = true;
-  now(): Date {
-    return new Date();
-  }
-}
+const serverClock = (): StoreClock =>
+  new StoreClock(StoreTimeSource.Database, { now: () => new Date() });
 
 /** A connection whose stores write at `w=1`: what the real connection refuses to build. */
 class OneMemberConnection extends MongoConnection {
@@ -140,7 +136,7 @@ async function healed(client: MongoClient): Promise<void> {
 const leasesOn = (connection: MongoConnection, instanceId: string): MongoExecutionLeaseRepository =>
   new MongoExecutionLeaseRepository(
     connection,
-    new ServerClock(),
+    serverClock(),
     new TestApplicationContext({}, instanceId),
   );
 
@@ -207,8 +203,8 @@ describe("agbossjs/agboss#527 AC3: a lease across a failover", () => {
       const second = await leasesOn(other, "instance-2").acquire("default", "w1-tree", minutes(5));
 
       // the sabotage fails as it should: one epoch, two holders
-      expect(first?.leaseEpoch).toBe(1);
-      expect(second?.leaseEpoch).toBe(1);
+      expect(first?.token).toBe(1);
+      expect(second?.token).toBe(1);
       expect(second?.holderInstanceId).not.toBe(first?.holderInstanceId);
     } finally {
       await healed(admin);
@@ -233,7 +229,7 @@ describe("agbossjs/agboss#527 AC3: a lease across a failover", () => {
         minutes(5),
       );
 
-      expect(first?.leaseEpoch).toBe(1);
+      expect(first?.token).toBe(1);
       expect(first?.holderInstanceId).toBe("instance-1");
       expect(second).toBeUndefined();
     } finally {

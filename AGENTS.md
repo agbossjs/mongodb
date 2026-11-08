@@ -37,7 +37,9 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
 - `src/stores/` — one store per contract (`Mongo*Repository`, `MongoCheckpointSaver`); every
   atomic operation one conditional single-document command or one transaction, stated in each
   store's doc comment. A lease's expiry is the server's `$$NOW` inside each command
-  (`store-time.ts`; a test's clock as a literal when `StoreClock.isDatabaseTime` is false); every
+  (`store-time.ts`; a test's clock as a literal when `StoreClock.source` is not
+  `StoreTimeSource.Database`); the token is `token`, a 0.1.0 document's `leaseEpoch` read as it
+  and dropped by the next write (`lease-documents.ts`, agbossjs/agboss#847); every
   other time the `Clock`'s. A fence check in a transaction is a **write** to the lease (`fence.ts`:
   a read does not lock); a business key is locked the same way before its work. One instance's
   fenced calls on one key run in call order (`local-order.ts`). "In the order appended" is a

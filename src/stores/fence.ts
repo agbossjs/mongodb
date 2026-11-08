@@ -3,6 +3,7 @@ import type { ClientSession, Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { treeIdOf } from "./keys.js";
+import { TokenFields, tokenOf } from "./lease-documents.js";
 import { storeNowOf } from "./store-time.js";
 
 /**
@@ -21,12 +22,18 @@ import { storeNowOf } from "./store-time.js";
  * the token (`$max`, a write too); a higher one refuses the key before any of its rows is read.
  */
 
-const CheckedLease = z.object({
-  leaseEpoch: z.number().int(),
-  expiresAt: z.date(),
-  released: z.boolean(),
-  checkedAt: z.date(),
-});
+/** The lease as a fence check reads it; `token` also of a 0.1.0 document (`leaseEpoch`, #847). */
+const CheckedLease = z
+  .intersection(
+    TokenFields,
+    z.object({ expiresAt: z.date(), released: z.boolean(), checkedAt: z.date() }),
+  )
+  .transform((stored) => ({
+    token: tokenOf(stored),
+    expiresAt: stored.expiresAt,
+    released: stored.released,
+    checkedAt: stored.checkedAt,
+  }));
 
 const Mark = z.object({ highestToken: z.number().int() });
 
@@ -75,9 +82,9 @@ export async function checkFence(
   const refused = (observedToken: number | undefined): ExecutionFencedError =>
     new ExecutionFencedError({ scopeKey, token, observedToken });
   if (lease === undefined) throw refused(undefined);
-  if (lease.released || lease.leaseEpoch !== token) throw refused(lease.leaseEpoch);
+  if (lease.released || lease.token !== token) throw refused(lease.token);
   // live while expiresAt > now, by the store's time read in this transaction (#534, #533)
-  if (lease.expiresAt.getTime() <= lease.checkedAt.getTime()) throw refused(lease.leaseEpoch);
+  if (lease.expiresAt.getTime() <= lease.checkedAt.getTime()) throw refused(lease.token);
   const mark = await db
     .collection<{ _id: string; highestToken: number; storedAt: Date }>(
       Collections.FencedEffectMarks,

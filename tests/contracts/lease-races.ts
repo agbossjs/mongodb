@@ -1,4 +1,4 @@
-import type { ExecutionLeaseRepository } from "@agboss/core";
+import { StoreClock, StoreTimeSource, type ExecutionLeaseRepository } from "@agboss/core";
 import { seconds } from "@agboss/core/units";
 import { describe, expect, it } from "vitest";
 
@@ -55,17 +55,17 @@ export function leaseRaceCases(name: string, build: () => Promise<LeaseRaceInsta
   });
 }
 
-/** A store's time a test moves by hand (`isDatabaseTime` false: the stores take it as a literal). */
-export class HandClock {
-  #at = new Date("2026-01-05T09:00:00.000Z").getTime();
-  readonly isDatabaseTime = false;
+/** A store's time a test moves by hand (`StoreTimeSource.Test`: the stores take it as a literal). */
+export class HandClock extends StoreClock {
+  readonly #time: { at: number };
 
-  now(): Date {
-    return new Date(this.#at);
+  constructor(time = { at: new Date("2026-01-05T09:00:00.000Z").getTime() }) {
+    super(StoreTimeSource.Test, { now: () => new Date(time.at) });
+    this.#time = time;
   }
 
   advance(by: number): Promise<void> {
-    this.#at += by;
+    this.#time.at += by;
     return Promise.resolve();
   }
 }

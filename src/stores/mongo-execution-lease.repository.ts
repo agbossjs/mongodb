@@ -2,6 +2,7 @@ import {
   ApplicationContext,
   ExecutionLeaseRepository,
   Injectable,
+  remainingOf,
   StoreClock,
   type ExecutionIdentity,
   type ExecutionLease,
@@ -13,12 +14,15 @@ import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { DUPLICATE_KEY, hasCode, treeIdOf } from "./keys.js";
 import {
+  DROP_OLD_NAMES,
   heldBy,
   leaseOf,
   liveHeldBy,
   takeable,
   unleased,
   takePipeline,
+  STORED_TOKEN,
+  Yielded,
   type LeaseDocument,
 } from "./lease-documents.js";
 import { storeNowOf } from "./store-time.js";
@@ -42,9 +46,9 @@ interface ExecutionIdDocument {
  *   exactly one takes a free lease — the server runs the loser's update again on its write conflict
  *   and re-evaluates the filter on the winner's document. The replaced lease's holder is the new
  *   one's `takenOverFrom` (#501) when it expired without a release, or was closed by a check (#508).
- * - `renew`, `yield` and `reclaim` are one update matching the holder, the epoch, not released and
- *   live (`expiresAt > now`, #534); `release` and `finish` match the holder and the epoch.
- * - `saveExecutionIdIfAbsent` (#591) is one insert into `agboss_execution_ids`: a duplicate `_id`
+ * - `renew`, `yield` and `reclaim` are one update matching the holder, the token, not released and
+ *   live (`expiresAt > now`, #534); `release` and `retire` match the holder and the token.
+ * - `claimExecutionId` (#591) is one insert into `agboss_execution_ids`: a duplicate `_id`
  *   is `false`.
  *
  * Time is the server's (agbossjs/agboss#533: `$$NOW`, bound once per command on the primary; a
@@ -74,7 +78,7 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     return this.connection.ping();
   }
 
-  async saveExecutionIdIfAbsent({ executionId, tenantId }: ExecutionIdentity): Promise<boolean> {
+  async claimExecutionId({ executionId, tenantId }: ExecutionIdentity): Promise<boolean> {
     try {
       await this.connection.db
         .collection<ExecutionIdDocument>(Collections.ExecutionIds)
@@ -89,7 +93,7 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
   async acquire(
     tenantId: string,
     rootExecutionId: string,
-    lease: Milliseconds,
+    duration: Milliseconds,
   ): Promise<ExecutionLease | undefined> {
     const id = treeIdOf(tenantId, rootExecutionId);
     const now = storeNowOf(this.clock);
@@ -97,7 +101,7 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
       tenantId,
       rootExecutionId,
       this.applicationContext.instanceId,
-      lease,
+      duration,
       now,
     );
     const key = { tenantId, rootExecutionId };
@@ -105,14 +109,14 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     const taken = await this.#leases.findOneAndUpdate(takeable(id, now), take, {
       returnDocument: "after",
     });
-    if (taken !== null) return leaseOf(taken, lease, key);
+    if (taken !== null) return leaseOf(taken, duration, key);
     try {
       // none taken over: the first lease of the tree, inserted unless a document is there
       const first = await this.#leases.findOneAndUpdate(unleased(id), take, {
         upsert: true,
         returnDocument: "after",
       });
-      return first === null ? undefined : leaseOf(first, lease, key);
+      return first === null ? undefined : leaseOf(first, duration, key);
     } catch (error) {
       // the tree has a lease that is held by another, or finished: refused
       if (hasCode(error, DUPLICATE_KEY)) return undefined;
@@ -120,49 +124,61 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     }
   }
 
-  async renew(held: ExecutionLease, lease: Milliseconds): Promise<Milliseconds | undefined> {
+  async renew(held: ExecutionLease, duration: Milliseconds): Promise<Milliseconds | undefined> {
     const now = storeNowOf(this.clock);
     const renewed = await this.#leases.updateOne(liveHeldBy(held, now), [
-      { $set: { expiresAt: { $add: [now, lease] } } },
+      { $set: { token: STORED_TOKEN, expiresAt: { $add: [now, duration] } } },
+      DROP_OLD_NAMES,
     ]);
-    return renewed.matchedCount === 1 ? lease : undefined;
+    return renewed.matchedCount === 1 ? duration : undefined;
   }
 
   async release(held: ExecutionLease): Promise<void> {
     // a lease closed by a check stays `superseded`, a finished one `finished`: not written here
-    await this.#leases.updateOne(heldBy(held), { $set: { released: true } });
+    await this.#leases.updateOne(heldBy(held), [
+      { $set: { token: STORED_TOKEN, released: true } },
+      DROP_OLD_NAMES,
+    ]);
   }
 
-  async finish(held: ExecutionLease): Promise<void> {
-    await this.#leases.updateOne(heldBy(held), {
-      $set: { released: true, finished: true, yielded: false },
-    });
+  async retire(held: ExecutionLease): Promise<void> {
+    await this.#leases.updateOne(heldBy(held), [
+      { $set: { token: STORED_TOKEN, released: true, finished: true, yielded: false } },
+      DROP_OLD_NAMES,
+    ]);
   }
 
-  async yield(held: ExecutionLease): Promise<boolean> {
-    const yielded = await this.#leases.updateOne(liveHeldBy(held, storeNowOf(this.clock)), {
-      $set: { yielded: true },
-    });
-    return yielded.matchedCount === 1;
+  async yield(held: ExecutionLease): Promise<Milliseconds | undefined> {
+    const now = storeNowOf(this.clock);
+    // the time left by the one command's time (`yieldedAt`), not extended: a yield is no renewal
+    const yielded = await this.#leases.findOneAndUpdate(
+      liveHeldBy(held, now),
+      [{ $set: { token: STORED_TOKEN, yielded: true, yieldedAt: now } }, DROP_OLD_NAMES],
+      { returnDocument: "after" },
+    );
+    if (yielded === null) return undefined;
+    const { expiresAt, yieldedAt } = Yielded.parse(yielded);
+    return remainingOf(expiresAt, yieldedAt);
   }
 
-  async reclaim(held: ExecutionLease, lease: Milliseconds): Promise<ExecutionLease | undefined> {
+  async reclaim(held: ExecutionLease, duration: Milliseconds): Promise<ExecutionLease | undefined> {
     const now = storeNowOf(this.clock);
     const reclaimed = await this.#leases.findOneAndUpdate(
       liveHeldBy(held, now),
       [
         {
           $set: {
-            leaseEpoch: { $add: ["$leaseEpoch", 1] },
+            token: { $add: [STORED_TOKEN, 1] },
             yielded: false,
-            expiresAt: { $add: [now, lease] },
+            expiresAt: { $add: [now, duration] },
             previousHolder: null,
-            previousEpoch: null,
+            previousToken: null,
           },
         },
+        DROP_OLD_NAMES,
       ],
       { returnDocument: "after" },
     );
-    return reclaimed === null ? undefined : leaseOf(reclaimed, lease, held);
+    return reclaimed === null ? undefined : leaseOf(reclaimed, duration, held);
   }
 }

@@ -20,7 +20,7 @@ export async function leaseStateIn(
 ): Promise<OutboundCallLeaseState> {
   const { tenantId, leaseExecutionId, token } = lease;
   const found = await lockedLeaseOf(db, session, tenantId, leaseExecutionId, clock);
-  if (found === undefined || found.released || found.leaseEpoch !== token)
+  if (found === undefined || found.released || found.token !== token)
     return OutboundCallLeaseState.Ended;
   // live while expiresAt > now, by the store's time of the lock (#534, #533)
   if (found.expiresAt.getTime() > found.checkedAt.getTime()) return OutboundCallLeaseState.Live;

@@ -5,7 +5,7 @@ import {
   ExecutionRecordStatus,
   Injectable,
   type ChildExecutionEnd,
-  type ChildExecutionQueueDepth,
+  type ChildExecutionQueueCounts,
   type ChildExecutionQueueWatch,
   type QueuedChildExecution,
 } from "@agboss/core";
@@ -190,7 +190,7 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
     await this.#queue.deleteMany({ tenantId, rootExecutionId });
   }
 
-  async findQueueDepth(): Promise<ChildExecutionQueueDepth> {
+  async countByStatus(): Promise<ChildExecutionQueueCounts> {
     const [found] = await this.#queue.aggregate(DEPTH).toArray();
     if (found === undefined) return { queued: 0, running: 0, oldestQueuedAt: undefined };
     const { queued, running, oldest } = Depth.parse(found);
