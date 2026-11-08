@@ -1,4 +1,5 @@
-import { BudgetScope, type CostCounter, type UsageRecord } from "@agboss/core";
+import { BudgetScope, CostSource, type CostCounter, type LedgerEntry } from "@agboss/core";
+import { usd } from "@agboss/core/units";
 import { MongoClient } from "mongodb";
 import { afterEach, describe, expect, it } from "vitest";
 import { Collections, MongoCostLedgerRepository } from "../../src/index.js";
@@ -27,17 +28,17 @@ const day = (key: string): CostCounter => ({
 
 const START = Date.parse("2026-10-18T08:00:00.000Z");
 
-const entry = (pass: string, index: number): UsageRecord => ({
+const entry = (pass: string, index: number): LedgerEntry => ({
   caller: "clerk-agent",
   model: "test/clerk",
   inputTokens: 0,
   outputTokens: 0,
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
-  costUsd: 0.125,
-  costSource: "api",
+  costUsd: usd(0.125),
+  costSource: CostSource.Api,
   ledgerId: `${pass}:${String(index)}`,
-  madeAt: new Date(START + index * 1000).toISOString(),
+  madeAt: new Date(START + index * 1000),
 });
 
 describe("MongoCostLedgerRepository: pruning (agbossjs/agboss#771)", () => {
@@ -52,7 +53,7 @@ describe("MongoCostLedgerRepository: pruning (agbossjs/agboss#771)", () => {
         (index % 2 === 0 ? first : second).saveAll([day("race")], [record]),
       ),
       ...Array.from({ length: 10 }, (_, step) =>
-        sweeper.deleteEntriesByMadeAtBefore(new Date(START + (step + 1) * 3000)),
+        sweeper.deleteByMadeAtBefore(new Date(START + (step + 1) * 3000)),
       ),
     ]);
 
@@ -70,7 +71,7 @@ describe("MongoCostLedgerRepository: pruning (agbossjs/agboss#771)", () => {
       .insertOne({ _id: "pass-old:0", entry: true });
     await connection.onDestroy();
 
-    await ledger.deleteEntriesByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z"));
+    await ledger.deleteByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z"));
     await ledger.saveAll([day("old")], [entry("pass-old", 0)]);
 
     expect(await ledger.findSpentByCounter(day("old"))).toBe(0);
@@ -127,7 +128,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
     const { entries, close } = await entriesCollection();
     try {
       await ledger.saveAll([day("gone")], [entry("pass-m", 0)]);
-      await ledger.deleteEntriesByMadeAtBefore(new Date(START + 1000));
+      await ledger.deleteByMadeAtBefore(new Date(START + 1000));
       await entries.deleteOne({ _id: MARK_ID });
 
       await expect(ledger.saveAll([day("gone")], [entry("pass-m", 0)])).rejects.toMatchObject({
@@ -151,7 +152,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
         code: "mongodb.ledger-mark-missing",
       });
       await expect(
-        ledger.deleteEntriesByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z")),
+        ledger.deleteByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z")),
       ).rejects.toMatchObject({ code: "mongodb.ledger-mark-missing" });
       expect(await ledger.findSpentByCounter(day("none"))).toBe(0.125);
       expect(await entries.findOne({ _id: "pass-n:0" })).not.toBeNull();
@@ -166,7 +167,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
     const { entries, close } = await entriesCollection();
     try {
       await ledger.saveAll([day("back")], [entry("pass-b", 0)]);
-      await ledger.deleteEntriesByMadeAtBefore(new Date(START + 1000));
+      await ledger.deleteByMadeAtBefore(new Date(START + 1000));
       await entries.deleteOne({ _id: MARK_ID });
       await (await openConnection(ledgerDatabase.url())).onDestroy();
 
@@ -197,9 +198,9 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
       await expect(ledger.saveAll([day("ms")], [entry("pass-s", 0)])).rejects.toThrow(
         /has no date in prunedBefore/u,
       );
-      await expect(
-        ledger.deleteEntriesByMadeAtBefore(new Date(START + 1000)),
-      ).rejects.toMatchObject({ code: "mongodb.ledger-mark-missing" });
+      await expect(ledger.deleteByMadeAtBefore(new Date(START + 1000))).rejects.toMatchObject({
+        code: "mongodb.ledger-mark-missing",
+      });
       expect(await entries.findOne({ _id: MARK_ID })).toEqual({ _id: MARK_ID, prunedBefore: 0 });
       expect(await ledger.findSpentByCounter(day("ms"))).toBe(0);
     } finally {

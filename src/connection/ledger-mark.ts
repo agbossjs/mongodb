@@ -72,10 +72,10 @@ function prunedBeforeIn(found: unknown): Date {
   return parsed.data.prunedBefore;
 }
 
-/** The mark in `session`, in ms; none or not a date → `MongoLedgerMarkMissingError`. */
-export async function prunedBeforeOf(db: Db, session: ClientSession): Promise<number> {
+/** The mark in `session`; none or not a date → `MongoLedgerMarkMissingError`. */
+export async function prunedBeforeOf(db: Db, session: ClientSession): Promise<Date> {
   const found = await marksOf(db).findOne({ _id: LEDGER_MARK_ID }, { session });
-  return prunedBeforeIn(found).getTime();
+  return prunedBeforeIn(found);
 }
 
 /**
