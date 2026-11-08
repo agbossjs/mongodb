@@ -21,6 +21,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { MongoExecutionLeaseRepository, MongoFencedEffectRepository } from "../../src/index.js";
 import { HandClock } from "../contracts/lease-races.js";
 import { instanceConnection } from "../contracts/mongodb-store.js";
+import { treeIdOf } from "../../src/stores/keys.js";
 import { TestApplicationContext } from "../support/application-context.js";
 import { emptyAll, testDatabase } from "../support/database.js";
 
@@ -42,7 +43,10 @@ async function tokenFieldsOf(root: string): Promise<unknown> {
   const connection = await instanceConnection(database, "instance-1");
   return connection.db
     .collection<{ _id: string }>(LEASES)
-    .findOne({ _id: `default:${root}` }, { projection: { _id: 0, token: 1, leaseEpoch: 1 } });
+    .findOne(
+      { _id: treeIdOf("default", root) },
+      { projection: { _id: 0, token: 1, leaseEpoch: 1 } },
+    );
 }
 
 /** A lease document of instance-1 on `root` at `epoch`, as 0.1.0 wrote it (no `token`). */
@@ -54,7 +58,7 @@ async function oldDocument(
 ): Promise<void> {
   const connection = await instanceConnection(database, "instance-1");
   await connection.db.collection<{ _id: string } & Record<string, unknown>>(LEASES).insertOne({
-    _id: `default:${root}`,
+    _id: treeIdOf("default", root),
     ...{ tenantId: "default", rootExecutionId: root, holderInstanceId: "instance-1" },
     leaseEpoch: epoch,
     expiresAt,

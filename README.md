@@ -255,6 +255,13 @@ publishes with provenance only when the tag is the package's version, the commit
 its CI passed. A pull request touching the release path runs the workflow's dry run
 (`npm publish --dry-run`). See [CONTRIBUTING.md](CONTRIBUTING.md) → Releasing.
 
+### Upgrading across the token rename (agbossjs/agboss#847)
+
+A lease document stores its fencing token as `token`; one a pre-0.1.1 build wrote names it
+`leaseEpoch`, and is still read by that token (renewed, fenced, retired and taken over as before),
+then stored as `token` by its next write. A pre-0.1.1 build cannot read `token`: upgrade every
+instance on the replica set together — there is no rolling upgrade across the rename.
+
 ## License
 
 Apache-2.0, as the core. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
