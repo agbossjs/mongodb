@@ -2,6 +2,7 @@ import type { Secret } from "@agboss/core";
 import { secret } from "@agboss/core";
 import { FaultStoreTime, type FaultStoreSet } from "@agboss/core/testing/faults";
 import {
+  MongoA2ATaskRepository,
   MongoCheckpointSaver,
   MongoChildExecutionQueueRepository,
   MongoConnection,
@@ -39,6 +40,7 @@ export const faultStores: FaultStoreSet<MongoTransaction> = {
   storeTime: FaultStoreTime.Database,
   providers: [
     MongoConnection,
+    MongoA2ATaskRepository,
     MongoCheckpointSaver,
     MongoChildExecutionQueueRepository,
     MongoCostLedgerRepository,
