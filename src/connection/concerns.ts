@@ -1,5 +1,5 @@
 import type { MongoClientOptions, TransactionOptions } from "mongodb";
-import { MongoConcernTooWeakError } from "../errors.js";
+import { MongoDurabilityError } from "../errors.js";
 
 /**
  * The concerns the stores' guarantees rest on. A lease's epoch, a fenced effect, an outbound call
@@ -9,7 +9,7 @@ import { MongoConcernTooWeakError } from "../errors.js";
  */
 
 /** The read concern of the stores' transactions. */
-export enum TransactionReadConcern {
+export enum MongoTransactionReadConcern {
   /** One point-in-time snapshot of majority-committed data for the whole transaction (default). */
   Snapshot = "snapshot",
   /** Majority-committed data; the transaction's commit with `w=majority` still makes it atomic. */
@@ -107,13 +107,13 @@ export function enforcementProblemsOf(concerns: ClientConcerns): string[] {
   return problems;
 }
 
-/** Throws `MongoConcernTooWeakError` naming every problem; nothing when there is none. */
+/** Throws `MongoDurabilityError` naming every problem; nothing when there is none. */
 export function requireConcerns(problems: readonly string[]): void {
-  if (problems.length > 0) throw new MongoConcernTooWeakError(problems);
+  if (problems.length > 0) throw new MongoDurabilityError({ problems });
 }
 
 /** The options of every store transaction: the chosen read concern, `w=majority` on the journal. */
-export function transactionOptionsOf(readConcern: TransactionReadConcern): TransactionOptions {
+export function transactionOptionsOf(readConcern: MongoTransactionReadConcern): TransactionOptions {
   return {
     readConcern: { level: readConcern },
     writeConcern: { w: "majority", journal: true },

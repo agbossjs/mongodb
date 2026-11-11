@@ -4,12 +4,12 @@
  * the client's enforced ones, the settings — runs here. The start check against a real deployment
  * is in `tests/integration/`.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-  MongoConcernTooWeakError,
+  MongoDurabilityError,
   MongoConnection,
   MongoSettingsError,
-  TransactionReadConcern,
+  MongoTransactionReadConcern,
 } from "../../src/index.js";
 import { revealing, TestApplicationContext } from "../support/application-context.js";
 
@@ -80,7 +80,7 @@ describe("MongoConnection: one client per application instance", () => {
     const connection = new MongoConnection(
       new TestApplicationContext({
         mongodbUrl: revealing(URL),
-        mongodbTransactionReadConcern: TransactionReadConcern.Majority,
+        mongodbTransactionReadConcern: MongoTransactionReadConcern.Majority,
       }),
     );
 
@@ -114,10 +114,10 @@ describe("MongoConnection refuses a URL that weakens a guarantee — never overr
     ["readConcernLevel=available", /read concern available: /],
     ["readPreference=secondary", /read preference secondary: /],
     ["readPreference=nearest", /read preference nearest: /],
-  ])("%s → MongoConcernTooWeakError", (option, problem) => {
+  ])("%s → MongoDurabilityError", (option, problem) => {
     const error = errorOf(() => new MongoConnection({ url: `${URL}&${option}` }));
 
-    expect(error).toBeInstanceOf(MongoConcernTooWeakError);
+    expect(error).toBeInstanceOf(MongoDurabilityError);
     expect(String(error)).toMatch(problem);
   });
 
@@ -126,7 +126,7 @@ describe("MongoConnection refuses a URL that weakens a guarantee — never overr
       () => new MongoConnection({ url: `${URL}&w=1&journal=false&readConcernLevel=local` }),
     );
 
-    if (!(error instanceof MongoConcernTooWeakError)) throw new Error("expected the named error");
+    if (!(error instanceof MongoDurabilityError)) throw new Error("expected the named error");
     expect(error.problems).toHaveLength(3);
   });
 
@@ -136,7 +136,7 @@ describe("MongoConnection refuses a URL that weakens a guarantee — never overr
         new MongoConnection(new TestApplicationContext({ mongodbUrl: revealing(`${URL}&w=1`) })),
     );
 
-    expect(error).toBeInstanceOf(MongoConcernTooWeakError);
+    expect(error).toBeInstanceOf(MongoDurabilityError);
   });
 });
 
@@ -199,6 +199,40 @@ describe("MongoConnection when the deployment does not answer", () => {
 
       await expect(transaction).rejects.toThrow(MongoServerSelectionOrNetworkError);
       expect(ran).toEqual(["work"]);
+    } finally {
+      await connection.onDestroy();
+    }
+  });
+});
+
+describe("agbossjs/agboss#891 AC4: a failed start", () => {
+  const UNREACHABLE = "mongodb://127.0.0.1:1/?replicaSet=rs0&serverSelectionTimeoutMS=200";
+
+  it("AC4: closes the client, and is not kept — a second onInit starts again", async () => {
+    const connection = new MongoConnection({ url: UNREACHABLE });
+    const close = vi.spyOn(connection.client, "close");
+    const check = vi.spyOn(connection.client, "connect");
+    try {
+      await expect(connection.onInit()).rejects.toThrow(MongoServerSelectionOrNetworkError);
+      expect(close).toHaveBeenCalledTimes(1);
+
+      await expect(connection.onInit()).rejects.toThrow(MongoServerSelectionOrNetworkError);
+      expect(check).toHaveBeenCalledTimes(2);
+      expect(close).toHaveBeenCalledTimes(2);
+    } finally {
+      await connection.onDestroy();
+    }
+  });
+
+  it("AC4: two calls during one start share it", async () => {
+    const connection = new MongoConnection({ url: UNREACHABLE });
+    const check = vi.spyOn(connection.client, "connect");
+    try {
+      const both = [connection.onInit(), connection.onInit()];
+
+      expect(both[0]).toBe(both[1]);
+      await expect(Promise.all(both)).rejects.toThrow(MongoServerSelectionOrNetworkError);
+      expect(check).toHaveBeenCalledTimes(1);
     } finally {
       await connection.onDestroy();
     }

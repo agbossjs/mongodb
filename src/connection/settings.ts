@@ -1,6 +1,7 @@
+import { SchemaSetup } from "@agboss/core/stores";
 import { z } from "zod";
 import { MongoSettingsError } from "../errors.js";
-import { TransactionReadConcern } from "./concerns.js";
+import { MongoTransactionReadConcern } from "./concerns.js";
 
 /** The database the stores use when the environment does not set `mongodbDatabase`. */
 export const DEFAULT_DATABASE = "agboss";
@@ -21,7 +22,13 @@ export interface MongoConnectionSettings {
   /** The database the stores' collections are in (default: the URL's, else `agboss`). */
   readonly database?: string;
   /** The read concern of the stores' transactions (default `snapshot`). */
-  readonly transactionReadConcern?: TransactionReadConcern;
+  readonly transactionReadConcern?: MongoTransactionReadConcern;
+  /**
+   * What the start does with the schema (agbossjs/agboss#891): `SchemaSetup.Check` (the default)
+   * refuses a database not migrated to this package's version; `SchemaSetup.MigrateOnStart`
+   * migrates it first.
+   */
+  readonly schemaSetup?: SchemaSetup;
 }
 
 /** A `Secret` of the environment: only `reveal()` gives its value. */
@@ -45,9 +52,12 @@ const MongoEnvironment = z.object({
     .min(1, "mongodbDatabase is empty")
     .optional(),
   mongodbTransactionReadConcern: z
-    .enum(TransactionReadConcern, {
+    .enum(MongoTransactionReadConcern, {
       message: "mongodbTransactionReadConcern must be snapshot or majority",
     })
+    .optional(),
+  mongodbSchemaSetup: z
+    .enum(SchemaSetup, { message: "mongodbSchemaSetup must be check or migrate-on-start" })
     .optional(),
 });
 
@@ -56,7 +66,8 @@ const MISSING_URL =
 
 /**
  * The connection settings an application's environment gives: `mongodbUrl` (required, a
- * `Secret`), `mongodbDatabase` and `mongodbTransactionReadConcern` (optional). A missing or
+ * `Secret`), `mongodbDatabase`, `mongodbTransactionReadConcern` and `mongodbSchemaSetup`
+ * (optional). A missing or
  * mistyped field fails with `MongoSettingsError`, naming it — the URL itself is never printed.
  */
 export function settingsOfEnvironment(environment: unknown): MongoConnectionSettings {
@@ -70,12 +81,14 @@ export function settingsOfEnvironment(environment: unknown): MongoConnectionSett
       `the MongoDB stores need their environment fields — ${problems.join("; ")}`,
     );
   }
-  const { mongodbUrl, mongodbDatabase, mongodbTransactionReadConcern } = parsed.data;
+  const { mongodbUrl, mongodbDatabase, mongodbTransactionReadConcern, mongodbSchemaSetup } =
+    parsed.data;
   const url = mongodbUrl.reveal();
   if (url.length === 0) throw new MongoSettingsError("mongodbUrl is empty");
   return {
     url,
     database: mongodbDatabase,
     transactionReadConcern: mongodbTransactionReadConcern,
+    schemaSetup: mongodbSchemaSetup,
   };
 }

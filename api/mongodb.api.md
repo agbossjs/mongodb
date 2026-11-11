@@ -4,12 +4,6 @@
 
 ```ts
 
-import { A2ADirectMessageAttempt } from '@agboss/core/stores';
-import { A2ADirectMessageKey } from '@agboss/core/stores';
-import { A2ADirectMessageRecord } from '@agboss/core/stores';
-import { A2ADirectMessageReply } from '@agboss/core/stores';
-import { A2ADirectMessageRepository } from '@agboss/core/stores';
-import { A2ADirectMessageSave } from '@agboss/core/stores';
 import { A2AMessageKey } from '@agboss/core';
 import { A2AMessageRecord } from '@agboss/core';
 import { A2ATaskKey } from '@agboss/core';
@@ -23,6 +17,10 @@ import { AGBossError } from '@agboss/core';
 import { ApplicationContext } from '@agboss/core';
 import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
 import { BudgetAccount } from '@agboss/core';
+import { ChannelVersions } from '@langchain/langgraph-checkpoint';
+import { Checkpoint } from '@langchain/langgraph-checkpoint';
+import { CheckpointListOptions } from '@langchain/langgraph-checkpoint';
+import { CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 import { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 import { ChildExecutionEnd } from '@agboss/core';
 import { ChildExecutionQueueCounts } from '@agboss/core';
@@ -60,7 +58,6 @@ import { MeshRequestRecord } from '@agboss/core';
 import { MeshRequestRepository } from '@agboss/core';
 import type { Milliseconds } from '@agboss/core/units';
 import { MongoClient } from 'mongodb';
-import { NewA2ADirectMessage } from '@agboss/core/stores';
 import { NewA2ATask } from '@agboss/core';
 import { NewSummary } from '@agboss/core';
 import { NewThread } from '@agboss/core';
@@ -83,10 +80,12 @@ import { PauseCancellation } from '@agboss/core';
 import { PausedExecution } from '@agboss/core';
 import { PausedExecutionRepository } from '@agboss/core';
 import { PauseRecord } from '@agboss/core';
+import { PendingWrite } from '@langchain/langgraph-checkpoint';
 import { QueuedChildExecution } from '@agboss/core';
 import { RateLimitLease } from '@agboss/core';
 import { RateLimitRepository } from '@agboss/core';
 import type { RunnableConfig } from '@langchain/core/runnables';
+import { SchemaSetup } from '@agboss/core/stores';
 import { StoreClock } from '@agboss/core';
 import { StoreDescriptor } from '@agboss/core';
 import { StoreDescriptor as StoreDescriptor_2 } from '@agboss/core/stores';
@@ -102,6 +101,7 @@ export type CollectionName = (typeof Collections)[keyof typeof Collections];
 
 // @public
 export const Collections: {
+    readonly SchemaVersion: "agboss_schema";
     readonly ExecutionLeases: "agboss_execution_leases";
     readonly ExecutionIds: "agboss_execution_ids";
     readonly FencedEffectMarks: "agboss_fenced_effect_marks";
@@ -129,7 +129,6 @@ export const Collections: {
     readonly MeshRequests: "agboss_mesh_requests";
     readonly A2ATasks: "agboss_a2a_tasks";
     readonly A2AMessages: "agboss_a2a_messages";
-    readonly A2ADirectMessages: "agboss_a2a_direct_messages";
     readonly Checkpoints: "agboss_checkpoints";
     readonly CheckpointWrites: "agboss_checkpoint_writes";
     readonly Sequences: "agboss_sequences";
@@ -139,26 +138,13 @@ export const Collections: {
 export const DEFAULT_DATABASE = "agboss";
 
 // @public
-export class MongoA2ADirectMessageRepository extends A2ADirectMessageRepository {
-    constructor(connection: MongoConnection);
-    // (undocumented)
-    completeIfInFlight(key: A2ADirectMessageKey, attemptId: string, reply: A2ADirectMessageReply, completedAt: Date): Promise<A2ADirectMessageRecord | undefined>;
-    // (undocumented)
-    deleteByCreatedAtBefore(cutoff: Date, limit: number): Promise<readonly A2ADirectMessageRecord[]>;
-    // (undocumented)
-    deleteIfInFlight(key: A2ADirectMessageKey, attemptId: string): Promise<boolean>;
-    // (undocumented)
-    findAllInFlightByExpiresAtBefore(now: Date, limit: number): Promise<readonly A2ADirectMessageRecord[]>;
-    // (undocumented)
-    findByKey(key: A2ADirectMessageKey): Promise<A2ADirectMessageRecord | undefined>;
-    // (undocumented)
-    ping(): Promise<void>;
-    // (undocumented)
-    retakeIfExpired(key: A2ADirectMessageKey, expiredAttemptId: string, next: A2ADirectMessageAttempt, now: Date): Promise<A2ADirectMessageRecord | undefined>;
-    // (undocumented)
-    saveIfAbsent(message: NewA2ADirectMessage): Promise<A2ADirectMessageSave>;
-    // (undocumented)
-    static readonly store: StoreDescriptor;
+export function migrateMongodb(options: MigrateMongodbOptions): Promise<MongoMigrationReport>;
+
+// @public
+export interface MigrateMongodbOptions {
+    readonly database?: string;
+    readonly signal?: AbortSignal;
+    readonly url: string;
 }
 
 // @public
@@ -187,25 +173,25 @@ export class MongoA2ATaskRepository extends A2ATaskRepository {
 }
 
 // @public
+export interface MongoAppliedMigrationReport {
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly version: number;
+}
+
+// @public
 export class MongoCheckpointSaver extends BaseCheckpointSaver {
     constructor(connection: MongoConnection);
     deleteThread(threadId: string): Promise<void>;
     // (undocumented)
     getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    // Warning: (ae-forgotten-export) The symbol "ListOptions" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    list(config: RunnableConfig, options?: ListOptions): AsyncGenerator<CheckpointTuple>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
     ping(): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CheckpointMetadata" needs to be exported by the entry point index.d.ts
-    //
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, newVersions: ChannelVersions): Promise<RunnableConfig>;
     // (undocumented)
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata): Promise<RunnableConfig>;
-    // Warning: (ae-forgotten-export) The symbol "PutWritesArguments" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
-    putWrites(...input: PutWritesArguments): Promise<void>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
 }
 
 // @public
@@ -229,8 +215,8 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
 }
 
 // @public
-export class MongoCollationError extends AGBossError {
-    constructor(collections: readonly string[]);
+export class MongoCollationNotSimpleError extends AGBossError {
+    constructor(options: MongoCollationNotSimpleErrorOptions);
     // (undocumented)
     static readonly code: "mongodb.collation-not-simple";
     readonly collections: readonly string[];
@@ -239,13 +225,8 @@ export class MongoCollationError extends AGBossError {
 }
 
 // @public
-export class MongoConcernTooWeakError extends AGBossError {
-    constructor(problems: readonly string[]);
-    // (undocumented)
-    static readonly code: "mongodb.concern-too-weak";
-    // (undocumented)
-    name: string;
-    readonly problems: readonly string[];
+export interface MongoCollationNotSimpleErrorOptions {
+    readonly collections: readonly string[];
 }
 
 // @public
@@ -253,18 +234,20 @@ export class MongoConnection implements OnInit, OnDestroy {
     constructor(source: ApplicationContext | MongoConnectionSettings);
     readonly client: MongoClient;
     readonly db: Db;
-    deployment(): Promise<MongoTopology>;
     inTransaction<TResult>(work: (transaction: MongoTransaction) => Promise<TResult>): Promise<TResult>;
     onDestroy(): Promise<void>;
     onInit(): Promise<void>;
     ping(): Promise<void>;
+    requireSupportedTopology(): Promise<MongoTopology>;
+    topology(): Promise<MongoTopology>;
     get transactionOptions(): TransactionOptions;
 }
 
 // @public
 export interface MongoConnectionSettings {
     readonly database?: string;
-    readonly transactionReadConcern?: TransactionReadConcern;
+    readonly schemaSetup?: SchemaSetup;
+    readonly transactionReadConcern?: MongoTransactionReadConcern;
     readonly url: string;
 }
 
@@ -283,6 +266,36 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
     saveAll(counters: readonly CostCounter[], entries: readonly LedgerEntry[]): Promise<void>;
     // (undocumented)
     saveMaxSpend(account: BudgetAccount, maxSpend: Usd): Promise<void>;
+}
+
+// @public
+export const MONGODB_DURABLE_STORES: readonly [typeof MongoExecutionRecordRepository, typeof MongoPausedExecutionRepository, typeof MongoCheckpointSaver, typeof MongoExecutionTreeRepository, typeof MongoExecutionAuditLogRepository, typeof MongoCostLedgerRepository, typeof MongoExecutionHistoryRepository, typeof MongoMeshRequestRepository, typeof MongoA2ATaskRepository];
+
+// @public
+export const MONGODB_STORES: readonly [typeof MongoExecutionLeaseRepository, typeof MongoChildExecutionQueueRepository, typeof MongoRateLimitRepository, typeof MongoFencedEffectRepository, typeof MongoOutboundCallRepository, typeof MongoExecutionRecordRepository, typeof MongoPausedExecutionRepository, typeof MongoCheckpointSaver, typeof MongoExecutionTreeRepository, typeof MongoExecutionAuditLogRepository, typeof MongoCostLedgerRepository, typeof MongoExecutionHistoryRepository, typeof MongoMeshRequestRepository, typeof MongoA2ATaskRepository];
+
+// @public
+export class MongoDeploymentError extends AGBossError {
+    constructor();
+    // (undocumented)
+    static readonly code: "mongodb.deployment-unsupported";
+    // (undocumented)
+    name: string;
+}
+
+// @public
+export class MongoDurabilityError extends AGBossError {
+    constructor(options: MongoDurabilityErrorOptions);
+    // (undocumented)
+    static readonly code: "mongodb.durability-insufficient";
+    // (undocumented)
+    name: string;
+    readonly problems: readonly string[];
+}
+
+// @public
+export interface MongoDurabilityErrorOptions {
+    readonly problems: readonly string[];
 }
 
 // @public
@@ -457,6 +470,13 @@ export class MongoMeshRequestRepository extends MeshRequestRepository {
 }
 
 // @public
+export interface MongoMigrationReport {
+    readonly applied: readonly MongoAppliedMigrationReport[];
+    readonly database: string;
+    readonly version: number;
+}
+
+// @public
 export class MongoOutboundCallRepository extends OutboundCallRepository {
     constructor(connection: MongoConnection, clock: StoreClock);
     // (undocumented)
@@ -534,12 +554,39 @@ export class MongoRateLimitRepository extends RateLimitRepository {
 }
 
 // @public
-export class MongoReplicaSetRequiredError extends AGBossError {
-    constructor();
+export class MongoSchemaMissingError extends AGBossError {
+    constructor(options: MongoSchemaMissingErrorOptions);
+    readonly applied: number | undefined;
     // (undocumented)
-    static readonly code: "mongodb.replica-set-required";
+    static readonly code: "mongodb.schema-missing";
+    readonly collections: readonly string[];
+    readonly expected: number;
     // (undocumented)
     name: string;
+}
+
+// @public
+export interface MongoSchemaMissingErrorOptions {
+    readonly applied: number | undefined;
+    readonly collections?: readonly string[];
+    readonly expected: number;
+}
+
+// @public
+export class MongoSchemaTooNewError extends AGBossError {
+    constructor(options: MongoSchemaTooNewErrorOptions);
+    readonly applied: number;
+    // (undocumented)
+    static readonly code: "mongodb.schema-too-new";
+    readonly expected: number;
+    // (undocumented)
+    name: string;
+}
+
+// @public
+export interface MongoSchemaTooNewErrorOptions {
+    readonly applied: number;
+    readonly expected: number;
 }
 
 // @public
@@ -566,34 +613,33 @@ export interface MongoTransaction {
 }
 
 // @public
-export enum TransactionReadConcern {
+export enum MongoTransactionReadConcern {
     Majority = "majority",
     Snapshot = "snapshot"
 }
 
+export { SchemaSetup }
+
 // Warnings were encountered during analysis:
 //
+// src/connection/migrate.ts:16:3 - (ae-undocumented) Missing documentation for "version".
+// src/connection/migrate.ts:17:3 - (ae-undocumented) Missing documentation for "name".
 // src/connection/transaction.ts:9:3 - (ae-undocumented) Missing documentation for "session".
 // src/connection/transaction.ts:10:3 - (ae-undocumented) Missing documentation for "db".
-// src/errors.ts:16:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:17:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:28:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:29:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:48:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:49:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:65:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:66:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:89:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:90:12 - (ae-undocumented) Missing documentation for "name".
-// src/stores/mongo-a2a-direct-message.repository.ts:56:3 - (ae-undocumented) Missing documentation for "store".
-// src/stores/mongo-a2a-direct-message.repository.ts:62:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-a2a-direct-message.repository.ts:66:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
-// src/stores/mongo-a2a-direct-message.repository.ts:79:9 - (ae-undocumented) Missing documentation for "findByKey".
-// src/stores/mongo-a2a-direct-message.repository.ts:84:9 - (ae-undocumented) Missing documentation for "completeIfInFlight".
-// src/stores/mongo-a2a-direct-message.repository.ts:98:9 - (ae-undocumented) Missing documentation for "retakeIfExpired".
-// src/stores/mongo-a2a-direct-message.repository.ts:119:9 - (ae-undocumented) Missing documentation for "deleteIfInFlight".
-// src/stores/mongo-a2a-direct-message.repository.ts:128:9 - (ae-undocumented) Missing documentation for "findAllInFlightByExpiresAtBefore".
-// src/stores/mongo-a2a-direct-message.repository.ts:141:9 - (ae-undocumented) Missing documentation for "deleteByCreatedAtBefore".
+// src/errors.ts:23:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:24:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:41:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:42:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:61:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:62:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:84:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:85:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:115:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:116:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:155:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:156:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:182:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:183:12 - (ae-undocumented) Missing documentation for "name".
 // src/stores/mongo-a2a-task.repository.ts:72:3 - (ae-undocumented) Missing documentation for "store".
 // src/stores/mongo-a2a-task.repository.ts:78:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-a2a-task.repository.ts:82:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
@@ -604,10 +650,9 @@ export enum TransactionReadConcern {
 // src/stores/mongo-a2a-task.repository.ts:117:9 - (ae-undocumented) Missing documentation for "compareAndSetStatus".
 // src/stores/mongo-a2a-task.repository.ts:134:3 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-a2a-task.repository.ts:138:9 - (ae-undocumented) Missing documentation for "deleteTerminalByStatusAtBefore".
-// src/stores/mongo-checkpoint-saver.ts:61:9 - (ae-undocumented) Missing documentation for "getTuple".
-// src/stores/mongo-checkpoint-saver.ts:70:10 - (ae-undocumented) Missing documentation for "list".
-// src/stores/mongo-checkpoint-saver.ts:83:9 - (ae-undocumented) Missing documentation for "put".
-// src/stores/mongo-checkpoint-saver.ts:107:9 - (ae-undocumented) Missing documentation for "putWrites".
+// src/stores/mongo-checkpoint-saver.ts:68:9 - (ae-undocumented) Missing documentation for "getTuple".
+// src/stores/mongo-checkpoint-saver.ts:77:10 - (ae-undocumented) Missing documentation for "list".
+// src/stores/mongo-checkpoint-saver.ts:124:9 - (ae-undocumented) Missing documentation for "putWrites".
 // src/stores/mongo-child-execution-queue.repository.ts:107:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-child-execution-queue.repository.ts:111:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
 // src/stores/mongo-child-execution-queue.repository.ts:145:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".

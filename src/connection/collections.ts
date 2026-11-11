@@ -1,9 +1,14 @@
 /**
  * The collections of the MongoDB stores (agbossjs/agboss#527), one name per kind of document. Every
- * collection is created by `ensureSchema` with the simple (binary) collation, so a key is compared
+ * collection is created by the migration (`migrateMongodb`) with the simple (binary) collation, so a key is compared
  * byte for byte — `Zoë-17`, `Zoe-17` and `Zoë-17` are three keys, never one.
  */
 export const Collections = {
+  /**
+   * The schema's version (agbossjs/agboss#891): one document, `{ _id: "agboss", version }`, written
+   * by the migration once its collections and indexes are made, read by every start.
+   */
+  SchemaVersion: "agboss_schema",
   /** One document per tree: its latest lease (`ExecutionLeaseRepository`). */
   ExecutionLeases: "agboss_execution_leases",
   /** One document per execution id ever handed out (agbossjs/agboss#591): never removed. */

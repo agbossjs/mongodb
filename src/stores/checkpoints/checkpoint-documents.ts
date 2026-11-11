@@ -1,7 +1,9 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   WRITES_IDX_MAP,
-  type BaseCheckpointSaver,
+  type Checkpoint,
+  type CheckpointListOptions,
+  type CheckpointMetadata,
   type CheckpointTuple,
 } from "@langchain/langgraph-checkpoint";
 import { Binary, type Filter } from "mongodb";
@@ -16,10 +18,6 @@ import { z } from "zod";
  * itself, agbossjs/agboss#682).
  */
 
-export type PutWritesArguments = Parameters<BaseCheckpointSaver["putWrites"]>;
-export type Checkpoint = Parameters<BaseCheckpointSaver["put"]>[1];
-export type CheckpointMetadata = Parameters<BaseCheckpointSaver["put"]>[2];
-export type ListOptions = NonNullable<Parameters<BaseCheckpointSaver["list"]>[1]>;
 export type PendingWrites = NonNullable<CheckpointTuple["pendingWrites"]>;
 
 export interface CheckpointDocument {
@@ -105,7 +103,7 @@ export function keyOf(config: RunnableConfig, operation: string): CheckpointKey 
 /** The filter of `list(config, { before })`: a thread (or every thread), a namespace, an id. */
 export function listFilterOf(
   config: RunnableConfig,
-  options: ListOptions,
+  options: CheckpointListOptions,
 ): Filter<CheckpointDocument> {
   const filter = Configurable.parse(config.configurable ?? {});
   const before =
@@ -124,7 +122,10 @@ export function listFilterOf(
 }
 
 /** Whether a checkpoint's metadata has every field `list`'s `filter` asks for. */
-export const matchesMetadata = (tuple: CheckpointTuple, options: ListOptions): boolean => {
+export const matchesMetadata = (
+  tuple: CheckpointTuple,
+  options: CheckpointListOptions,
+): boolean => {
   const metadata: Readonly<Record<string, unknown>> = tuple.metadata ?? {};
   return Object.entries(options.filter ?? {}).every(([key, value]) => metadata[key] === value);
 };

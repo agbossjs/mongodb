@@ -3,7 +3,12 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
   copyCheckpoint,
+  type ChannelVersions,
+  type Checkpoint,
+  type CheckpointListOptions,
+  type CheckpointMetadata,
   type CheckpointTuple,
+  type PendingWrite,
 } from "@langchain/langgraph-checkpoint";
 import { Binary, type AnyBulkWriteOperation, type Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
@@ -18,16 +23,18 @@ import {
   StoredCheckpoint,
   StoredWrite,
   writeIndexOf,
-  type Checkpoint,
   type CheckpointDocument,
-  type CheckpointMetadata,
-  type ListOptions,
   type PendingWrites,
-  type PutWritesArguments,
   type WriteDocument,
 } from "./checkpoints/checkpoint-documents.js";
 import { idOf } from "./keys.js";
 import { nextSequence } from "./sequence.js";
+
+/** `checkpoint` (a copy) with `newVersions` laid over its channel versions. */
+const withVersions = (checkpoint: Checkpoint, newVersions: ChannelVersions): Checkpoint => ({
+  ...checkpoint,
+  channel_versions: { ...checkpoint.channel_versions, ...newVersions },
+});
 
 /**
  * LangGraph's `BaseCheckpointSaver` on MongoDB (#265 S32, agbossjs/agboss#527): checkpoints and
@@ -67,7 +74,10 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     return found === null ? undefined : this.#tupleOf(StoredCheckpoint.parse(found));
   }
 
-  async *list(config: RunnableConfig, options: ListOptions = {}): AsyncGenerator<CheckpointTuple> {
+  async *list(
+    config: RunnableConfig,
+    options: CheckpointListOptions = {},
+  ): AsyncGenerator<CheckpointTuple> {
     const cursor = this.#checkpoints.find(listFilterOf(config, options)).sort({ checkpointId: -1 });
     let left = options.limit ?? Number.POSITIVE_INFINITY;
     for await (const found of cursor) {
@@ -80,14 +90,21 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     await cursor.close();
   }
 
+  /**
+   * LangGraph's full signature (agbossjs/agboss#891): `newVersions` are the channel versions this
+   * checkpoint changed. The whole checkpoint is written as one document, its `channel_versions`
+   * with `newVersions` laid over them — LangGraph's are already among them, so it is the checkpoint
+   * as given; a version a caller passed only there is kept too.
+   */
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
+    newVersions: ChannelVersions,
   ): Promise<RunnableConfig> {
     const { tenantId, threadId, namespace, checkpointId: parentId } = keyOf(config, "put");
     const [[checkpointType, dumped], [metadataType, dumpedMetadata]] = await Promise.all([
-      this.serde.dumpsTyped(copyCheckpoint(checkpoint)),
+      this.serde.dumpsTyped(withVersions(copyCheckpoint(checkpoint), newVersions)),
       this.serde.dumpsTyped(metadata),
     ]);
     const _id = idOf(threadId, namespace, checkpoint.id);
@@ -104,7 +121,7 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     return configOf(threadId, namespace, checkpoint.id);
   }
 
-  async putWrites(...[config, writes, taskId]: PutWritesArguments): Promise<void> {
+  async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
     const { tenantId, threadId, namespace, checkpointId } = keyOf(config, "putWrites");
     if (checkpointId === undefined)
       throw new Error("MongoCheckpointSaver.putWrites: the config has no checkpoint_id");

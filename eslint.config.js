@@ -48,7 +48,7 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "bin/**/*.js"],
     languageOptions: { globals: { process: "readonly", console: "readonly", URL: "readonly" } },
     rules: { "no-console": "off", "@typescript-eslint/explicit-module-boundary-types": "off" },
   },

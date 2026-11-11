@@ -1,15 +1,17 @@
 import type { Db, IndexDescription } from "mongodb";
 import { z } from "zod";
-import { MongoCollationError } from "../errors.js";
+import { MongoCollationNotSimpleError } from "../errors.js";
 import { Collections, type CollectionName } from "./collections.js";
 import { createLedgerEntries } from "./ledger-mark.js";
 
 /**
- * The stores' collections and indexes (agbossjs/agboss#527), made at the connection's start —
- * idempotent, so every instance of an application runs it and none waits for a migration. Each
+ * The stores' collections and indexes (agbossjs/agboss#527), made by the migration
+ * (`migrateMongodb`, `agboss-mongodb migrate`, or a start with `SchemaSetup.MigrateOnStart`) —
+ * idempotent, so concurrent runs end in one schema (agbossjs/agboss#891: versioned in
+ * `schema-version.ts`). Each
  * collection is created with the simple collation; one an operator made with another collation
  * (`{ locale: "en", strength: 2 }` would make `Zoë-17` and `zoe-17` one key, a second charge) is
- * refused with `MongoCollationError` before any store writes. A unique key is always `_id` or a
+ * refused with `MongoCollationNotSimpleError` before any store writes. A unique key is always `_id` or a
  * unique index here, never a check in the code. The ledger's pruning mark is made with its
  * collection, in one transaction (agbossjs/agboss#798): a start that finds the collection leaves it
  * alone — a mark missing there was deleted, and is never seeded again.
@@ -103,7 +105,7 @@ const CollectionInfo = z.object({
 });
 
 /** The collections that exist with a collation other than the simple one. */
-async function collatedCollectionsOf(db: Db): Promise<string[]> {
+export async function collatedCollectionsOf(db: Db): Promise<string[]> {
   const names: string[] = Object.values(Collections);
   const found = await db.listCollections({ name: { $in: names } }).toArray();
   return found
@@ -127,17 +129,26 @@ async function createIfMissing(db: Db, name: string, existing: ReadonlySet<strin
 
 /**
  * Every collection and index of the stores, made if missing — the ledger's mark with its collection
- * —; a collection with a non-simple collation fails with `MongoCollationError`, naming it.
+ * —; a collection with a non-simple collation fails with `MongoCollationNotSimpleError`, naming it.
  */
 export async function ensureSchema(db: Db): Promise<void> {
-  const collated = await collatedCollectionsOf(db);
-  if (collated.length > 0) throw new MongoCollationError(collated);
-  const existing = new Set(
-    (await db.listCollections({}, { nameOnly: true }).toArray()).map((info) => info.name),
-  );
+  await requireSimpleCollation(db);
+  const existing = await existingCollectionsOf(db);
   for (const name of Object.values(Collections)) {
     await createIfMissing(db, name, existing);
     const indexes = INDEXES[name];
     if (indexes !== undefined) await db.collection(name).createIndexes([...indexes]);
   }
+}
+
+/** Fails with `MongoCollationNotSimpleError` when a stores' collection has another collation. */
+export async function requireSimpleCollation(db: Db): Promise<void> {
+  const collated = await collatedCollectionsOf(db);
+  if (collated.length > 0) throw new MongoCollationNotSimpleError({ collections: collated });
+}
+
+/** The names of the collections the database has. */
+export async function existingCollectionsOf(db: Db): Promise<ReadonlySet<string>> {
+  const infos = await db.listCollections({}, { nameOnly: true }).toArray();
+  return new Set(infos.map((info) => info.name));
 }
