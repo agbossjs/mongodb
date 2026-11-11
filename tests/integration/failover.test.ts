@@ -17,7 +17,7 @@ import { MongoClient, type Db } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  MongoConcernTooWeakError,
+  MongoDurabilityError,
   MongoConnection,
   MongoExecutionLeaseRepository,
 } from "../../src/index.js";
@@ -188,7 +188,7 @@ afterAll(async () => {
 describe("agbossjs/agboss#527 AC3: a lease across a failover", () => {
   it("the connection refuses a URL with w=1, which the sabotage below builds around", () => {
     expect(() => new MongoConnection({ url: `${database.url()}&w=1` })).toThrow(
-      MongoConcernTooWeakError,
+      MongoDurabilityError,
     );
   });
 

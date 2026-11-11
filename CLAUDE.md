@@ -29,14 +29,16 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
 
 - `src/connection/` — `MongoConnection` (DI token, `deps: [ApplicationContext]`, or
   `new MongoConnection({ url })` in a script/test); its settings from the environment
-  (`mongodbUrl: Secret`, `mongodbDatabase`, `mongodbTransactionReadConcern`); the concerns
+  (`mongodbUrl: Secret`, `mongodbDatabase`, `mongodbTransactionReadConcern`, `mongodbSchemaSetup`); the concerns
   (`concerns.ts`: a URL weaker than `w=majority` / `journal` / majority reads / primary is refused
-  with `MongoConcernTooWeakError`, never overridden; the client carries the enforced ones); the
+  with `MongoDurabilityError`, never overridden; the client carries the enforced ones); the
   deployment check (`deployment.ts`: `hello` → replica set / sharded / standalone, a standalone is
-  `MongoReplicaSetRequiredError`); `inTransaction` (snapshot by default, `w=majority` commit).
+  `MongoDeploymentError`); `inTransaction` (snapshot by default, `w=majority` commit).
 - `src/errors.ts` — every named error, an `AGBossError` with a stable `mongodb.*` code.
-- `src/connection/schema.ts` — the collections (`collections.ts`) and indexes, made at `onInit`
-  with the simple collation; a collection of another collation is `MongoCollationError`.
+- `src/connection/schema.ts` — the collections (`collections.ts`) and indexes, made by the migration
+  with the simple collation (`schema-version.ts`: the version document `agboss_schema`, checked at
+  `onInit` under `SchemaSetup.Check`, migrated by `migrateMongodb` / the bin `agboss-mongodb migrate`,
+  `src/cli.ts`, agbossjs/agboss#891); a collection of another collation is `MongoCollationNotSimpleError`.
 - `src/stores/` — one store per contract (`Mongo*Repository`, `MongoCheckpointSaver`); every
   atomic operation one conditional single-document command or one transaction, stated in each
   store's doc comment. A lease's expiry is the server's `$$NOW` inside each command

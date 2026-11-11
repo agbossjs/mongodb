@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MongoConcernTooWeakError, TransactionReadConcern } from "../../src/index.js";
+import { MongoDurabilityError, MongoTransactionReadConcern } from "../../src/index.js";
 import {
   concernProblemsOf,
   enforcementProblemsOf,
@@ -126,7 +126,7 @@ describe("requireConcerns", () => {
     }).not.toThrow();
   });
 
-  it("problems: MongoConcernTooWeakError naming each, with its stable code", () => {
+  it("problems: MongoDurabilityError naming each, with its stable code", () => {
     let thrown: unknown;
     try {
       requireConcerns(["first", "second"]);
@@ -134,17 +134,17 @@ describe("requireConcerns", () => {
       thrown = error;
     }
 
-    if (!(thrown instanceof MongoConcernTooWeakError)) throw new Error("expected the named error");
+    if (!(thrown instanceof MongoDurabilityError)) throw new Error("expected the named error");
     const error = thrown;
     expect(error.problems).toEqual(["first", "second"]);
     expect(error.message).toMatch(/too weak for the stores' guarantees — first; second$/);
-    expect(error.code).toBe("mongodb.concern-too-weak");
-    expect(error.name).toBe("MongoConcernTooWeakError");
+    expect(error.code).toBe("mongodb.durability-insufficient");
+    expect(error.name).toBe("MongoDurabilityError");
   });
 });
 
 describe("transactionOptionsOf", () => {
-  it.each([TransactionReadConcern.Snapshot, TransactionReadConcern.Majority])(
+  it.each([MongoTransactionReadConcern.Snapshot, MongoTransactionReadConcern.Majority])(
     "reads at %s, commits with w=majority on the journal, on the primary",
     (level) => {
       expect(transactionOptionsOf(level)).toEqual({

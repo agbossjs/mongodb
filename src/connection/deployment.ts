@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MongoReplicaSetRequiredError } from "../errors.js";
+import { MongoDeploymentError } from "../errors.js";
 
 /** The kind of deployment a `hello` reply describes. */
 export enum MongoTopology {
@@ -29,10 +29,10 @@ export function topologyOf(hello: unknown): MongoTopology {
 
 /**
  * The deployment `hello` describes when the stores can run on it: a replica set or a sharded
- * cluster. A standalone `mongod` fails with `MongoReplicaSetRequiredError`.
+ * cluster. A standalone `mongod` fails with `MongoDeploymentError`.
  */
-export function requireTransactionalDeployment(hello: unknown): MongoTopology {
+export function supportedTopologyOf(hello: unknown): MongoTopology {
   const topology = topologyOf(hello);
-  if (topology === MongoTopology.Standalone) throw new MongoReplicaSetRequiredError();
+  if (topology === MongoTopology.Standalone) throw new MongoDeploymentError();
   return topology;
 }

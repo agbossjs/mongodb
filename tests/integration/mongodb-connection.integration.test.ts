@@ -3,13 +3,14 @@
  * standalone `mongo:7`); without `AGBOSS_MONGODB_TEST_URL` / `AGBOSS_MONGODB_STANDALONE_TEST_URL`
  * the run fails (the global setup says how to start them).
  */
+import { SchemaSetup } from "@agboss/core/stores";
 import type { Collection } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   MongoConnection,
-  MongoReplicaSetRequiredError,
+  MongoDeploymentError,
   MongoTopology,
-  TransactionReadConcern,
+  MongoTransactionReadConcern,
 } from "../../src/index.js";
 import { freshDatabaseName, REPLICA_SET_URL, STANDALONE_URL } from "../support/server.js";
 
@@ -24,7 +25,11 @@ describe("MongoConnection on a replica set", () => {
   let payments: Collection<Payment>;
 
   beforeAll(async () => {
-    connection = new MongoConnection({ url: REPLICA_SET_URL, database: freshDatabaseName() });
+    connection = new MongoConnection({
+      url: REPLICA_SET_URL,
+      database: freshDatabaseName(),
+      schemaSetup: SchemaSetup.MigrateOnStart,
+    });
     payments = connection.db.collection<Payment>("payments");
     await connection.onInit();
     await connection.db.createCollection("payments");
@@ -35,8 +40,9 @@ describe("MongoConnection on a replica set", () => {
     await connection.onDestroy();
   });
 
-  it("the start check passes and names the deployment a replica set", async () => {
-    expect(await connection.deployment()).toBe(MongoTopology.ReplicaSet);
+  it("AC4 (agbossjs/agboss#891): topology() names the deployment a replica set; requireSupportedTopology() passes it", async () => {
+    expect(await connection.topology()).toBe(MongoTopology.ReplicaSet);
+    expect(await connection.requireSupportedTopology()).toBe(MongoTopology.ReplicaSet);
   });
 
   it("ping answers", async () => {
@@ -80,7 +86,7 @@ describe("MongoConnection on a replica set", () => {
     });
 
     expect(connection.transactionOptions.readConcern).toEqual({
-      level: TransactionReadConcern.Snapshot,
+      level: MongoTransactionReadConcern.Snapshot,
     });
     expect(seen.after).toBe(seen.before);
     expect(await payments.countDocuments({ amount: 99 })).toBe(seen.before + 1);
@@ -88,11 +94,13 @@ describe("MongoConnection on a replica set", () => {
 });
 
 describe("MongoConnection on a standalone mongod", () => {
-  it("the start check refuses it with MongoReplicaSetRequiredError", async () => {
+  it("the start check refuses it with MongoDeploymentError", async () => {
     const connection = new MongoConnection({ url: STANDALONE_URL });
     try {
-      await expect(connection.onInit()).rejects.toThrow(MongoReplicaSetRequiredError);
-      await expect(connection.deployment()).rejects.toThrow(/standalone mongod/);
+      // AC4 (agbossjs/agboss#891): the query reports it, the assertion refuses it
+      expect(await connection.topology()).toBe(MongoTopology.Standalone);
+      await expect(connection.requireSupportedTopology()).rejects.toThrow(/standalone mongod/);
+      await expect(connection.onInit()).rejects.toThrow(MongoDeploymentError);
     } finally {
       await connection.onDestroy();
     }

@@ -1,3 +1,4 @@
+import { SchemaSetup } from "@agboss/core/stores";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll } from "vitest";
 import { seedLedgerMark } from "../../src/connection/ledger-mark.js";
@@ -20,9 +21,9 @@ export interface TestDatabase {
   readonly name: () => string;
 }
 
-/** A connection of the test on `url`, started (its schema made). */
+/** A connection of the test on `url`, started (its schema migrated: `SchemaSetup.MigrateOnStart`). */
 export async function openConnection(url: string): Promise<MongoConnection> {
-  const connection = new MongoConnection({ url });
+  const connection = new MongoConnection({ url, schemaSetup: SchemaSetup.MigrateOnStart });
   await connection.onInit();
   return connection;
 }
@@ -70,16 +71,17 @@ afterAll(async () => {
 
 /**
  * Every document of the stores' collections (and the tests' own) removed: a contract case's reset —
- * the ledger's mark seeded again, as a new database has it (agbossjs/agboss#798).
+ * the ledger's mark seeded again, as a new database has it (agbossjs/agboss#798), the schema's
+ * version kept (agbossjs/agboss#891: the database stays migrated).
  */
 export async function emptyAll(url: string, extra: readonly string[] = []): Promise<void> {
   const client = resetClients.get(url) ?? new MongoClient(url);
   resetClients.set(url, client);
   const db = client.db();
   await Promise.all(
-    [...Object.values(Collections), ...extra].map((name) =>
-      db.collection(name).deleteMany({}, { writeConcern: { w: "majority" } }),
-    ),
+    [...Object.values(Collections), ...extra]
+      .filter((name) => name !== Collections.SchemaVersion)
+      .map((name) => db.collection(name).deleteMany({}, { writeConcern: { w: "majority" } })),
   );
   await seedLedgerMark(db);
 }

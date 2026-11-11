@@ -26,6 +26,9 @@
   "engines": {
     "node": ">=22.13"
   },
+  "bin": {
+    "agboss-mongodb": "bin/agboss-mongodb.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -35,6 +38,7 @@
     }
   },
   "files": [
+    "bin",
     "dist",
     "README.md",
     "LICENSE",

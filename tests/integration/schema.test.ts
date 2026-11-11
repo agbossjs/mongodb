@@ -6,9 +6,10 @@ import { MongoClient } from "mongodb";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   Collections,
-  MongoCollationError,
+  MongoCollationNotSimpleError,
   MongoConnection,
   MongoExecutionTreeRepository,
+  migrateMongodb,
 } from "../../src/index.js";
 import { dropDatabase, openConnection, urlOnDatabase } from "../support/database.js";
 import { freshDatabaseName, REPLICA_SET_URL } from "../support/server.js";
@@ -27,7 +28,7 @@ const freshUrl = (): string => {
 };
 
 describe("agbossjs/agboss#527: the stores' collections and their collation", () => {
-  it("the start makes every collection with the simple collation; a second start changes nothing", async () => {
+  it("the migration makes every collection with the simple collation; a second start changes nothing", async () => {
     const url = freshUrl();
     const connection = await openConnection(url);
     try {
@@ -58,7 +59,7 @@ describe("agbossjs/agboss#527: the stores' collections and their collation", () 
     }
   });
 
-  it("a stores' collection made with a case-insensitive collation is MongoCollationError at start", async () => {
+  it("a stores' collection made with a case-insensitive collation is MongoCollationNotSimpleError at start and at migrate", async () => {
     const url = freshUrl();
     const client = new MongoClient(url);
     try {
@@ -68,12 +69,13 @@ describe("agbossjs/agboss#527: the stores' collections and their collation", () 
       const connection = new MongoConnection({ url });
       const refused = connection.onInit();
 
-      await expect(refused).rejects.toThrow(MongoCollationError);
+      await expect(refused).rejects.toThrow(MongoCollationNotSimpleError);
       await expect(refused).rejects.toMatchObject({
         code: "mongodb.collation-not-simple",
         collections: [Collections.FencedEffectResults],
       });
       await connection.onDestroy();
+      await expect(migrateMongodb({ url })).rejects.toThrow(MongoCollationNotSimpleError);
     } finally {
       await client.close();
     }

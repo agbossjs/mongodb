@@ -27,49 +27,40 @@ Dependencies: the official `mongodb` driver (7.x), `zod`.
 
 ```ts no-check: needs the package's build
 import { Application } from "@agboss/core";
-import {
-  MongoA2ADirectMessageRepository,
-  MongoA2ATaskRepository,
-  MongoCheckpointSaver,
-  MongoChildExecutionQueueRepository,
-  MongoCostLedgerRepository,
-  MongoExecutionHistoryRepository,
-  MongoExecutionAuditLogRepository,
-  MongoExecutionLeaseRepository,
-  MongoExecutionRecordRepository,
-  MongoExecutionTreeRepository,
-  MongoFencedEffectRepository,
-  MongoMeshRequestRepository,
-  MongoOutboundCallRepository,
-  MongoPausedExecutionRepository,
-  MongoRateLimitRepository,
-} from "@agboss/mongodb";
+import { MONGODB_STORES } from "@agboss/mongodb";
 
 @Application({
   name: "desk",
   version: "1.0.0",
   environment: AppEnvironment,
   workflows: [DeskWorkflow],
-  providers: [
-    MongoA2ADirectMessageRepository, // direct A2A replies: a resend to another pod gets the same reply
-    MongoA2ATaskRepository, // A2A tasks: a message resent to another pod gets the same task
-    MongoCheckpointSaver,
-    MongoChildExecutionQueueRepository,
-    MongoCostLedgerRepository,
-    MongoExecutionHistoryRepository,
-    MongoExecutionAuditLogRepository,
-    MongoExecutionLeaseRepository, // who moves a tree, fenced by epoch
-    MongoExecutionRecordRepository,
-    MongoExecutionTreeRepository,
-    MongoFencedEffectRepository, // with MongoExecutionLeaseRepository: one transaction
-    MongoMeshRequestRepository,
-    MongoOutboundCallRepository, // with MongoExecutionLeaseRepository: one transaction
-    MongoPausedExecutionRepository,
-    MongoRateLimitRepository,
-  ],
+  providers: [...MONGODB_STORES], // every store below; `agboss describe` still names each one
 })
 export class DeskApplication {}
 ```
+
+`MONGODB_STORES` (agbossjs/agboss#891) is every store of the table below. `MONGODB_DURABLE_STORES`
+is the same without the coordination stores (leases, the child queue, rate limits) and the two
+that check the lease in their own transaction (fenced effects, outbound calls): what an application
+lists beside `@agboss/redis`'s `REDIS_COORDINATION_STORES` — the Redis leases keep their execution
+ids here, `provide(EXECUTION_ID_STORE, MongoExecutionLeaseRepository)`:
+
+```ts no-check: needs the packages' build
+import { EXECUTION_ID_STORE, provide } from "@agboss/core";
+import { MONGODB_DURABLE_STORES, MongoExecutionLeaseRepository } from "@agboss/mongodb";
+import { REDIS_COORDINATION_STORES } from "@agboss/redis";
+
+// @Application({ …,
+providers: [
+  ...MONGODB_DURABLE_STORES,
+  ...REDIS_COORDINATION_STORES,
+  provide(EXECUTION_ID_STORE, MongoExecutionLeaseRepository), // under the token only: no second lease store
+],
+```
+
+On Redis leases an application lists no fenced-effect or outbound-call store: their write checks
+the lease in its own transaction, and assembly refuses one of another backend
+(`[application.store-backend-mismatch]`).
 
 | Store                                | How it is atomic                                                                                                                                                                | Collections                                                                                |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -124,25 +115,49 @@ export class AppEnvironment {
   mongodbUrl!: Secret; // mongodb://h1,h2,h3/<database>?replicaSet=rs0 — secret("MONGODB_URL")
   mongodbDatabase?: string; // default: the URL's database, else "agboss"
   mongodbTransactionReadConcern?: string; // "snapshot" (default) or "majority"
+  mongodbSchemaSetup?: SchemaSetup; // SchemaSetup.Check (default) or SchemaSetup.MigrateOnStart
 }
 ```
 
 `MongoConnection` holds one `MongoClient` per application instance. At start (`onInit`) it requires
-a replica set or a sharded cluster, then makes the stores' collections and indexes (idempotent:
-every instance runs it, nothing to migrate) with the **simple collation**.
+a replica set or a sharded cluster (`requireSupportedTopology()`; `topology()` only reports it),
+then checks the schema. A failed start closes the client; the next `onInit` tries again.
+
+## 3. The schema: versioned, migrated explicitly
+
+The stores' collections (with the **simple collation**), their indexes and the ledger's pruning mark
+are the schema, version 1, recorded in `agboss_schema` (`{ _id: "agboss", version }`,
+agbossjs/agboss#891). It is migrated explicitly, like `@agboss/postgres`'s — a Kubernetes Job before
+the pods roll out:
+
+```sh
+npx agboss-mongodb migrate [--database <name>]   # with MONGODB_URL set in the environment (a Secret in the Job)
+# applied 0001_stores (agboss) — a second run: nothing to apply: agboss is at version 1
+```
+
+or `migrateMongodb({ url, database?, signal? })` from a script. `--url <url>` works too, but puts the
+URL — its credentials — in the process list and shell history: prefer `MONGODB_URL`. No output or
+error of the command prints the URL. Idempotent: concurrent runs end in
+one schema, a run after them applies nothing; exit code 0 when current, 1 when the run failed, 2 for
+a wrong command line. A start (`SchemaSetup.Check`, the default — `SchemaSetup` is the core's, shared
+with `@agboss/postgres`, re-exported here) creates nothing, so the application's pods need no right
+to change the schema: a database never migrated, an older one or one a stores' collection was
+dropped from is `MongoSchemaMissingError` (`applied`, `expected`, `collections`), one a newer
+`@agboss/mongodb` migrated `MongoSchemaTooNewError` (deploy that version: migrations are not rolled
+back). `mongodbSchemaSetup: SchemaSetup.MigrateOnStart` makes each start migrate first instead.
 
 ## Required database settings
 
 The connection refuses to start on anything weaker — each with a named error, each tested:
 
-| Setting                | Required                                                            | Otherwise                                                                    |
-| ---------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Deployment             | a replica set (one node for development) or a sharded cluster       | `MongoReplicaSetRequiredError`                                               |
-| Write concern          | `w=majority`, `journal=true` (set by the connection)                | `MongoConcernTooWeakError` for `w=1`, `w=0`, `w=<n>`, a tag, `journal=false` |
-| Read concern           | `majority` outside transactions; `snapshot` (or `majority`) in them | `MongoConcernTooWeakError` for `local`, `available`                          |
-| Read preference        | `primary`                                                           | `MongoConcernTooWeakError`                                                   |
-| Retryable writes       | on (the driver's default; set by the connection)                    | `MongoConcernTooWeakError` for `retryWrites=false`                           |
-| The stores' collations | simple (binary): `Zoë-17`, `Zoe-17` and `zoe-17` are three keys     | `MongoCollationError` naming the collection                                  |
+| Setting                | Required                                                            | Otherwise                                                                |
+| ---------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Deployment             | a replica set (one node for development) or a sharded cluster       | `MongoDeploymentError` (`mongodb.deployment-unsupported`)                |
+| Write concern          | `w=majority`, `journal=true` (set by the connection)                | `MongoDurabilityError` for `w=1`, `w=0`, `w=<n>`, a tag, `journal=false` |
+| Read concern           | `majority` outside transactions; `snapshot` (or `majority`) in them | `MongoDurabilityError` for `local`, `available`                          |
+| Read preference        | `primary`                                                           | `MongoDurabilityError`                                                   |
+| Retryable writes       | on (the driver's default; set by the connection)                    | `MongoDurabilityError` for `retryWrites=false`                           |
+| The stores' collations | simple (binary): `Zoë-17`, `Zoe-17` and `zoe-17` are three keys     | `MongoCollationNotSimpleError` naming the collection                     |
 
 Why: a write acknowledged by fewer than a majority is rolled back when the primary fails over —
 an epoch could go back and two workers would own one tree (shown by `tests/integration/failover.test.ts`);

@@ -8,13 +8,26 @@ import { AGBossError } from "@agboss/core";
  */
 
 /**
+ * The command an operator runs to migrate, as an error message names it: the URL (its credentials)
+ * read from `MONGODB_URL`, never on the command line, where the process list and logs would show it.
+ */
+export const MIGRATE_COMMAND = "npx agboss-mongodb migrate";
+
+/**
  * The environment does not give what the MongoDB stores need: `mongodbUrl` (a `Secret` holding a
- * MongoDB connection string), and when set, `mongodbDatabase` (a name) and
- * `mongodbTransactionReadConcern` (`snapshot` or `majority`). The URL itself is never printed.
+ * MongoDB connection string), and when set, `mongodbDatabase` (a name),
+ * `mongodbTransactionReadConcern` (`snapshot` or `majority`) and `mongodbSchemaSetup` (`check` or
+ * `migrate-on-start`). The URL itself is never printed.
  */
 export class MongoSettingsError extends AGBossError {
   static override readonly code = "mongodb.settings-invalid" as const;
   override name = "MongoSettingsError";
+}
+
+/** What `MongoDurabilityError` found: each weak setting of the connection string. */
+export interface MongoDurabilityErrorOptions {
+  /** Each weak setting found, with why it breaks a guarantee and what to use instead. */
+  readonly problems: readonly string[];
 }
 
 /**
@@ -24,17 +37,17 @@ export class MongoSettingsError extends AGBossError {
  * `primary`. The application does not start — remove the option from `mongodbUrl`; the
  * connection sets `w=majority`, `journal=true`, read concern `majority` itself.
  */
-export class MongoConcernTooWeakError extends AGBossError {
-  static override readonly code = "mongodb.concern-too-weak" as const;
-  override name = "MongoConcernTooWeakError";
+export class MongoDurabilityError extends AGBossError {
+  static override readonly code = "mongodb.durability-insufficient" as const;
+  override name = "MongoDurabilityError";
   /** Each weak setting found, with why it breaks a guarantee and what to use instead. */
   readonly problems: readonly string[];
 
-  constructor(problems: readonly string[]) {
+  constructor(options: MongoDurabilityErrorOptions) {
     super(
-      `the MongoDB connection's concerns are too weak for the stores' guarantees — ${problems.join("; ")}`,
+      `the MongoDB connection's concerns are too weak for the stores' guarantees — ${options.problems.join("; ")}`,
     );
-    this.problems = problems;
+    this.problems = options.problems;
   }
 }
 
@@ -44,9 +57,9 @@ export class MongoConcernTooWeakError extends AGBossError {
  * set (a single-node one is enough for development: `mongod --replSet rs0` and `rs.initiate()`),
  * or a sharded cluster.
  */
-export class MongoReplicaSetRequiredError extends AGBossError {
-  static override readonly code = "mongodb.replica-set-required" as const;
-  override name = "MongoReplicaSetRequiredError";
+export class MongoDeploymentError extends AGBossError {
+  static override readonly code = "mongodb.deployment-unsupported" as const;
+  override name = "MongoDeploymentError";
 
   constructor() {
     super(
@@ -55,23 +68,103 @@ export class MongoReplicaSetRequiredError extends AGBossError {
   }
 }
 
+/** What `MongoCollationNotSimpleError` found: the collections of another collation. */
+export interface MongoCollationNotSimpleErrorOptions {
+  /** The collections found with another collation. */
+  readonly collections: readonly string[];
+}
+
 /**
  * A collection of the stores exists with a collation other than the simple (binary) one: its unique
  * keys would compare text by a locale's rules — `Zoë-17` and `zoe-17` one business key, one payment
- * replayed for another. The application does not start; drop the collection (or rename it away) so
- * the connection creates it with the simple collation.
+ * replayed for another. The application does not start and the migration applies nothing; drop the
+ * collection (or rename it away) and migrate, which creates it with the simple collation.
  */
-export class MongoCollationError extends AGBossError {
+export class MongoCollationNotSimpleError extends AGBossError {
   static override readonly code = "mongodb.collation-not-simple" as const;
-  override name = "MongoCollationError";
+  override name = "MongoCollationNotSimpleError";
   /** The collections found with another collation. */
   readonly collections: readonly string[];
 
-  constructor(collections: readonly string[]) {
+  constructor(options: MongoCollationNotSimpleErrorOptions) {
+    const { collections } = options;
     super(
-      `the MongoDB stores compare keys byte for byte, but ${collections.join(", ")} ${collections.length === 1 ? "has" : "have"} a non-simple collation — drop ${collections.length === 1 ? "it" : "them"}, the connection creates the stores' collections with the simple collation`,
+      `the MongoDB stores compare keys byte for byte, but ${collections.join(", ")} ${collections.length === 1 ? "has" : "have"} a non-simple collation — drop ${collections.length === 1 ? "it" : "them"} and migrate (\`${MIGRATE_COMMAND}\` with MONGODB_URL set in the environment), which creates the stores' collections with the simple collation`,
     );
     this.collections = collections;
+  }
+}
+
+/** What a schema check found: the version the database is at, the one this package needs. */
+export interface MongoSchemaMissingErrorOptions {
+  /** The schema version of the database (`agboss_schema`); `undefined`: never migrated. */
+  readonly applied: number | undefined;
+  /** The schema version of this package. */
+  readonly expected: number;
+  /** The stores' collections missing although the version is current (dropped by hand). */
+  readonly collections?: readonly string[];
+}
+
+/**
+ * The database lacks this package's schema — never migrated, migrated by an older package, or a
+ * collection of the stores dropped since — and the environment does not set `mongodbSchemaSetup:
+ * SchemaSetup.MigrateOnStart`: the application does not start. Run the migration
+ * (`agboss-mongodb migrate`, a Kubernetes Job) or set the setting.
+ */
+export class MongoSchemaMissingError extends AGBossError {
+  static override readonly code = "mongodb.schema-missing" as const;
+  override name = "MongoSchemaMissingError";
+  /** The schema version of the database; `undefined`: never migrated. */
+  readonly applied: number | undefined;
+  /** The schema version of this package. */
+  readonly expected: number;
+  /** The stores' collections missing (empty when the version is what is missing). */
+  readonly collections: readonly string[];
+
+  constructor(options: MongoSchemaMissingErrorOptions) {
+    const collections = options.collections ?? [];
+    const found =
+      collections.length > 0
+        ? `is at version ${String(options.applied)} but lacks ${collections.join(", ")}`
+        : options.applied === undefined
+          ? "was never migrated"
+          : `is at version ${String(options.applied)}`;
+    super(
+      `the MongoDB schema ${found}, this package needs version ${String(options.expected)}: run \`${MIGRATE_COMMAND}\` with MONGODB_URL set in the environment (or set mongodbSchemaSetup: SchemaSetup.MigrateOnStart in the environment)`,
+    );
+    this.applied = options.applied;
+    this.expected = options.expected;
+    this.collections = collections;
+  }
+}
+
+/** What `MongoSchemaTooNewError` found: the database's version and this package's. */
+export interface MongoSchemaTooNewErrorOptions {
+  /** The schema version of the database. */
+  readonly applied: number;
+  /** The schema version of this package, lower. */
+  readonly expected: number;
+}
+
+/**
+ * The database was migrated by a newer version of this package than the one running: an
+ * application rolled back over a migrated database. Deploy the newer application again — the
+ * migrations are never rolled back.
+ */
+export class MongoSchemaTooNewError extends AGBossError {
+  static override readonly code = "mongodb.schema-too-new" as const;
+  override name = "MongoSchemaTooNewError";
+  /** The schema version of the database. */
+  readonly applied: number;
+  /** The schema version of this package. */
+  readonly expected: number;
+
+  constructor(options: MongoSchemaTooNewErrorOptions) {
+    super(
+      `the MongoDB schema is at version ${String(options.applied)}, newer than this package's ${String(options.expected)}: a newer @agboss/mongodb migrated it — deploy that version, the migrations are not rolled back`,
+    );
+    this.applied = options.applied;
+    this.expected = options.expected;
   }
 }
 

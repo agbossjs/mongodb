@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_DATABASE, MongoSettingsError, TransactionReadConcern } from "../../src/index.js";
+import { SchemaSetup } from "@agboss/core/stores";
+import {
+  DEFAULT_DATABASE,
+  MongoSettingsError,
+  MongoTransactionReadConcern,
+} from "../../src/index.js";
 import { databaseOfUrl, settingsOfEnvironment } from "../../src/connection/settings.js";
 import { revealing } from "../support/application-context.js";
 
@@ -25,8 +30,20 @@ describe("the environment fields of the MongoDB stores", () => {
     expect(settings).toEqual({
       url: URL,
       database: "desk",
-      transactionReadConcern: TransactionReadConcern.Majority,
+      transactionReadConcern: MongoTransactionReadConcern.Majority,
     });
+  });
+
+  it.each([
+    ["check", SchemaSetup.Check],
+    ["migrate-on-start", SchemaSetup.MigrateOnStart],
+  ])("agbossjs/agboss#891 AC1: mongodbSchemaSetup %s is read when set", (value, setup) => {
+    const settings = settingsOfEnvironment({
+      mongodbUrl: revealing(URL),
+      mongodbSchemaSetup: value,
+    });
+
+    expect(settings.schemaSetup).toBe(setup);
   });
 
   it("snapshot is the other transaction read concern", () => {
@@ -35,7 +52,7 @@ describe("the environment fields of the MongoDB stores", () => {
       mongodbTransactionReadConcern: "snapshot",
     });
 
-    expect(settings.transactionReadConcern).toBe(TransactionReadConcern.Snapshot);
+    expect(settings.transactionReadConcern).toBe(MongoTransactionReadConcern.Snapshot);
   });
 
   it("a missing mongodbUrl fails, naming the field and how to declare it", () => {
@@ -69,6 +86,8 @@ describe("the environment fields of the MongoDB stores", () => {
     [{ mongodbTransactionReadConcern: "local" }, /must be snapshot or majority/],
     [{ mongodbTransactionReadConcern: "available" }, /must be snapshot or majority/],
     [{ mongodbTransactionReadConcern: true }, /must be snapshot or majority/],
+    [{ mongodbSchemaSetup: "ensure" }, /mongodbSchemaSetup must be check or migrate-on-start/],
+    [{ mongodbSchemaSetup: true }, /mongodbSchemaSetup must be check or migrate-on-start/],
   ])("a mistyped field fails, naming it: %o", (fields, message) => {
     expect(() => settingsOfEnvironment({ mongodbUrl: revealing(URL), ...fields })).toThrow(message);
   });

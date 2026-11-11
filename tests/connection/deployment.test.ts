@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MongoReplicaSetRequiredError, MongoTopology } from "../../src/index.js";
-import { requireTransactionalDeployment, topologyOf } from "../../src/connection/deployment.js";
+import { MongoDeploymentError, MongoTopology } from "../../src/index.js";
+import { supportedTopologyOf, topologyOf } from "../../src/connection/deployment.js";
 
 /** Fakes of the server's `hello` replies (the fields the check reads, and some it ignores). */
 const REPLICA_SET_PRIMARY = {
@@ -48,27 +48,27 @@ describe("topologyOf: the deployment a hello reply describes", () => {
   );
 });
 
-describe("requireTransactionalDeployment: the start check", () => {
+describe("supportedTopologyOf: the start check", () => {
   it("a replica set passes", () => {
-    expect(requireTransactionalDeployment(REPLICA_SET_PRIMARY)).toBe(MongoTopology.ReplicaSet);
+    expect(supportedTopologyOf(REPLICA_SET_PRIMARY)).toBe(MongoTopology.ReplicaSet);
   });
 
   it("a sharded cluster passes", () => {
-    expect(requireTransactionalDeployment(MONGOS)).toBe(MongoTopology.Sharded);
+    expect(supportedTopologyOf(MONGOS)).toBe(MongoTopology.Sharded);
   });
 
-  it("a standalone fails with MongoReplicaSetRequiredError, saying how to start a replica set", () => {
-    expect(() => requireTransactionalDeployment(STANDALONE)).toThrow(MongoReplicaSetRequiredError);
-    expect(() => requireTransactionalDeployment(STANDALONE)).toThrow(
+  it("a standalone fails with MongoDeploymentError, saying how to start a replica set", () => {
+    expect(() => supportedTopologyOf(STANDALONE)).toThrow(MongoDeploymentError);
+    expect(() => supportedTopologyOf(STANDALONE)).toThrow(
       /standalone mongod: the stores need a replica set .* --replSet and run rs\.initiate\(\)/,
     );
   });
 
   it("the error has its stable code and name", () => {
-    const error = new MongoReplicaSetRequiredError();
+    const error = new MongoDeploymentError();
 
-    expect(error.code).toBe("mongodb.replica-set-required");
-    expect(MongoReplicaSetRequiredError.code).toBe("mongodb.replica-set-required");
-    expect(error.name).toBe("MongoReplicaSetRequiredError");
+    expect(error.code).toBe("mongodb.deployment-unsupported");
+    expect(MongoDeploymentError.code).toBe("mongodb.deployment-unsupported");
+    expect(error.name).toBe("MongoDeploymentError");
   });
 });
