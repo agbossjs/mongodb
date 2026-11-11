@@ -28,6 +28,7 @@ Dependencies: the official `mongodb` driver (7.x), `zod`.
 ```ts no-check: needs the package's build
 import { Application } from "@agboss/core";
 import {
+  MongoA2ADirectMessageRepository,
   MongoA2ATaskRepository,
   MongoCheckpointSaver,
   MongoChildExecutionQueueRepository,
@@ -50,6 +51,7 @@ import {
   environment: AppEnvironment,
   workflows: [DeskWorkflow],
   providers: [
+    MongoA2ADirectMessageRepository, // direct A2A replies: a resend to another pod gets the same reply
     MongoA2ATaskRepository, // A2A tasks: a message resent to another pod gets the same task
     MongoCheckpointSaver,
     MongoChildExecutionQueueRepository,
@@ -69,28 +71,38 @@ import {
 export class DeskApplication {}
 ```
 
-| Store                                | How it is atomic                                                                                                                                                               | Collections                                                                                |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `MongoExecutionLeaseRepository`      | one conditional single-document command per operation; time `$$NOW`                                                                                                            | `agboss_execution_leases`, `agboss_execution_ids`                                          |
-| `MongoFencedEffectRepository`        | **a transaction**: the lease locked by a write, the mark, the key's lock, the result, the work                                                                                 | `agboss_fenced_effect_marks`, `…_results`, `agboss_fenced_key_locks`                       |
-| `MongoOutboundCallRepository`        | **a transaction** per fenced method: the lease and mark, then one compare-and-set                                                                                              | `agboss_outbound_calls`                                                                    |
-| `MongoExecutionAuditLogRepository`   | one insert (an append), ordered by a sequence                                                                                                                                  | `agboss_execution_lease_events`                                                            |
-| `MongoExecutionRecordRepository`     | one command per write; `completeIfStatus` a compare-and-set                                                                                                                    | `agboss_threads`, `agboss_execution_records`, `…_scores`, `…_summaries`, `…_pause_answers` |
-| `MongoExecutionTreeRepository`       | an upsert with `$setOnInsert`                                                                                                                                                  | `agboss_execution_tree_keys`                                                               |
-| `MongoPausedExecutionRepository`     | every move of a pending pause a compare-and-set on its status                                                                                                                  | `agboss_paused_executions`, `agboss_pauses`                                                |
-| `MongoChildExecutionQueueRepository` | a claim is one `findOneAndUpdate`; a save one upsert                                                                                                                           | `agboss_child_execution_queue`                                                             |
-| `MongoCheckpointSaver`               | one replace per checkpoint; a task's writes in one transaction                                                                                                                 | `agboss_checkpoints`, `agboss_checkpoint_writes`                                           |
-| `MongoCostLedgerRepository`          | **a transaction** of `$inc`s: every counter of a save, or none; the entries' pruning mark read in it, a prune raising it and deleting in one transaction (agbossjs/agboss#771) | `agboss_cost_counters`, `agboss_cost_max_spend`, `agboss_cost_entries`                     |
-| `MongoExecutionHistoryRepository`    | a replace with upsert                                                                                                                                                          | `agboss_execution_history`                                                                 |
-| `MongoRateLimitRepository`           | one update pipeline on the key's single document (slots, windows)                                                                                                              | `agboss_rate_limit_slots`, `…_windows`, `…_pauses`                                         |
-| `MongoMeshRequestRepository`         | an upsert with `$setOnInsert`                                                                                                                                                  | `agboss_mesh_requests`                                                                     |
-| `MongoA2ATaskRepository`             | **a transaction** to accept a message with its task (agbossjs/agboss#824); a status a compare-and-set on its version                                                           | `agboss_a2a_tasks`, `agboss_a2a_messages`                                                  |
+| Store                                | How it is atomic                                                                                                                                                                | Collections                                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `MongoExecutionLeaseRepository`      | one conditional single-document command per operation; time `$$NOW`                                                                                                             | `agboss_execution_leases`, `agboss_execution_ids`                                          |
+| `MongoFencedEffectRepository`        | **a transaction**: the lease locked by a write, the mark, the key's lock, the result, the work                                                                                  | `agboss_fenced_effect_marks`, `…_results`, `agboss_fenced_key_locks`                       |
+| `MongoOutboundCallRepository`        | **a transaction** per fenced method: the lease and mark, then one compare-and-set                                                                                               | `agboss_outbound_calls`                                                                    |
+| `MongoExecutionAuditLogRepository`   | one insert (an append), ordered by a sequence                                                                                                                                   | `agboss_execution_lease_events`                                                            |
+| `MongoExecutionRecordRepository`     | one command per write; `completeIfStatus` a compare-and-set                                                                                                                     | `agboss_threads`, `agboss_execution_records`, `…_scores`, `…_summaries`, `…_pause_answers` |
+| `MongoExecutionTreeRepository`       | an upsert with `$setOnInsert`                                                                                                                                                   | `agboss_execution_tree_keys`                                                               |
+| `MongoPausedExecutionRepository`     | every move of a pending pause a compare-and-set on its status                                                                                                                   | `agboss_paused_executions`, `agboss_pauses`                                                |
+| `MongoChildExecutionQueueRepository` | a claim is one `findOneAndUpdate`; a save one upsert                                                                                                                            | `agboss_child_execution_queue`                                                             |
+| `MongoCheckpointSaver`               | one replace per checkpoint; a task's writes in one transaction                                                                                                                  | `agboss_checkpoints`, `agboss_checkpoint_writes`                                           |
+| `MongoCostLedgerRepository`          | **a transaction** of `$inc`s: every counter of a save, or none; the entries' pruning mark read in it, a prune raising it and deleting in one transaction (agbossjs/agboss#771)  | `agboss_cost_counters`, `agboss_cost_max_spend`, `agboss_cost_entries`                     |
+| `MongoExecutionHistoryRepository`    | a replace with upsert                                                                                                                                                           | `agboss_execution_history`                                                                 |
+| `MongoRateLimitRepository`           | one update pipeline on the key's single document (slots, windows)                                                                                                               | `agboss_rate_limit_slots`, `…_windows`, `…_pauses`                                         |
+| `MongoMeshRequestRepository`         | an upsert with `$setOnInsert`                                                                                                                                                   | `agboss_mesh_requests`                                                                     |
+| `MongoA2ATaskRepository`             | **a transaction** to accept a message with its task (agbossjs/agboss#824); a status a compare-and-set on its version                                                            | `agboss_a2a_tasks`, `agboss_a2a_messages`                                                  |
+| `MongoA2ADirectMessageRepository`    | **a transaction** to accept a message with its id's claim among the tasks' messages (agbossjs/agboss#860); a reply, a takeover, a removal each a compare-and-set on its attempt | `agboss_a2a_direct_messages`, `agboss_a2a_messages`                                        |
 
 **A2A tasks are shared** (agbossjs/agboss#824). `MongoA2ATaskRepository` keeps the tasks an
 application serves over A2A on the replica set: the same `messageId` sent to two pods at once starts
 one execution and both answer the same task; `GetTask` and `ListTasks` read any pod's tasks. An
 application that serves A2A on `MongoExecutionLeaseRepository` without it does not assemble
 (`[a2a.task-store-not-shared]`): each pod's in-memory default would run a resent message again.
+
+**Direct replies are shared** (agbossjs/agboss#860). A skill exposed with `reply: A2AReply.Message`
+answers with a `Message`, no task; `MongoA2ADirectMessageRepository` keeps its replies for
+`retention.a2aMessages` (default 15 minutes): a resend to any pod gets the same reply, a concurrent
+one waits for it, the skill runs once. Each message's id is claimed in `agboss_a2a_messages`, the
+task store's messages, as a claim of no task (`taskId` `""`), in the same transaction as its
+document — so a task message and a direct message never share an id. List it beside
+`MongoA2ATaskRepository`; without it an application exposing a direct-reply skill does not
+assemble (`[a2a.message-store-not-shared]`).
 
 **One backend.** The lease, fenced-effect and outbound-call stores declare
 `static store = { backend: "mongodb" }` (agbossjs/agboss#526, #825): list the three together. A

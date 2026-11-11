@@ -64,6 +64,11 @@ export const Collections = {
   A2ATasks: "agboss_a2a_tasks",
   /** One document per accepted A2A message, `_id` its tenant, owner and message id (#824). */
   A2AMessages: "agboss_a2a_messages",
+  /**
+   * One document per accepted direct A2A message (agbossjs/agboss#860), `_id` its tenant, owner and
+   * message id — its id claimed in `A2AMessages`, a claim of no task (`taskId` `""`).
+   */
+  A2ADirectMessages: "agboss_a2a_direct_messages",
   /** LangGraph's checkpoints. */
   Checkpoints: "agboss_checkpoints",
   /** LangGraph's pending writes of a checkpoint. */
