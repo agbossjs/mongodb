@@ -1,18 +1,26 @@
 import {
   ApplicationContext,
   Clock,
-  DuplicateThreadIdError,
+  ThreadIdsExhaustedError,
   ExecutionRecordRepository,
   ExecutionRecordStatus,
   IdGenerator,
-  idGeneratorNameOf,
   Injectable,
+  type ConfigSnapshot,
+  type NewSummary,
+  type NewThread,
+  type NewTurn,
+  type PauseAnswerRecord,
+  type Summary,
+  type Turn,
+  type TurnOutcome,
+  type VersionScore,
 } from "@agboss/core";
+import { idGeneratorNameOf } from "@agboss/core/stores";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { pauseAnswerOfJson } from "./framework-json.js";
 import * as memory from "./records/record-memory.js";
 import * as reads from "./records/record-reads.js";
-import type * as rows from "./records/record-documents.js";
 import * as scores from "./records/record-scores.js";
 import * as writes from "./records/record-writes.js";
 
@@ -49,10 +57,10 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   /**
    * A new thread (agbossjs/agboss#550): a caller's own id is kept as it is (the first one keeps it);
    * a minted one the tenant has already — an `IdGenerator` that repeats its ids — is never handed
-   * out: the next one is minted, at most `MINTED_THREAD_TRIES` times, then `DuplicateThreadIdError`
+   * out: the next one is minted, at most `MINTED_THREAD_TRIES` times, then `ThreadIdsExhaustedError`
    * (agbossjs/agboss#613).
    */
-  async createThread(thread: rows.NewThreadRecord): Promise<string> {
+  async createThread(thread: NewThread): Promise<string> {
     if (thread.threadId !== undefined) {
       await writes.createThread(this.connection.db, thread, thread.threadId, this.clock.now());
       return thread.threadId;
@@ -62,7 +70,10 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
       if (await writes.createThread(this.connection.db, thread, id, this.clock.now())) return id;
     }
     // agbossjs/agboss#613: the core's typed refusal, naming the project's generator class
-    throw new DuplicateThreadIdError(idGeneratorNameOf(this.idGenerator), MINTED_THREAD_TRIES);
+    throw new ThreadIdsExhaustedError({
+      generator: idGeneratorNameOf(this.idGenerator),
+      tries: MINTED_THREAD_TRIES,
+    });
   }
   async hasThread(workflow: string, tenantId: string, threadId: string): Promise<boolean> {
     return (await this.threadOwner(workflow, tenantId, threadId)) !== undefined;
@@ -74,43 +85,35 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   ): Promise<{ readonly owner: string | undefined } | undefined> {
     return writes.threadOwnerOf(this.connection.db, workflow, tenantId, threadId);
   }
-  append(record: rows.NewRecord): Promise<rows.StoredRecord> {
+  append(record: NewTurn): Promise<Turn> {
     return writes.appendRecord(this.connection.db, record, this.clock.now());
   }
-  async complete(id: string, outcome: rows.RecordOutcome): Promise<void> {
+  async complete(id: string, outcome: TurnOutcome): Promise<void> {
     await writes.completeRecord(this.connection.db, id, outcome);
   }
   completeIfStatus(
     id: string,
     expected: ExecutionRecordStatus,
-    outcome: rows.RecordOutcome,
+    outcome: TurnOutcome,
   ): Promise<boolean> {
     return writes.completeRecord(this.connection.db, id, outcome, expected);
   }
-  lastTerns(tenantId: string, threadId: string, limit: number): Promise<rows.StoredRecord[]> {
+  lastTerns(tenantId: string, threadId: string, limit: number): Promise<Turn[]> {
     return reads.lastRecordsOf(this.connection.db, tenantId, threadId, limit);
   }
-  findByTenantIdAndRunId(tenantId: string, runId: string): Promise<rows.StoredRecord | undefined> {
+  findByTenantIdAndRunId(tenantId: string, runId: string): Promise<Turn | undefined> {
     return reads.recordByRunIdOf(this.connection.db, tenantId, runId);
   }
-  byIds(ids: readonly string[]): Promise<rows.StoredRecord[]> {
+  byIds(ids: readonly string[]): Promise<Turn[]> {
     return reads.recordsByIds(this.connection.db, ids);
   }
-  findByStatus(
-    status: ExecutionRecordStatus,
-    limit: number,
-    after?: string,
-  ): Promise<rows.StoredRecord[]> {
+  findByStatus(status: ExecutionRecordStatus, limit: number, after?: string): Promise<Turn[]> {
     return reads.recordsByStatus(this.connection.db, status, limit, after);
   }
-  byVersion(workflow: string, promptVersion: string, limit: number): Promise<rows.StoredRecord[]> {
+  byVersion(workflow: string, promptVersion: string, limit: number): Promise<Turn[]> {
     return reads.recordsByVersion(this.connection.db, workflow, promptVersion, limit);
   }
-  unscored(
-    workflow: string,
-    promptVersion: string | undefined,
-    limit: number,
-  ): Promise<rows.StoredRecord[]> {
+  unscored(workflow: string, promptVersion: string | undefined, limit: number): Promise<Turn[]> {
     return reads.unscoredRecords(this.connection.db, workflow, promptVersion, limit);
   }
   saveScore(recordId: string, judge: string, score: number): Promise<void> {
@@ -119,7 +122,7 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   meanScore(recordIds: readonly string[]): Promise<number | null> {
     return scores.meanScoreOf(this.connection.db, recordIds);
   }
-  summary(workflow: string): Promise<rows.StoredVersionScore[]> {
+  summary(workflow: string): Promise<VersionScore[]> {
     return scores.versionScoresOf(this.connection.db, workflow);
   }
   rememberConfig(
@@ -131,27 +134,22 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     const now = this.clock.now();
     return scores.rememberConfig(this.connection.db, workflow, version, hash, snapshot, now);
   }
-  configSnapshots(workflow: string, version: string): Promise<rows.StoredConfigSnapshot[]> {
+  configSnapshots(workflow: string, version: string): Promise<ConfigSnapshot[]> {
     return scores.configSnapshotsOf(this.connection.db, workflow, version);
   }
-  recentOriginals(workflow: string, limit: number): Promise<rows.StoredRecord[]> {
+  recentOriginals(workflow: string, limit: number): Promise<Turn[]> {
     return reads.recentOriginalRecords(this.connection.db, workflow, limit);
   }
-  uncovered(tenantId: string, threadId: string, compaction: string): Promise<rows.StoredRecord[]> {
+  uncovered(tenantId: string, threadId: string, compaction: string): Promise<Turn[]> {
     return memory.uncoveredRecords(this.connection.db, tenantId, threadId, compaction);
   }
-  before(
-    tenantId: string,
-    threadId: string,
-    ternId: string,
-    limit: number,
-  ): Promise<rows.StoredRecord[]> {
+  before(tenantId: string, threadId: string, ternId: string, limit: number): Promise<Turn[]> {
     return memory.recordsBefore(this.connection.db, tenantId, threadId, ternId, limit);
   }
   turnNumber(tenantId: string, threadId: string, ternId: string): Promise<number> {
     return memory.turnNumberOf(this.connection.db, tenantId, threadId, ternId);
   }
-  addSummary(summary: rows.NewSummaryRecord): Promise<rows.StoredSummary> {
+  addSummary(summary: NewSummary): Promise<Summary> {
     return memory.addSummary(this.connection.db, summary, this.clock.now());
   }
   latestSummaries(
@@ -159,7 +157,7 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     threadId: string,
     compaction: string,
     limit: number,
-  ): Promise<rows.StoredSummary[]> {
+  ): Promise<Summary[]> {
     return memory.latestSummariesOf(this.connection.db, tenantId, threadId, compaction, limit);
   }
   summaryCount(tenantId: string, threadId: string, compaction: string): Promise<number> {
@@ -168,14 +166,14 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   savePauseAnswer(
     tenantId: string,
     rootExecutionId: string,
-    answer: rows.PauseAnswer,
+    answer: PauseAnswerRecord,
   ): Promise<void> {
     return writes.savePauseAnswer(this.connection.db, tenantId, rootExecutionId, answer);
   }
   async findPauseAnswersByTenantIdAndRootExecutionId(
     tenantId: string,
     rootExecutionId: string,
-  ): Promise<rows.PauseAnswer[]> {
+  ): Promise<PauseAnswerRecord[]> {
     const texts = await writes.pauseAnswerTextsOf(this.connection.db, tenantId, rootExecutionId);
     return texts.map(pauseAnswerOfJson);
   }

@@ -1,4 +1,5 @@
-import { OutboundCallLeaseState, type OutboundCallLease, type StoreClock } from "@agboss/core";
+import { type StoreClock } from "@agboss/core";
+import { OutboundCallLeaseState, type OutboundCallLease } from "@agboss/core/stores";
 import type { ClientSession, Db } from "mongodb";
 import { Collections } from "../../connection/collections.js";
 import { lockedLeaseOf } from "../fence.js";

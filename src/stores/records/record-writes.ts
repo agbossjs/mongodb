@@ -1,18 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type { ExecutionRecordStatus } from "@agboss/core";
+import type {
+  ExecutionRecordStatus,
+  NewThread,
+  NewTurn,
+  PauseAnswerRecord,
+  Turn,
+  TurnOutcome,
+} from "@agboss/core";
 import type { Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { DUPLICATE_KEY, hasCode, idOf } from "../keys.js";
 import { nextSequence } from "../sequence.js";
-import type {
-  NewRecord,
-  NewThreadRecord,
-  PauseAnswer,
-  RecordDocument,
-  RecordOutcome,
-  StoredRecord,
-} from "./record-documents.js";
+import type { RecordDocument } from "./record-documents.js";
 
 /** Threads, appended records, their completion (unconditional or compare-and-set) and the pause log. */
 
@@ -34,7 +34,7 @@ const PauseAnswerText = z.object({ record: z.string() });
  */
 export async function createThread(
   db: Db,
-  thread: NewThreadRecord,
+  thread: NewThread,
   id: string,
   now: Date,
 ): Promise<boolean> {
@@ -69,8 +69,8 @@ export async function threadOwnerOf(
 }
 
 /** Appends a record: a new id, the `Clock`'s time, its place the next number of the records' sequence. */
-export async function appendRecord(db: Db, record: NewRecord, now: Date): Promise<StoredRecord> {
-  const stored: StoredRecord = { ...record, id: randomUUID(), createdAt: now.toISOString() };
+export async function appendRecord(db: Db, record: NewTurn, now: Date): Promise<Turn> {
+  const stored: Turn = { ...record, id: randomUUID(), createdAt: now.toISOString() };
   const seq = await nextSequence(db, Collections.ExecutionRecords);
   const { id, createdAt, ...fields } = stored;
   await db
@@ -83,7 +83,7 @@ export async function appendRecord(db: Db, record: NewRecord, now: Date): Promis
 export async function completeRecord(
   db: Db,
   id: string,
-  outcome: RecordOutcome,
+  outcome: TurnOutcome,
   expected?: ExecutionRecordStatus,
 ): Promise<boolean> {
   const { replyWith, status, stopReason, route, steps, costUsd } = outcome;
@@ -105,7 +105,7 @@ export async function savePauseAnswer(
   db: Db,
   tenantId: string,
   rootExecutionId: string,
-  answer: PauseAnswer,
+  answer: PauseAnswerRecord,
 ): Promise<void> {
   const _id = idOf(tenantId, rootExecutionId, answer.step.idempotencyKey);
   const seq = await nextSequence(db, Collections.PauseAnswers);

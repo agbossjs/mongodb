@@ -1,9 +1,5 @@
-import {
-  effectKeyIdentityOf,
-  OutboundCallStatus,
-  type EffectKey,
-  type OutboundCallRecord,
-} from "@agboss/core";
+import { OutboundCallStatus, type EffectKey, type OutboundCallRecord } from "@agboss/core";
+import { effectKeyIdentityOf } from "@agboss/core/stores";
 import { z } from "zod";
 import { idOf } from "../keys.js";
 

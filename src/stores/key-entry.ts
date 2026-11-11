@@ -1,9 +1,5 @@
-import {
-  assertBusinessKey,
-  assertEffectName,
-  fingerprintErrorOf,
-  type EffectKey,
-} from "@agboss/core";
+import { type EffectKey } from "@agboss/core";
+import { assertBusinessKey, assertEffectName, fingerprintErrorOf } from "@agboss/core/stores";
 
 /**
  * A key checked at a fencing store's entry, before any command (agbossjs/agboss#508, #538, #825):

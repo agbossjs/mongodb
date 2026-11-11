@@ -93,12 +93,13 @@ application that serves A2A on `MongoExecutionLeaseRepository` without it does n
 (`[a2a.task-store-not-shared]`): each pod's in-memory default would run a resent message again.
 
 **One backend.** The lease, fenced-effect and outbound-call stores declare
-`static store = { backend: "mongodb" }` (agbossjs/agboss#526, #825): list the three together. A fenced effect's work
-gets the transaction — `{ session, db }` — and writes its business documents **with the session**;
-a write without it is outside the guarantee:
+`static store = { backend: "mongodb" }` (agbossjs/agboss#526, #825): list the three together. A
+component injects the application's `FencedEffects` (agbossjs/agboss#890), never this store's class. A
+fenced effect's work gets the transaction — `{ session, db }` — and writes its business documents
+**with the session**; a write without it is outside the guarantee:
 
 ```ts no-check: a fragment of a component
-await effects.saveResultIfAbsent(effectKeyOf(executionContext, "charge"), async ({ db, session }) => {
+await fencedEffects.runOnce(effectKeyOf(executionContext, "charge"), async ({ db, session }: MongoTransaction) => {
   await db.collection("charges").insertOne({ orderId, amount }, { session });
   return { receipt: orderId };
 });

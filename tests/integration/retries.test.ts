@@ -90,7 +90,7 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
     await failNext(["insert"], { errorCode: 112, errorLabels: ["TransientTransactionError"] });
     let runs = 0;
 
-    const outcome = await effects.saveResultIfAbsent(
+    const outcome = await effects.runOnce(
       keyOf("transient-1", lease?.token ?? 0),
       async ({ db, session }) => {
         runs += 1;
@@ -117,7 +117,7 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
     });
     let runs = 0;
 
-    const outcome = await effects.saveResultIfAbsent(
+    const outcome = await effects.runOnce(
       keyOf("unknown-1", lease?.token ?? 0),
       async ({ db, session }) => {
         runs += 1;
@@ -146,15 +146,15 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
     const charge = async ({
       db,
       session,
-    }: Parameters<Parameters<typeof effects.saveResultIfAbsent>[1]>[0]): Promise<{
+    }: Parameters<Parameters<typeof effects.runOnce>[1]>[0]): Promise<{
       receipt: string;
     }> => {
       await db.collection("retry_charges").insertOne({ root: "unknown-2" }, { session });
       return { receipt: "r1" };
     };
 
-    await expect(effects.saveResultIfAbsent(key, charge)).rejects.toThrow();
-    const again = await effects.saveResultIfAbsent(key, charge);
+    await expect(effects.runOnce(key, charge)).rejects.toThrow();
+    const again = await effects.runOnce(key, charge);
 
     expect(again).toMatchObject({ status: FencedEffectStatus.Replayed, result: { receipt: "r1" } });
     expect(await chargesOf("unknown-2")).toBe(1);

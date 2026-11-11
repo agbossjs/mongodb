@@ -1,5 +1,4 @@
 import {
-  effectKeyIdentityOf,
   FencedEffectRepository,
   FencedEffectSettings,
   FencedEffectStatus,
@@ -10,6 +9,7 @@ import {
   type FencedEffectOutcome,
   type FencedEffectWork,
 } from "@agboss/core";
+import { effectKeyIdentityOf } from "@agboss/core/stores";
 import type { Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";

@@ -2,7 +2,7 @@ import type { Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { idOf } from "../keys.js";
-import type { StoredConfigSnapshot, StoredVersionScore } from "./record-documents.js";
+import type { ConfigSnapshot, VersionScore } from "@agboss/core";
 
 /** Quality scores of records, the summary per prompt version, and the config snapshots (#78). */
 
@@ -41,7 +41,7 @@ const VersionScoreDocument = z.object({
 });
 
 /** Per prompt version, in the order first seen: records, scored ones, mean score, total cost. */
-export async function versionScoresOf(db: Db, workflow: string): Promise<StoredVersionScore[]> {
+export async function versionScoresOf(db: Db, workflow: string): Promise<VersionScore[]> {
   const found = await db
     .collection(Collections.ExecutionRecords)
     .aggregate([
@@ -128,7 +128,7 @@ export async function configSnapshotsOf(
   db: Db,
   workflow: string,
   version: string,
-): Promise<StoredConfigSnapshot[]> {
+): Promise<ConfigSnapshot[]> {
   const found = await db
     .collection<ConfigDocument>(Collections.ConfigVersions)
     .find({ workflow, version })

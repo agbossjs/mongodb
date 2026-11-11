@@ -1,10 +1,8 @@
+import { Injectable, StoreClock } from "@agboss/core";
 import {
-  Injectable,
   OutboundCallRepository,
   OutboundCallStatus,
   pendingOutboundCallOf,
-  StoreClock,
-  type StoreDescriptor,
   type EffectKey,
   type OutboundCallClaim,
   type OutboundCallFailure,
@@ -13,9 +11,10 @@ import {
   type OutboundCallLeaseState,
   type OutboundCallPage,
   type OutboundCallRecord,
-  type OutboundCallStatusQuery,
   type OutboundCallState,
-} from "@agboss/core";
+  type OutboundCallStatusQuery,
+  type StoreDescriptor,
+} from "@agboss/core/stores";
 import type { Collection, Filter } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";

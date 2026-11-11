@@ -24,11 +24,12 @@ import { ChildExecutionQueueRepository } from '@agboss/core';
 import { ChildExecutionQueueWatch } from '@agboss/core';
 import type { ClientSession } from 'mongodb';
 import { Clock } from '@agboss/core';
-import type { ConfigSnapshot } from '@agboss/core';
+import { ConfigSnapshot } from '@agboss/core';
 import { CostCounter } from '@agboss/core';
 import { CostLedgerRepository } from '@agboss/core';
 import { Db } from 'mongodb';
 import { EffectKey } from '@agboss/core';
+import { EffectKey as EffectKey_2 } from '@agboss/core/stores';
 import { ExecutionAuditEventRecord } from '@agboss/core';
 import { ExecutionAuditLogRepository } from '@agboss/core';
 import { ExecutionHistoryPage } from '@agboss/core';
@@ -54,23 +55,23 @@ import { MeshRequestRepository } from '@agboss/core';
 import type { Milliseconds } from '@agboss/core/units';
 import { MongoClient } from 'mongodb';
 import { NewA2ATask } from '@agboss/core';
-import type { NewSummary } from '@agboss/core';
-import type { NewTern } from '@agboss/core';
-import type { NewThread } from '@agboss/core';
+import { NewSummary } from '@agboss/core';
+import { NewThread } from '@agboss/core';
+import { NewTurn } from '@agboss/core';
 import { OnDestroy } from '@agboss/core';
 import { OnInit } from '@agboss/core';
-import { OutboundCallClaim } from '@agboss/core';
-import { OutboundCallFailure } from '@agboss/core';
-import { OutboundCallIntent } from '@agboss/core';
-import { OutboundCallLease } from '@agboss/core';
-import { OutboundCallLeaseState } from '@agboss/core';
-import { OutboundCallPage } from '@agboss/core';
-import { OutboundCallRecord } from '@agboss/core';
-import { OutboundCallRepository } from '@agboss/core';
-import { OutboundCallState } from '@agboss/core';
-import { OutboundCallStatusQuery } from '@agboss/core';
+import { OutboundCallClaim } from '@agboss/core/stores';
+import { OutboundCallFailure } from '@agboss/core/stores';
+import { OutboundCallIntent } from '@agboss/core/stores';
+import { OutboundCallLease } from '@agboss/core/stores';
+import { OutboundCallLeaseState } from '@agboss/core/stores';
+import { OutboundCallPage } from '@agboss/core/stores';
+import { OutboundCallRecord } from '@agboss/core/stores';
+import { OutboundCallRepository } from '@agboss/core/stores';
+import { OutboundCallState } from '@agboss/core/stores';
+import { OutboundCallStatusQuery } from '@agboss/core/stores';
 import { PauseAnswer } from '@agboss/core';
-import type { PauseAnswerRecord } from '@agboss/core';
+import { PauseAnswerRecord } from '@agboss/core';
 import { PauseCancellation } from '@agboss/core';
 import { PausedExecution } from '@agboss/core';
 import { PausedExecutionRepository } from '@agboss/core';
@@ -81,12 +82,13 @@ import { RateLimitRepository } from '@agboss/core';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { StoreClock } from '@agboss/core';
 import { StoreDescriptor } from '@agboss/core';
-import type { Summary } from '@agboss/core';
-import type { Tern } from '@agboss/core';
-import type { TernOutcome } from '@agboss/core';
+import { StoreDescriptor as StoreDescriptor_2 } from '@agboss/core/stores';
+import { Summary } from '@agboss/core';
 import { TransactionOptions } from 'mongodb';
+import { Turn } from '@agboss/core';
+import { TurnOutcome } from '@agboss/core';
 import { Usd } from '@agboss/core/units';
-import type { VersionScore } from '@agboss/core';
+import { VersionScore } from '@agboss/core';
 
 // @public
 export type CollectionName = (typeof Collections)[keyof typeof Collections];
@@ -199,7 +201,7 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
 export class MongoCollationError extends AGBossError {
     constructor(collections: readonly string[]);
     // (undocumented)
-    static readonly code: string;
+    static readonly code: "mongodb.collation-not-simple";
     readonly collections: readonly string[];
     // (undocumented)
     name: string;
@@ -209,7 +211,7 @@ export class MongoCollationError extends AGBossError {
 export class MongoConcernTooWeakError extends AGBossError {
     constructor(problems: readonly string[]);
     // (undocumented)
-    static readonly code: string;
+    static readonly code: "mongodb.concern-too-weak";
     // (undocumented)
     name: string;
     readonly problems: readonly string[];
@@ -312,51 +314,50 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
 export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     constructor(connection: MongoConnection, clock: Clock, applicationContext: ApplicationContext, idGenerator: IdGenerator);
     // (undocumented)
-    addSummary(summary: rows.NewSummaryRecord): Promise<rows.StoredSummary>;
+    addSummary(summary: NewSummary): Promise<Summary>;
     // (undocumented)
-    append(record: rows.NewRecord): Promise<rows.StoredRecord>;
+    append(record: NewTurn): Promise<Turn>;
     // (undocumented)
-    before(tenantId: string, threadId: string, ternId: string, limit: number): Promise<rows.StoredRecord[]>;
+    before(tenantId: string, threadId: string, ternId: string, limit: number): Promise<Turn[]>;
     // (undocumented)
-    byIds(ids: readonly string[]): Promise<rows.StoredRecord[]>;
+    byIds(ids: readonly string[]): Promise<Turn[]>;
     // (undocumented)
-    byVersion(workflow: string, promptVersion: string, limit: number): Promise<rows.StoredRecord[]>;
+    byVersion(workflow: string, promptVersion: string, limit: number): Promise<Turn[]>;
     // (undocumented)
-    complete(id: string, outcome: rows.RecordOutcome): Promise<void>;
+    complete(id: string, outcome: TurnOutcome): Promise<void>;
     // (undocumented)
-    completeIfStatus(id: string, expected: ExecutionRecordStatus, outcome: rows.RecordOutcome): Promise<boolean>;
+    completeIfStatus(id: string, expected: ExecutionRecordStatus, outcome: TurnOutcome): Promise<boolean>;
     // (undocumented)
-    configSnapshots(workflow: string, version: string): Promise<rows.StoredConfigSnapshot[]>;
-    // Warning: (ae-forgotten-export) The symbol "rows" needs to be exported by the entry point index.d.ts
-    createThread(thread: rows.NewThreadRecord): Promise<string>;
+    configSnapshots(workflow: string, version: string): Promise<ConfigSnapshot[]>;
+    createThread(thread: NewThread): Promise<string>;
     // (undocumented)
-    findByStatus(status: ExecutionRecordStatus, limit: number, after?: string): Promise<rows.StoredRecord[]>;
+    findByStatus(status: ExecutionRecordStatus, limit: number, after?: string): Promise<Turn[]>;
     // (undocumented)
-    findByTenantIdAndRunId(tenantId: string, runId: string): Promise<rows.StoredRecord | undefined>;
+    findByTenantIdAndRunId(tenantId: string, runId: string): Promise<Turn | undefined>;
     // (undocumented)
-    findPauseAnswersByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<rows.PauseAnswer[]>;
+    findPauseAnswersByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<PauseAnswerRecord[]>;
     // (undocumented)
     hasThread(workflow: string, tenantId: string, threadId: string): Promise<boolean>;
     // (undocumented)
-    lastTerns(tenantId: string, threadId: string, limit: number): Promise<rows.StoredRecord[]>;
+    lastTerns(tenantId: string, threadId: string, limit: number): Promise<Turn[]>;
     // (undocumented)
-    latestSummaries(tenantId: string, threadId: string, compaction: string, limit: number): Promise<rows.StoredSummary[]>;
+    latestSummaries(tenantId: string, threadId: string, compaction: string, limit: number): Promise<Summary[]>;
     // (undocumented)
     meanScore(recordIds: readonly string[]): Promise<number | null>;
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
-    recentOriginals(workflow: string, limit: number): Promise<rows.StoredRecord[]>;
+    recentOriginals(workflow: string, limit: number): Promise<Turn[]>;
     // (undocumented)
     rememberConfig(workflow: string, version: string, hash: string, snapshot: string): Promise<{
         readonly drift: boolean;
     }>;
     // (undocumented)
-    savePauseAnswer(tenantId: string, rootExecutionId: string, answer: rows.PauseAnswer): Promise<void>;
+    savePauseAnswer(tenantId: string, rootExecutionId: string, answer: PauseAnswerRecord): Promise<void>;
     // (undocumented)
     saveScore(recordId: string, judge: string, score: number): Promise<void>;
     // (undocumented)
-    summary(workflow: string): Promise<rows.StoredVersionScore[]>;
+    summary(workflow: string): Promise<VersionScore[]>;
     // (undocumented)
     summaryCount(tenantId: string, threadId: string, compaction: string): Promise<number>;
     // (undocumented)
@@ -366,9 +367,9 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     // (undocumented)
     turnNumber(tenantId: string, threadId: string, ternId: string): Promise<number>;
     // (undocumented)
-    uncovered(tenantId: string, threadId: string, compaction: string): Promise<rows.StoredRecord[]>;
+    uncovered(tenantId: string, threadId: string, compaction: string): Promise<Turn[]>;
     // (undocumented)
-    unscored(workflow: string, promptVersion: string | undefined, limit: number): Promise<rows.StoredRecord[]>;
+    unscored(workflow: string, promptVersion: string | undefined, limit: number): Promise<Turn[]>;
 }
 
 // @public
@@ -402,7 +403,7 @@ export class MongoLedgerMarkMissingError extends AGBossError {
         readonly recreatedAt?: Date;
     });
     // (undocumented)
-    static readonly code: string;
+    static readonly code: "mongodb.ledger-mark-missing";
     // (undocumented)
     name: string;
 }
@@ -411,9 +412,9 @@ export class MongoLedgerMarkMissingError extends AGBossError {
 export class MongoMeshRequestRepository extends MeshRequestRepository {
     constructor(connection: MongoConnection);
     // (undocumented)
-    deleteByKey(key: MeshRequestKey): Promise<void>;
+    deleteByCreatedAtBefore(cutoff: Date): Promise<void>;
     // (undocumented)
-    deleteCreatedBefore(cutoff: Date): Promise<void>;
+    deleteByKey(key: MeshRequestKey): Promise<void>;
     // (undocumented)
     findByKey(key: MeshRequestKey): Promise<MeshRequestRecord | undefined>;
     // (undocumented)
@@ -433,20 +434,20 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     findAllByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<readonly OutboundCallRecord[]>;
     findAllByTenantIdAndStatus(query: OutboundCallStatusQuery): Promise<OutboundCallPage>;
     // (undocumented)
-    findByKey(key: EffectKey): Promise<OutboundCallRecord | undefined>;
+    findByKey(key: EffectKey_2): Promise<OutboundCallRecord | undefined>;
     // (undocumented)
     leaseStateOf(lease: OutboundCallLease): Promise<OutboundCallLeaseState>;
     // (undocumented)
-    markCompleted(key: EffectKey, attemptOwner: string, result: string): Promise<boolean>;
+    markCompleted(key: EffectKey_2, attemptOwner: string, result: string): Promise<boolean>;
     // (undocumented)
-    markFailed(key: EffectKey, attemptOwner: string, failure: OutboundCallFailure): Promise<boolean>;
+    markFailed(key: EffectKey_2, attemptOwner: string, failure: OutboundCallFailure): Promise<boolean>;
     // (undocumented)
-    markPending(key: EffectKey, expected: OutboundCallState, claim: OutboundCallClaim): Promise<boolean>;
+    markPending(key: EffectKey_2, expected: OutboundCallState, claim: OutboundCallClaim): Promise<boolean>;
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
-    saveIfAbsent(key: EffectKey, intent: OutboundCallIntent): Promise<boolean>;
-    static readonly store: StoreDescriptor;
+    saveIfAbsent(key: EffectKey_2, intent: OutboundCallIntent): Promise<boolean>;
+    static readonly store: StoreDescriptor_2;
 }
 
 // @public
@@ -457,9 +458,9 @@ export class MongoPausedExecutionRepository extends PausedExecutionRepository {
     // (undocumented)
     decideByTenantIdAndPauseId(tenantId: string, pauseId: string, answer: PauseAnswer, at: Date): Promise<boolean>;
     // (undocumented)
-    deleteByTenantIdAndThreadId(tenantId: string, threadId: string): Promise<void>;
+    deleteByResolvedAtBefore(cutoff: Date): Promise<void>;
     // (undocumented)
-    deleteResolvedBefore(cutoff: Date): Promise<void>;
+    deleteByTenantIdAndThreadId(tenantId: string, threadId: string): Promise<void>;
     // (undocumented)
     findAllByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<readonly PauseRecord[]>;
     // (undocumented)
@@ -505,7 +506,7 @@ export class MongoRateLimitRepository extends RateLimitRepository {
 export class MongoReplicaSetRequiredError extends AGBossError {
     constructor();
     // (undocumented)
-    static readonly code: string;
+    static readonly code: "mongodb.replica-set-required";
     // (undocumented)
     name: string;
 }
@@ -513,7 +514,7 @@ export class MongoReplicaSetRequiredError extends AGBossError {
 // @public
 export class MongoSettingsError extends AGBossError {
     // (undocumented)
-    static readonly code: string;
+    static readonly code: "mongodb.settings-invalid";
     // (undocumented)
     name: string;
 }
@@ -574,12 +575,12 @@ export enum TransactionReadConcern {
 // src/stores/mongo-child-execution-queue.repository.ts:168:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:186:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
 // src/stores/mongo-child-execution-queue.repository.ts:193:9 - (ae-undocumented) Missing documentation for "countByStatus".
-// src/stores/mongo-cost-ledger.repository.ts:103:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-cost-ledger.repository.ts:107:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
-// src/stores/mongo-cost-ledger.repository.ts:112:9 - (ae-undocumented) Missing documentation for "saveAll".
-// src/stores/mongo-cost-ledger.repository.ts:166:9 - (ae-undocumented) Missing documentation for "deleteByMadeAtBefore".
-// src/stores/mongo-cost-ledger.repository.ts:177:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
-// src/stores/mongo-cost-ledger.repository.ts:182:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
+// src/stores/mongo-cost-ledger.repository.ts:102:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-cost-ledger.repository.ts:106:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
+// src/stores/mongo-cost-ledger.repository.ts:111:9 - (ae-undocumented) Missing documentation for "saveAll".
+// src/stores/mongo-cost-ledger.repository.ts:165:9 - (ae-undocumented) Missing documentation for "deleteByMadeAtBefore".
+// src/stores/mongo-cost-ledger.repository.ts:176:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
+// src/stores/mongo-cost-ledger.repository.ts:181:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
 // src/stores/mongo-execution-audit-log.repository.ts:40:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-audit-log.repository.ts:44:9 - (ae-undocumented) Missing documentation for "save".
 // src/stores/mongo-execution-audit-log.repository.ts:55:9 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionIdOrderByOccurredAt".
@@ -600,32 +601,32 @@ export enum TransactionReadConcern {
 // src/stores/mongo-execution-lease.repository.ts:144:9 - (ae-undocumented) Missing documentation for "retire".
 // src/stores/mongo-execution-lease.repository.ts:151:9 - (ae-undocumented) Missing documentation for "yield".
 // src/stores/mongo-execution-lease.repository.ts:164:9 - (ae-undocumented) Missing documentation for "reclaim".
-// src/stores/mongo-execution-record.repository.ts:45:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-execution-record.repository.ts:67:9 - (ae-undocumented) Missing documentation for "hasThread".
-// src/stores/mongo-execution-record.repository.ts:70:3 - (ae-undocumented) Missing documentation for "threadOwner".
-// src/stores/mongo-execution-record.repository.ts:77:3 - (ae-undocumented) Missing documentation for "append".
-// src/stores/mongo-execution-record.repository.ts:80:9 - (ae-undocumented) Missing documentation for "complete".
-// src/stores/mongo-execution-record.repository.ts:83:3 - (ae-undocumented) Missing documentation for "completeIfStatus".
-// src/stores/mongo-execution-record.repository.ts:90:3 - (ae-undocumented) Missing documentation for "lastTerns".
-// src/stores/mongo-execution-record.repository.ts:93:3 - (ae-undocumented) Missing documentation for "findByTenantIdAndRunId".
-// src/stores/mongo-execution-record.repository.ts:96:3 - (ae-undocumented) Missing documentation for "byIds".
-// src/stores/mongo-execution-record.repository.ts:99:3 - (ae-undocumented) Missing documentation for "findByStatus".
-// src/stores/mongo-execution-record.repository.ts:106:3 - (ae-undocumented) Missing documentation for "byVersion".
-// src/stores/mongo-execution-record.repository.ts:109:3 - (ae-undocumented) Missing documentation for "unscored".
-// src/stores/mongo-execution-record.repository.ts:116:3 - (ae-undocumented) Missing documentation for "saveScore".
-// src/stores/mongo-execution-record.repository.ts:119:3 - (ae-undocumented) Missing documentation for "meanScore".
-// src/stores/mongo-execution-record.repository.ts:122:3 - (ae-undocumented) Missing documentation for "summary".
-// src/stores/mongo-execution-record.repository.ts:125:3 - (ae-undocumented) Missing documentation for "rememberConfig".
-// src/stores/mongo-execution-record.repository.ts:134:3 - (ae-undocumented) Missing documentation for "configSnapshots".
-// src/stores/mongo-execution-record.repository.ts:137:3 - (ae-undocumented) Missing documentation for "recentOriginals".
-// src/stores/mongo-execution-record.repository.ts:140:3 - (ae-undocumented) Missing documentation for "uncovered".
-// src/stores/mongo-execution-record.repository.ts:143:3 - (ae-undocumented) Missing documentation for "before".
-// src/stores/mongo-execution-record.repository.ts:151:3 - (ae-undocumented) Missing documentation for "turnNumber".
-// src/stores/mongo-execution-record.repository.ts:154:3 - (ae-undocumented) Missing documentation for "addSummary".
-// src/stores/mongo-execution-record.repository.ts:157:3 - (ae-undocumented) Missing documentation for "latestSummaries".
-// src/stores/mongo-execution-record.repository.ts:165:3 - (ae-undocumented) Missing documentation for "summaryCount".
-// src/stores/mongo-execution-record.repository.ts:168:3 - (ae-undocumented) Missing documentation for "savePauseAnswer".
-// src/stores/mongo-execution-record.repository.ts:175:9 - (ae-undocumented) Missing documentation for "findPauseAnswersByTenantIdAndRootExecutionId".
+// src/stores/mongo-execution-record.repository.ts:53:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-execution-record.repository.ts:78:9 - (ae-undocumented) Missing documentation for "hasThread".
+// src/stores/mongo-execution-record.repository.ts:81:3 - (ae-undocumented) Missing documentation for "threadOwner".
+// src/stores/mongo-execution-record.repository.ts:88:3 - (ae-undocumented) Missing documentation for "append".
+// src/stores/mongo-execution-record.repository.ts:91:9 - (ae-undocumented) Missing documentation for "complete".
+// src/stores/mongo-execution-record.repository.ts:94:3 - (ae-undocumented) Missing documentation for "completeIfStatus".
+// src/stores/mongo-execution-record.repository.ts:101:3 - (ae-undocumented) Missing documentation for "lastTerns".
+// src/stores/mongo-execution-record.repository.ts:104:3 - (ae-undocumented) Missing documentation for "findByTenantIdAndRunId".
+// src/stores/mongo-execution-record.repository.ts:107:3 - (ae-undocumented) Missing documentation for "byIds".
+// src/stores/mongo-execution-record.repository.ts:110:3 - (ae-undocumented) Missing documentation for "findByStatus".
+// src/stores/mongo-execution-record.repository.ts:113:3 - (ae-undocumented) Missing documentation for "byVersion".
+// src/stores/mongo-execution-record.repository.ts:116:3 - (ae-undocumented) Missing documentation for "unscored".
+// src/stores/mongo-execution-record.repository.ts:119:3 - (ae-undocumented) Missing documentation for "saveScore".
+// src/stores/mongo-execution-record.repository.ts:122:3 - (ae-undocumented) Missing documentation for "meanScore".
+// src/stores/mongo-execution-record.repository.ts:125:3 - (ae-undocumented) Missing documentation for "summary".
+// src/stores/mongo-execution-record.repository.ts:128:3 - (ae-undocumented) Missing documentation for "rememberConfig".
+// src/stores/mongo-execution-record.repository.ts:137:3 - (ae-undocumented) Missing documentation for "configSnapshots".
+// src/stores/mongo-execution-record.repository.ts:140:3 - (ae-undocumented) Missing documentation for "recentOriginals".
+// src/stores/mongo-execution-record.repository.ts:143:3 - (ae-undocumented) Missing documentation for "uncovered".
+// src/stores/mongo-execution-record.repository.ts:146:3 - (ae-undocumented) Missing documentation for "before".
+// src/stores/mongo-execution-record.repository.ts:149:3 - (ae-undocumented) Missing documentation for "turnNumber".
+// src/stores/mongo-execution-record.repository.ts:152:3 - (ae-undocumented) Missing documentation for "addSummary".
+// src/stores/mongo-execution-record.repository.ts:155:3 - (ae-undocumented) Missing documentation for "latestSummaries".
+// src/stores/mongo-execution-record.repository.ts:163:3 - (ae-undocumented) Missing documentation for "summaryCount".
+// src/stores/mongo-execution-record.repository.ts:166:3 - (ae-undocumented) Missing documentation for "savePauseAnswer".
+// src/stores/mongo-execution-record.repository.ts:173:9 - (ae-undocumented) Missing documentation for "findPauseAnswersByTenantIdAndRootExecutionId".
 // src/stores/mongo-execution-tree.repository.ts:50:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-tree.repository.ts:54:9 - (ae-undocumented) Missing documentation for "saveIfAbsentInTree".
 // src/stores/mongo-execution-tree.repository.ts:69:9 - (ae-undocumented) Missing documentation for "findByIdInTree".
@@ -637,16 +638,16 @@ export enum TransactionReadConcern {
 // src/stores/mongo-mesh-request.repository.ts:67:9 - (ae-undocumented) Missing documentation for "findByKey".
 // src/stores/mongo-mesh-request.repository.ts:82:9 - (ae-undocumented) Missing documentation for "saveResponse".
 // src/stores/mongo-mesh-request.repository.ts:88:9 - (ae-undocumented) Missing documentation for "deleteByKey".
-// src/stores/mongo-mesh-request.repository.ts:92:9 - (ae-undocumented) Missing documentation for "deleteCreatedBefore".
-// src/stores/mongo-outbound-call.repository.ts:82:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-outbound-call.repository.ts:86:3 - (ae-undocumented) Missing documentation for "findByKey".
-// src/stores/mongo-outbound-call.repository.ts:94:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
-// src/stores/mongo-outbound-call.repository.ts:121:3 - (ae-undocumented) Missing documentation for "markPending".
-// src/stores/mongo-outbound-call.repository.ts:132:3 - (ae-undocumented) Missing documentation for "markCompleted".
-// src/stores/mongo-outbound-call.repository.ts:141:3 - (ae-undocumented) Missing documentation for "markFailed".
-// src/stores/mongo-outbound-call.repository.ts:155:3 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionId".
-// src/stores/mongo-outbound-call.repository.ts:184:9 - (ae-undocumented) Missing documentation for "deleteByEndedAtBefore".
-// src/stores/mongo-outbound-call.repository.ts:189:3 - (ae-undocumented) Missing documentation for "leaseStateOf".
+// src/stores/mongo-mesh-request.repository.ts:92:9 - (ae-undocumented) Missing documentation for "deleteByCreatedAtBefore".
+// src/stores/mongo-outbound-call.repository.ts:81:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-outbound-call.repository.ts:85:3 - (ae-undocumented) Missing documentation for "findByKey".
+// src/stores/mongo-outbound-call.repository.ts:93:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
+// src/stores/mongo-outbound-call.repository.ts:120:3 - (ae-undocumented) Missing documentation for "markPending".
+// src/stores/mongo-outbound-call.repository.ts:131:3 - (ae-undocumented) Missing documentation for "markCompleted".
+// src/stores/mongo-outbound-call.repository.ts:140:3 - (ae-undocumented) Missing documentation for "markFailed".
+// src/stores/mongo-outbound-call.repository.ts:154:3 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionId".
+// src/stores/mongo-outbound-call.repository.ts:183:9 - (ae-undocumented) Missing documentation for "deleteByEndedAtBefore".
+// src/stores/mongo-outbound-call.repository.ts:188:3 - (ae-undocumented) Missing documentation for "leaseStateOf".
 // src/stores/mongo-paused-execution.repository.ts:63:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-paused-execution.repository.ts:67:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndThreadId".
 // src/stores/mongo-paused-execution.repository.ts:81:9 - (ae-undocumented) Missing documentation for "save".
@@ -659,7 +660,7 @@ export enum TransactionReadConcern {
 // src/stores/mongo-paused-execution.repository.ts:140:9 - (ae-undocumented) Missing documentation for "decideByTenantIdAndPauseId".
 // src/stores/mongo-paused-execution.repository.ts:152:9 - (ae-undocumented) Missing documentation for "cancelByTenantIdAndPauseId".
 // src/stores/mongo-paused-execution.repository.ts:164:9 - (ae-undocumented) Missing documentation for "markTakenByTenantIdAndPauseId".
-// src/stores/mongo-paused-execution.repository.ts:171:9 - (ae-undocumented) Missing documentation for "deleteResolvedBefore".
+// src/stores/mongo-paused-execution.repository.ts:171:9 - (ae-undocumented) Missing documentation for "deleteByResolvedAtBefore".
 // src/stores/mongo-rate-limit.repository.ts:82:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-rate-limit.repository.ts:86:9 - (ae-undocumented) Missing documentation for "acquire".
 // src/stores/mongo-rate-limit.repository.ts:107:9 - (ae-undocumented) Missing documentation for "renew".
