@@ -4,6 +4,12 @@
 
 ```ts
 
+import { A2ADirectMessageAttempt } from '@agboss/core/stores';
+import { A2ADirectMessageKey } from '@agboss/core/stores';
+import { A2ADirectMessageRecord } from '@agboss/core/stores';
+import { A2ADirectMessageReply } from '@agboss/core/stores';
+import { A2ADirectMessageRepository } from '@agboss/core/stores';
+import { A2ADirectMessageSave } from '@agboss/core/stores';
 import { A2AMessageKey } from '@agboss/core';
 import { A2AMessageRecord } from '@agboss/core';
 import { A2ATaskKey } from '@agboss/core';
@@ -58,6 +64,7 @@ import { MeshRequestRecord } from '@agboss/core';
 import { MeshRequestRepository } from '@agboss/core';
 import type { Milliseconds } from '@agboss/core/units';
 import { MongoClient } from 'mongodb';
+import { NewA2ADirectMessage } from '@agboss/core/stores';
 import { NewA2ATask } from '@agboss/core';
 import { NewSummary } from '@agboss/core';
 import { NewThread } from '@agboss/core';
@@ -129,6 +136,7 @@ export const Collections: {
     readonly MeshRequests: "agboss_mesh_requests";
     readonly A2ATasks: "agboss_a2a_tasks";
     readonly A2AMessages: "agboss_a2a_messages";
+    readonly A2ADirectMessages: "agboss_a2a_direct_messages";
     readonly Checkpoints: "agboss_checkpoints";
     readonly CheckpointWrites: "agboss_checkpoint_writes";
     readonly Sequences: "agboss_sequences";
@@ -145,6 +153,29 @@ export interface MigrateMongodbOptions {
     readonly database?: string;
     readonly signal?: AbortSignal;
     readonly url: string;
+}
+
+// @public
+export class MongoA2ADirectMessageRepository extends A2ADirectMessageRepository {
+    constructor(connection: MongoConnection);
+    // (undocumented)
+    completeIfInFlight(key: A2ADirectMessageKey, attemptId: string, reply: A2ADirectMessageReply, completedAt: Date): Promise<A2ADirectMessageRecord | undefined>;
+    // (undocumented)
+    deleteByCreatedAtBefore(cutoff: Date, limit: number): Promise<readonly A2ADirectMessageRecord[]>;
+    // (undocumented)
+    deleteIfInFlight(key: A2ADirectMessageKey, attemptId: string): Promise<boolean>;
+    // (undocumented)
+    findAllInFlightByExpiresAtBefore(now: Date, limit: number): Promise<readonly A2ADirectMessageRecord[]>;
+    // (undocumented)
+    findByKey(key: A2ADirectMessageKey): Promise<A2ADirectMessageRecord | undefined>;
+    // (undocumented)
+    ping(): Promise<void>;
+    // (undocumented)
+    retakeIfExpired(key: A2ADirectMessageKey, expiredAttemptId: string, next: A2ADirectMessageAttempt, now: Date): Promise<A2ADirectMessageRecord | undefined>;
+    // (undocumented)
+    saveIfAbsent(message: NewA2ADirectMessage): Promise<A2ADirectMessageSave>;
+    // (undocumented)
+    static readonly store: StoreDescriptor;
 }
 
 // @public
@@ -269,10 +300,10 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
 }
 
 // @public
-export const MONGODB_DURABLE_STORES: readonly [typeof MongoExecutionRecordRepository, typeof MongoPausedExecutionRepository, typeof MongoCheckpointSaver, typeof MongoExecutionTreeRepository, typeof MongoExecutionAuditLogRepository, typeof MongoCostLedgerRepository, typeof MongoExecutionHistoryRepository, typeof MongoMeshRequestRepository, typeof MongoA2ATaskRepository];
+export const MONGODB_DURABLE_STORES: readonly [typeof MongoExecutionRecordRepository, typeof MongoPausedExecutionRepository, typeof MongoCheckpointSaver, typeof MongoExecutionTreeRepository, typeof MongoExecutionAuditLogRepository, typeof MongoCostLedgerRepository, typeof MongoExecutionHistoryRepository, typeof MongoMeshRequestRepository, typeof MongoA2ATaskRepository, typeof MongoA2ADirectMessageRepository];
 
 // @public
-export const MONGODB_STORES: readonly [typeof MongoExecutionLeaseRepository, typeof MongoChildExecutionQueueRepository, typeof MongoRateLimitRepository, typeof MongoFencedEffectRepository, typeof MongoOutboundCallRepository, typeof MongoExecutionRecordRepository, typeof MongoPausedExecutionRepository, typeof MongoCheckpointSaver, typeof MongoExecutionTreeRepository, typeof MongoExecutionAuditLogRepository, typeof MongoCostLedgerRepository, typeof MongoExecutionHistoryRepository, typeof MongoMeshRequestRepository, typeof MongoA2ATaskRepository];
+export const MONGODB_STORES: readonly [typeof MongoExecutionLeaseRepository, typeof MongoChildExecutionQueueRepository, typeof MongoRateLimitRepository, typeof MongoFencedEffectRepository, typeof MongoOutboundCallRepository, typeof MongoExecutionRecordRepository, typeof MongoPausedExecutionRepository, typeof MongoCheckpointSaver, typeof MongoExecutionTreeRepository, typeof MongoExecutionAuditLogRepository, typeof MongoCostLedgerRepository, typeof MongoExecutionHistoryRepository, typeof MongoMeshRequestRepository, typeof MongoA2ATaskRepository, typeof MongoA2ADirectMessageRepository];
 
 // @public
 export class MongoDeploymentError extends AGBossError {
@@ -640,6 +671,15 @@ export { SchemaSetup }
 // src/errors.ts:156:12 - (ae-undocumented) Missing documentation for "name".
 // src/errors.ts:182:3 - (ae-undocumented) Missing documentation for "code".
 // src/errors.ts:183:12 - (ae-undocumented) Missing documentation for "name".
+// src/stores/mongo-a2a-direct-message.repository.ts:56:3 - (ae-undocumented) Missing documentation for "store".
+// src/stores/mongo-a2a-direct-message.repository.ts:62:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-a2a-direct-message.repository.ts:66:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
+// src/stores/mongo-a2a-direct-message.repository.ts:79:9 - (ae-undocumented) Missing documentation for "findByKey".
+// src/stores/mongo-a2a-direct-message.repository.ts:84:9 - (ae-undocumented) Missing documentation for "completeIfInFlight".
+// src/stores/mongo-a2a-direct-message.repository.ts:98:9 - (ae-undocumented) Missing documentation for "retakeIfExpired".
+// src/stores/mongo-a2a-direct-message.repository.ts:119:9 - (ae-undocumented) Missing documentation for "deleteIfInFlight".
+// src/stores/mongo-a2a-direct-message.repository.ts:128:9 - (ae-undocumented) Missing documentation for "findAllInFlightByExpiresAtBefore".
+// src/stores/mongo-a2a-direct-message.repository.ts:141:9 - (ae-undocumented) Missing documentation for "deleteByCreatedAtBefore".
 // src/stores/mongo-a2a-task.repository.ts:72:3 - (ae-undocumented) Missing documentation for "store".
 // src/stores/mongo-a2a-task.repository.ts:78:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-a2a-task.repository.ts:82:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
