@@ -6,7 +6,7 @@ import {
   MongoChildExecutionQueueRepository,
   MongoCostLedgerRepository,
   MongoExecutionHistoryRepository,
-  MongoExecutionLeaseEventRepository,
+  MongoExecutionAuditLogRepository,
   MongoExecutionLeaseRepository,
   MongoExecutionRecordRepository,
   MongoExecutionTreeRepository,
@@ -57,9 +57,9 @@ storeConformance<MongoTransaction>({
       (connection, seam) =>
         new MongoExecutionLeaseRepository(connection, seam.storeClock, seam.application),
     ),
-    executionLeaseEvent: mongoStore(
+    executionAuditLog: mongoStore(
       database,
-      (connection) => new MongoExecutionLeaseEventRepository(connection),
+      (connection) => new MongoExecutionAuditLogRepository(connection),
     ),
     executionRecord: mongoStore(
       database,

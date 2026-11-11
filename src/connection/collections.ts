@@ -16,8 +16,8 @@ export const Collections = {
   FencedKeyLocks: "agboss_fenced_key_locks",
   /** One document per intent of a call that leaves the system (agbossjs/agboss#505). */
   OutboundCalls: "agboss_outbound_calls",
-  /** The lease log (#501): one document per event, never changed. */
-  ExecutionLeaseEvents: "agboss_execution_lease_events",
+  /** The audit log (#501): one document per event, never changed. */
+  ExecutionAuditLog: "agboss_execution_lease_events",
   /** Threads with their owners (#265 S30). */
   Threads: "agboss_threads",
   /** One record per execution, in the order appended. */

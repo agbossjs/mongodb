@@ -29,13 +29,13 @@ import { CostCounter } from '@agboss/core';
 import { CostLedgerRepository } from '@agboss/core';
 import { Db } from 'mongodb';
 import { EffectKey } from '@agboss/core';
+import { ExecutionAuditEventRecord } from '@agboss/core';
+import { ExecutionAuditLogRepository } from '@agboss/core';
 import { ExecutionHistoryPage } from '@agboss/core';
 import { ExecutionHistoryRecord } from '@agboss/core';
 import { ExecutionHistoryRepository } from '@agboss/core';
 import { ExecutionIdentity } from '@agboss/core';
 import { ExecutionLease } from '@agboss/core';
-import { ExecutionLeaseEventRecord } from '@agboss/core';
-import { ExecutionLeaseEventRepository } from '@agboss/core';
 import { ExecutionLeaseRepository } from '@agboss/core';
 import { ExecutionRecordRepository } from '@agboss/core';
 import { ExecutionRecordStatus } from '@agboss/core';
@@ -99,7 +99,7 @@ export const Collections: {
     readonly FencedEffectResults: "agboss_fenced_effect_results";
     readonly FencedKeyLocks: "agboss_fenced_key_locks";
     readonly OutboundCalls: "agboss_outbound_calls";
-    readonly ExecutionLeaseEvents: "agboss_execution_lease_events";
+    readonly ExecutionAuditLog: "agboss_execution_lease_events";
     readonly Threads: "agboss_threads";
     readonly ExecutionRecords: "agboss_execution_records";
     readonly ExecutionScores: "agboss_execution_scores";
@@ -253,6 +253,19 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
 }
 
 // @public
+export class MongoExecutionAuditLogRepository extends ExecutionAuditLogRepository {
+    constructor(connection: MongoConnection);
+    // (undocumented)
+    deleteByOccurredAtBefore(cutoff: Date): Promise<void>;
+    // (undocumented)
+    findAllByTenantIdAndRootExecutionIdOrderByOccurredAt(tenantId: string, rootExecutionId: string): Promise<readonly ExecutionAuditEventRecord[]>;
+    // (undocumented)
+    ping(): Promise<void>;
+    // (undocumented)
+    save(record: ExecutionAuditEventRecord): Promise<void>;
+}
+
+// @public
 export class MongoExecutionHistoryRepository extends ExecutionHistoryRepository {
     constructor(connection: MongoConnection);
     // (undocumented)
@@ -271,19 +284,6 @@ export class MongoExecutionHistoryRepository extends ExecutionHistoryRepository 
     ping(): Promise<void>;
     // (undocumented)
     save(record: ExecutionHistoryRecord): Promise<void>;
-}
-
-// @public
-export class MongoExecutionLeaseEventRepository extends ExecutionLeaseEventRepository {
-    constructor(connection: MongoConnection);
-    // (undocumented)
-    deleteByOccurredAtBefore(cutoff: Date): Promise<void>;
-    // (undocumented)
-    findAllByTenantIdAndRootExecutionIdOrderByOccurredAt(tenantId: string, rootExecutionId: string): Promise<readonly ExecutionLeaseEventRecord[]>;
-    // (undocumented)
-    ping(): Promise<void>;
-    // (undocumented)
-    save(record: ExecutionLeaseEventRecord): Promise<void>;
 }
 
 // @public
@@ -580,6 +580,10 @@ export enum TransactionReadConcern {
 // src/stores/mongo-cost-ledger.repository.ts:166:9 - (ae-undocumented) Missing documentation for "deleteByMadeAtBefore".
 // src/stores/mongo-cost-ledger.repository.ts:177:9 - (ae-undocumented) Missing documentation for "findMaxSpendByAccount".
 // src/stores/mongo-cost-ledger.repository.ts:182:9 - (ae-undocumented) Missing documentation for "saveMaxSpend".
+// src/stores/mongo-execution-audit-log.repository.ts:40:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-execution-audit-log.repository.ts:44:9 - (ae-undocumented) Missing documentation for "save".
+// src/stores/mongo-execution-audit-log.repository.ts:55:9 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionIdOrderByOccurredAt".
+// src/stores/mongo-execution-audit-log.repository.ts:66:9 - (ae-undocumented) Missing documentation for "deleteByOccurredAtBefore".
 // src/stores/mongo-execution-history.repository.ts:46:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-history.repository.ts:50:9 - (ae-undocumented) Missing documentation for "save".
 // src/stores/mongo-execution-history.repository.ts:66:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
@@ -588,10 +592,6 @@ export enum TransactionReadConcern {
 // src/stores/mongo-execution-history.repository.ts:85:3 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndStartedAtBetween".
 // src/stores/mongo-execution-history.repository.ts:94:3 - (ae-undocumented) Missing documentation for "findAllByStartedAtBetween".
 // src/stores/mongo-execution-history.repository.ts:102:9 - (ae-undocumented) Missing documentation for "deleteByEndedAtBefore".
-// src/stores/mongo-execution-lease-event.repository.ts:40:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-execution-lease-event.repository.ts:44:9 - (ae-undocumented) Missing documentation for "save".
-// src/stores/mongo-execution-lease-event.repository.ts:55:9 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionIdOrderByOccurredAt".
-// src/stores/mongo-execution-lease-event.repository.ts:66:9 - (ae-undocumented) Missing documentation for "deleteByOccurredAtBefore".
 // src/stores/mongo-execution-lease.repository.ts:77:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-execution-lease.repository.ts:81:9 - (ae-undocumented) Missing documentation for "claimExecutionId".
 // src/stores/mongo-execution-lease.repository.ts:93:9 - (ae-undocumented) Missing documentation for "acquire".

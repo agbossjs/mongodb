@@ -9,7 +9,7 @@ key; a call that leaves the system is recorded before it is sent and reconciled,
 blindly. Budgets, rate limits, history and mesh deduplication are shared by every pod.
 
 > Status: every store contract of the core — leases, execution ids, records and threads, trees,
-> pauses, the child queue, checkpoints, the fenced effect with business keys, the lease log, the
+> pauses, the child queue, checkpoints, the fenced effect with business keys, the audit log, the
 > cost ledger, the execution history, rate limits, mesh requests and outbound calls. Each passes the
 > core's `storeConformance` (the interleaving explorer included) and the fault suite against a real
 > replica set ([Tests](#tests)). Not published to npm yet.
@@ -33,7 +33,7 @@ import {
   MongoChildExecutionQueueRepository,
   MongoCostLedgerRepository,
   MongoExecutionHistoryRepository,
-  MongoExecutionLeaseEventRepository,
+  MongoExecutionAuditLogRepository,
   MongoExecutionLeaseRepository,
   MongoExecutionRecordRepository,
   MongoExecutionTreeRepository,
@@ -55,7 +55,7 @@ import {
     MongoChildExecutionQueueRepository,
     MongoCostLedgerRepository,
     MongoExecutionHistoryRepository,
-    MongoExecutionLeaseEventRepository,
+    MongoExecutionAuditLogRepository,
     MongoExecutionLeaseRepository, // who moves a tree, fenced by epoch
     MongoExecutionRecordRepository,
     MongoExecutionTreeRepository,
@@ -74,7 +74,7 @@ export class DeskApplication {}
 | `MongoExecutionLeaseRepository`      | one conditional single-document command per operation; time `$$NOW`                                                                                                            | `agboss_execution_leases`, `agboss_execution_ids`                                          |
 | `MongoFencedEffectRepository`        | **a transaction**: the lease locked by a write, the mark, the key's lock, the result, the work                                                                                 | `agboss_fenced_effect_marks`, `…_results`, `agboss_fenced_key_locks`                       |
 | `MongoOutboundCallRepository`        | **a transaction** per fenced method: the lease and mark, then one compare-and-set                                                                                              | `agboss_outbound_calls`                                                                    |
-| `MongoExecutionLeaseEventRepository` | one insert (an append), ordered by a sequence                                                                                                                                  | `agboss_execution_lease_events`                                                            |
+| `MongoExecutionAuditLogRepository`   | one insert (an append), ordered by a sequence                                                                                                                                  | `agboss_execution_lease_events`                                                            |
 | `MongoExecutionRecordRepository`     | one command per write; `completeIfStatus` a compare-and-set                                                                                                                    | `agboss_threads`, `agboss_execution_records`, `…_scores`, `…_summaries`, `…_pause_answers` |
 | `MongoExecutionTreeRepository`       | an upsert with `$setOnInsert`                                                                                                                                                  | `agboss_execution_tree_keys`                                                               |
 | `MongoPausedExecutionRepository`     | every move of a pending pause a compare-and-set on its status                                                                                                                  | `agboss_paused_executions`, `agboss_pauses`                                                |
@@ -187,7 +187,7 @@ database with no counters starts at the epoch, "never pruned".
 - **One instance's calls on one lease or business key** run in the order they were made: MongoDB's
   transactions take no lock they wait on, so the instance queues them itself, and the first called
   is the first to commit — as PostgreSQL's row locks do.
-- **Order.** What is read "in the order appended" (records, the lease log, outbound calls, pauses,
+- **Order.** What is read "in the order appended" (records, the audit log, outbound calls, pauses,
   pending writes) is ordered by a sequence document's `$inc`, never by a client clock or an
   `ObjectId` (agbossjs/agboss#661, #682).
 - **A child queued by one pod wakes the others** (agbossjs/agboss#777): the child queue's

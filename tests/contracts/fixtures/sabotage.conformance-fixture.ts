@@ -16,7 +16,7 @@ import { storeConformance, type StoreInstanceContext } from "@agboss/core/testin
 import type { Milliseconds } from "@agboss/core/units";
 import {
   Collections,
-  MongoExecutionLeaseEventRepository,
+  MongoExecutionAuditLogRepository,
   MongoExecutionLeaseRepository,
   MongoFencedEffectRepository,
   MongoOutboundCallRepository,
@@ -175,7 +175,7 @@ class ReadOnlyFenceEffects extends MongoFencedEffectRepository {
 storeConformance({
   name: "leases on the caller's clock",
   reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
-  without: ["fencedEffect", "executionLeaseEvent"],
+  without: ["fencedEffect", "executionAuditLog"],
   interleavings: { depth: 4, walks: 20, walkDepth: 20 },
   stores: {
     executionLease: mongoStore(
@@ -205,7 +205,7 @@ storeConformance({
 storeConformance({
   name: "a check-then-write acquire",
   reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
-  without: ["fencedEffect", "outboundCall", "executionLeaseEvent"],
+  without: ["fencedEffect", "outboundCall", "executionAuditLog"],
   interleavings: false,
   stores: {
     executionLease: mongoStore(
@@ -226,9 +226,9 @@ storeConformance<MongoTransaction>({
       (connection, seam) =>
         new MongoExecutionLeaseRepository(connection, seam.storeClock, seam.application),
     ),
-    executionLeaseEvent: mongoStore(
+    executionAuditLog: mongoStore(
       database,
-      (connection) => new MongoExecutionLeaseEventRepository(connection),
+      (connection) => new MongoExecutionAuditLogRepository(connection),
     ),
     fencedEffect: mongoStore(database, (connection, seam) =>
       fencedEffectsOn(connection, seam, new ReadOnlyFenceEffects(connection, seam)),
