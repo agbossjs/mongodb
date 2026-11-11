@@ -1,4 +1,8 @@
-import { DIRECT_MESSAGE_CLAIM, type A2ADirectMessageRecord } from "@agboss/core/stores";
+import {
+  A2ADirectMessageState,
+  DIRECT_MESSAGE_CLAIM,
+  type A2ADirectMessageRecord,
+} from "@agboss/core/stores";
 import type { ClientSession, Db } from "mongodb";
 import { directMessageOf } from "./a2a-direct-message-documents.js";
 import { claimsOf, directMessagesOf } from "./a2a-direct-message-save.js";
@@ -41,12 +45,18 @@ export async function sweptIn(
   limit: number,
 ): Promise<readonly A2ADirectMessageRecord[]> {
   const due = await directMessagesOf(db)
-    .find({ createdAt: { $lt: cutoff } }, { session, sort: { createdAt: 1, _id: 1 }, limit })
+    .find(
+      { state: A2ADirectMessageState.Completed, createdAt: { $lt: cutoff } },
+      { session, sort: { createdAt: 1, _id: 1 }, limit },
+    )
     .toArray();
   const gone = due.map(directMessageOf);
   const ids = due.map((message) => message._id);
   if (ids.length > 0) {
-    await directMessagesOf(db).deleteMany({ _id: { $in: ids } }, { session });
+    await directMessagesOf(db).deleteMany(
+      { _id: { $in: ids }, state: A2ADirectMessageState.Completed },
+      { session },
+    );
     await claimsOf(db).deleteMany({ _id: { $in: ids }, taskId: DIRECT_MESSAGE_CLAIM }, { session });
   }
   const orphans = await orphanClaimsIn(db, session, cutoff, limit);
