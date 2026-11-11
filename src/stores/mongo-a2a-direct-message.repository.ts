@@ -46,7 +46,8 @@ function checkedLimit(limit: number): number {
  * - `completeIfInFlight`, `retakeIfExpired` (also `expiresAt <= now`, the caller's clock) and
  *   `deleteIfInFlight` are each one conditional command on `_id`, the state and the attempt id: of
  *   two writers exactly one matches. A removed message's claim stays until the sweep.
- * - `deleteByCreatedAtBefore` is one transaction of at most `limit` messages and `limit` claims
+ * - `deleteByCreatedAtBefore` is one transaction of at most `limit` completed messages — never one
+ *   in flight, a live attempt's (agbossjs/agboss#860 D2) — and `limit` claims
  *   (`a2a-direct-message-sweep.ts`).
  *
  * Listed in `@Application({ providers })` beside `MongoA2ATaskRepository`, with `mongodbUrl`.
@@ -108,8 +109,14 @@ export class MongoA2ADirectMessageRepository extends A2ADirectMessageRepository 
         attemptId: expiredAttemptId,
         expiresAt: { $lte: now },
       },
+      // accepted anew (agbossjs/agboss#860 D2): its retention counts from the takeover
       {
-        $set: { attemptId: next.attemptId, startedAt: next.startedAt, expiresAt: next.expiresAt },
+        $set: {
+          attemptId: next.attemptId,
+          startedAt: next.startedAt,
+          expiresAt: next.expiresAt,
+          createdAt: next.startedAt,
+        },
       },
       { returnDocument: "after" },
     );
