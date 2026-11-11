@@ -78,7 +78,16 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
     index("by_owner", { tenantId: 1, ownerId: 1, statusAt: -1, taskId: -1 }),
     index("by_finished", ascending("state", "statusAt")),
   ],
-  [Collections.A2AMessages]: [index("by_task", ascending("tenantId", "taskId"))],
+  [Collections.A2AMessages]: [
+    index("by_task", ascending("tenantId", "taskId")),
+    // agbossjs/agboss#860: the sweep's direct claims (task id "") older than the cutoff
+    index("by_claim", ascending("taskId", "savedAt")),
+  ],
+  // agbossjs/agboss#860: the lost attempts in flight, and the retention sweep
+  [Collections.A2ADirectMessages]: [
+    index("by_in_flight", ascending("state", "expiresAt")),
+    index("by_created_at", ascending("createdAt")),
+  ],
   [Collections.Checkpoints]: [
     index("by_thread", { threadId: 1, namespace: 1, checkpointId: -1 }),
     index("by_checkpoint", { checkpointId: -1 }),

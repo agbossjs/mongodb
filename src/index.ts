@@ -24,6 +24,7 @@ export { MongoExecutionAuditLogRepository } from "./stores/mongo-execution-audit
 export { MongoExecutionTreeRepository } from "./stores/mongo-execution-tree.repository.js";
 export { MongoMeshRequestRepository } from "./stores/mongo-mesh-request.repository.js";
 export { MongoA2ATaskRepository } from "./stores/mongo-a2a-task.repository.js";
+export { MongoA2ADirectMessageRepository } from "./stores/mongo-a2a-direct-message.repository.js";
 export { MongoCostLedgerRepository } from "./stores/mongo-cost-ledger.repository.js";
 export { MongoExecutionHistoryRepository } from "./stores/mongo-execution-history.repository.js";
 export { MongoChildExecutionQueueRepository } from "./stores/mongo-child-execution-queue.repository.js";
