@@ -1,18 +1,18 @@
 import {
-  ExecutionLeaseEventKind,
+  ExecutionAuditEventKind,
   FencedEffectEventOutcome,
   HandOverReason,
   HandOverSite,
   LeaseTakeoverReason,
   OutboundCallEventOutcome,
   OutboundCallStatus,
-  type ExecutionLeaseEventRecord,
+  type ExecutionAuditEventRecord,
 } from "@agboss/core";
 import { z } from "zod";
 
 /**
  * A document of `agboss_execution_lease_events` read back: its `record` is the JSON `save`
- * wrote, checked against the four kinds of the lease log (#501; outbound calls, agbossjs/agboss#505; business keys and
+ * wrote, checked against the four kinds of the audit log (#501; outbound calls, agbossjs/agboss#505; business keys and
  * superseded calls and leases, #508) —
  * documents are never trusted.
  */
@@ -43,7 +43,7 @@ const base = {
 
 const Takeover = z.strictObject({
   ...base,
-  kind: z.literal(ExecutionLeaseEventKind.Takeover),
+  kind: z.literal(ExecutionAuditEventKind.Takeover),
   reason: z.enum(LeaseTakeoverReason),
   previousHolderInstanceId: z.string().optional(),
   previousToken: z.number().int().optional(),
@@ -52,7 +52,7 @@ const Takeover = z.strictObject({
 
 const HandedOver = z.strictObject({
   ...base,
-  kind: z.literal(ExecutionLeaseEventKind.HandedOver),
+  kind: z.literal(ExecutionAuditEventKind.HandedOver),
   reason: z.enum(HandOverReason),
   site: z.enum(HandOverSite),
   step: Step,
@@ -61,7 +61,7 @@ const HandedOver = z.strictObject({
 
 const FencedEffect = z.strictObject({
   ...base,
-  kind: z.literal(ExecutionLeaseEventKind.FencedEffect),
+  kind: z.literal(ExecutionAuditEventKind.FencedEffect),
   name: z.string(),
   outcome: z.enum(FencedEffectEventOutcome),
   step: Step,
@@ -72,7 +72,7 @@ const FencedEffect = z.strictObject({
 
 const OutboundCall = z.strictObject({
   ...base,
-  kind: z.literal(ExecutionLeaseEventKind.OutboundCall),
+  kind: z.literal(ExecutionAuditEventKind.OutboundCall),
   name: z.string(),
   target: z.string(),
   operation: z.string(),
@@ -118,5 +118,5 @@ function currentNamesOf(record: unknown): unknown {
 }
 
 /** The record of a document. */
-export const leaseEventOf = (found: unknown): ExecutionLeaseEventRecord =>
+export const auditEventOf = (found: unknown): ExecutionAuditEventRecord =>
   Record.parse(currentNamesOf(JSON.parse(EventDocument.parse(found).record)));

@@ -35,7 +35,7 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
     index("by_status", ascending("tenantId", "status", "seq")),
     index("by_ended_at", ascending("endedAt")),
   ],
-  [Collections.ExecutionLeaseEvents]: [
+  [Collections.ExecutionAuditLog]: [
     index("by_tree", ascending("tenantId", "rootExecutionId", "occurredAt", "_id")),
     index("by_occurred_at", ascending("occurredAt")),
   ],
