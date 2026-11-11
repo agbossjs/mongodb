@@ -4,12 +4,12 @@
 
 ```ts
 
-import { A2ADirectMessageAttempt } from '@agboss/core/a2a';
-import { A2ADirectMessageKey } from '@agboss/core/a2a';
-import { A2ADirectMessageRecord } from '@agboss/core/a2a';
-import { A2ADirectMessageReply } from '@agboss/core/a2a';
-import { A2ADirectMessageRepository } from '@agboss/core/a2a';
-import { A2ADirectMessageSave } from '@agboss/core/a2a';
+import { A2ADirectMessageAttempt } from '@agboss/core/stores';
+import { A2ADirectMessageKey } from '@agboss/core/stores';
+import { A2ADirectMessageRecord } from '@agboss/core/stores';
+import { A2ADirectMessageReply } from '@agboss/core/stores';
+import { A2ADirectMessageRepository } from '@agboss/core/stores';
+import { A2ADirectMessageSave } from '@agboss/core/stores';
 import { A2AMessageKey } from '@agboss/core';
 import { A2AMessageRecord } from '@agboss/core';
 import { A2ATaskKey } from '@agboss/core';
@@ -60,7 +60,7 @@ import { MeshRequestRecord } from '@agboss/core';
 import { MeshRequestRepository } from '@agboss/core';
 import type { Milliseconds } from '@agboss/core/units';
 import { MongoClient } from 'mongodb';
-import { NewA2ADirectMessage } from '@agboss/core/a2a';
+import { NewA2ADirectMessage } from '@agboss/core/stores';
 import { NewA2ATask } from '@agboss/core';
 import { NewSummary } from '@agboss/core';
 import { NewThread } from '@agboss/core';
