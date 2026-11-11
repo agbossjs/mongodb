@@ -51,7 +51,7 @@ export function fenceRaceCases(name: string, build: () => Promise<FenceRaceInsta
       });
       let takenDuringWork = false;
       let taking: Promise<unknown> | undefined;
-      const write = first.effects.saveResultIfAbsent(key, async ({ db, session }) => {
+      const write = first.effects.runOnce(key, async ({ db, session }) => {
         await db.collection("fence_race_rows").insertOne({ row: "zombie" }, { session });
         // the lease ends, and the other instance takes it while this transaction is open
         await advance(2);

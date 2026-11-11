@@ -1,11 +1,16 @@
-import { ComponentKind, ExecutionRecordStatus, PauseAnswerer, PauseResolution } from "@agboss/core";
+import {
+  ComponentKind,
+  ExecutionRecordStatus,
+  PauseAnswerer,
+  PauseResolution,
+  type PauseAnswerRecord,
+} from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
 import { describe, expect, it } from "vitest";
 import { testDatabase } from "../support/database.js";
 import { Collections } from "../../src/index.js";
 import { connectionTo } from "../support/stores.js";
 import { outcomeOf, recordOf, recordsOn } from "../support/stores.js";
-import type { PauseAnswer } from "../../src/stores/records/record-documents.js";
 
 /**
  * Every method of MongoExecutionRecordRepository beyond the contract: what eval, replay,
@@ -33,7 +38,7 @@ async function threadWith(
   return { threadId, ids };
 }
 
-const answerOf = (stepKey: string, askedAt: string): PauseAnswer => ({
+const answerOf = (stepKey: string, askedAt: string): PauseAnswerRecord => ({
   pauseId: undefined,
   executionId: "run-1",
   step: {

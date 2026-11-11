@@ -13,7 +13,7 @@ import { AGBossError } from "@agboss/core";
  * `mongodbTransactionReadConcern` (`snapshot` or `majority`). The URL itself is never printed.
  */
 export class MongoSettingsError extends AGBossError {
-  static override readonly code: string = "mongodb.settings-invalid";
+  static override readonly code = "mongodb.settings-invalid" as const;
   override name = "MongoSettingsError";
 }
 
@@ -25,7 +25,7 @@ export class MongoSettingsError extends AGBossError {
  * connection sets `w=majority`, `journal=true`, read concern `majority` itself.
  */
 export class MongoConcernTooWeakError extends AGBossError {
-  static override readonly code: string = "mongodb.concern-too-weak";
+  static override readonly code = "mongodb.concern-too-weak" as const;
   override name = "MongoConcernTooWeakError";
   /** Each weak setting found, with why it breaks a guarantee and what to use instead. */
   readonly problems: readonly string[];
@@ -45,7 +45,7 @@ export class MongoConcernTooWeakError extends AGBossError {
  * or a sharded cluster.
  */
 export class MongoReplicaSetRequiredError extends AGBossError {
-  static override readonly code: string = "mongodb.replica-set-required";
+  static override readonly code = "mongodb.replica-set-required" as const;
   override name = "MongoReplicaSetRequiredError";
 
   constructor() {
@@ -62,7 +62,7 @@ export class MongoReplicaSetRequiredError extends AGBossError {
  * the connection creates it with the simple collation.
  */
 export class MongoCollationError extends AGBossError {
-  static override readonly code: string = "mongodb.collation-not-simple";
+  static override readonly code = "mongodb.collation-not-simple" as const;
   override name = "MongoCollationError";
   /** The collections found with another collation. */
   readonly collections: readonly string[];
@@ -86,7 +86,7 @@ export class MongoCollationError extends AGBossError {
  * collection, the time it was made again.
  */
 export class MongoLedgerMarkMissingError extends AGBossError {
-  static override readonly code: string = "mongodb.ledger-mark-missing";
+  static override readonly code = "mongodb.ledger-mark-missing" as const;
   override name = "MongoLedgerMarkMissingError";
 
   constructor(found: { readonly malformed?: boolean; readonly recreatedAt?: Date } = {}) {

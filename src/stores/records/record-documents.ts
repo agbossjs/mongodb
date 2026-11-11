@@ -1,36 +1,17 @@
-import type {
-  ConfigSnapshot,
-  NewSummary,
-  NewTern,
-  NewThread,
-  PauseAnswerRecord,
-  Summary,
-  Tern,
-  TernOutcome,
-  VersionScore,
-} from "@agboss/core";
+import type { Turn } from "@agboss/core";
 import type { Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 
 /**
- * The shapes `ExecutionRecordRepository` reads and writes — the core's own types (agbossjs/agboss
- * #511) — and the documents of `agboss_execution_records`, validated on the way out. A record's
+ * The documents of `agboss_execution_records`, validated on the way out, as the core's own record
+ * types (`Turn`, `Summary`, …: exported with its contract, agbossjs/agboss#511, #890) — never local
+ * aliases. A record's
  * place is its `seq`, the next number of the records' sequence when it was appended.
  */
 
-export type StoredRecord = Tern;
-export type NewRecord = NewTern;
-export type RecordOutcome = TernOutcome;
-export type NewThreadRecord = NewThread;
-export type StoredSummary = Summary;
-export type NewSummaryRecord = NewSummary;
-export type StoredConfigSnapshot = ConfigSnapshot;
-export type StoredVersionScore = VersionScore;
-export type PauseAnswer = PauseAnswerRecord;
-
 /** One record: the core's fields (`createdAt` a date), `_id` its id, `seq` its place. */
-export interface RecordDocument extends Omit<Tern, "id" | "createdAt"> {
+export interface RecordDocument extends Omit<Turn, "id" | "createdAt"> {
   _id: string;
   seq: number;
   createdAt: Date;
@@ -45,7 +26,7 @@ const STATUSES = [
   "paused",
   "queued",
   "written",
-] as const satisfies readonly StoredRecord["status"][];
+] as const satisfies readonly Turn["status"][];
 
 const text = z.string();
 
@@ -71,13 +52,13 @@ const Stored = z.object({
 });
 
 /** A document of `agboss_execution_records` as the record it keeps. */
-export function recordOf(found: unknown): StoredRecord {
+export function recordOf(found: unknown): Turn {
   const { _id, createdAt, ...record } = Stored.parse(found);
   return { ...record, id: _id, createdAt: createdAt.toISOString() };
 }
 
 /** The records of documents, in their order. */
-export const recordsOf = (found: readonly unknown[]): StoredRecord[] => found.map(recordOf);
+export const recordsOf = (found: readonly unknown[]): Turn[] => found.map(recordOf);
 
 const Seq = z.object({ seq: z.number().int() });
 

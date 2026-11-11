@@ -1,13 +1,7 @@
-import type { ExecutionRecordStatus } from "@agboss/core";
+import type { ExecutionRecordStatus, Turn } from "@agboss/core";
 import type { Collection, Db, Filter } from "mongodb";
 import { Collections } from "../../connection/collections.js";
-import {
-  oldestFirst,
-  recordsOf,
-  seqOf,
-  type RecordDocument,
-  type StoredRecord,
-} from "./record-documents.js";
+import { oldestFirst, recordsOf, seqOf, type RecordDocument } from "./record-documents.js";
 
 /** The reads of records: by thread, by id, by status (recovery), by prompt version. Oldest first. */
 
@@ -15,11 +9,7 @@ const recordsIn = (db: Db): Collection<RecordDocument> =>
   db.collection<RecordDocument>(Collections.ExecutionRecords);
 
 /** The records `filter` matches, oldest first, at most `limit` (none for 0). */
-async function oldest(
-  db: Db,
-  filter: Filter<RecordDocument>,
-  limit?: number,
-): Promise<StoredRecord[]> {
+async function oldest(db: Db, filter: Filter<RecordDocument>, limit?: number): Promise<Turn[]> {
   if (limit === 0) return [];
   const cursor = recordsIn(db).find(filter).sort({ seq: 1 });
   return recordsOf(await (limit === undefined ? cursor : cursor.limit(limit)).toArray());
@@ -30,7 +20,7 @@ export async function newest(
   db: Db,
   filter: Filter<RecordDocument>,
   limit: number,
-): Promise<StoredRecord[]> {
+): Promise<Turn[]> {
   if (limit <= 0) return [];
   const found = await recordsIn(db).find(filter).sort({ seq: -1 }).limit(limit).toArray();
   return recordsOf(oldestFirst(found));
@@ -44,17 +34,17 @@ export const lastRecordsOf = (
   tenantId: string,
   threadId: string,
   limit: number,
-): Promise<StoredRecord[]> => newest(db, { tenantId, threadId }, limit);
+): Promise<Turn[]> => newest(db, { tenantId, threadId }, limit);
 
 /** The latest record a run of the tenant wrote (agbossjs/agboss#808), however old; `undefined`: none. */
 export const recordByRunIdOf = async (
   db: Db,
   tenantId: string,
   runId: string,
-): Promise<StoredRecord | undefined> => (await newest(db, { tenantId, runId }, 1))[0];
+): Promise<Turn | undefined> => (await newest(db, { tenantId, runId }, 1))[0];
 
 /** The records of `ids`, in the order they were appended. */
-export const recordsByIds = (db: Db, ids: readonly string[]): Promise<StoredRecord[]> =>
+export const recordsByIds = (db: Db, ids: readonly string[]): Promise<Turn[]> =>
   oldest(db, { _id: { $in: [...ids] } });
 
 /** A page of the records with `status` after the record `after` (recovery's look-up, #265 S30). */
@@ -63,7 +53,7 @@ export async function recordsByStatus(
   status: ExecutionRecordStatus,
   limit: number,
   after: string | undefined,
-): Promise<StoredRecord[]> {
+): Promise<Turn[]> {
   const from = after === undefined ? 0 : ((await seqOf(db, after)) ?? 0);
   return oldest(db, { status, seq: { $gt: from } }, limit);
 }
@@ -74,7 +64,7 @@ export const recordsByVersion = (
   workflow: string,
   promptVersion: string,
   limit: number,
-): Promise<StoredRecord[]> =>
+): Promise<Turn[]> =>
   oldest(
     db,
     { bundle: workflow, promptVersion, replayOf: null, status: { $ne: "running" } },
@@ -87,7 +77,7 @@ export async function unscoredRecords(
   workflow: string,
   promptVersion: string | undefined,
   limit: number,
-): Promise<StoredRecord[]> {
+): Promise<Turn[]> {
   if (limit <= 0) return [];
   const found = await recordsIn(db)
     .aggregate([
@@ -115,9 +105,5 @@ export async function unscoredRecords(
 }
 
 /** The newest `limit` original answered records of a workflow, oldest first. */
-export const recentOriginalRecords = (
-  db: Db,
-  workflow: string,
-  limit: number,
-): Promise<StoredRecord[]> =>
+export const recentOriginalRecords = (db: Db, workflow: string, limit: number): Promise<Turn[]> =>
   newest(db, { bundle: workflow, replayOf: null, status: "answered" }, limit);

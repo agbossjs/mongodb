@@ -150,10 +150,10 @@ describe("#847: a 0.1.0 lease document (leaseEpoch) is read by its token", () =>
       });
 
     await expect(
-      effects.saveResultIfAbsent(keyAt(4, 1), () => Promise.resolve({ receipt: "ok" })),
+      effects.runOnce(keyAt(4, 1), () => Promise.resolve({ receipt: "ok" })),
     ).resolves.toBeDefined();
     await expect(
-      effects.saveResultIfAbsent(keyAt(3, 2), () => Promise.resolve({ receipt: "stale" })),
+      effects.runOnce(keyAt(3, 2), () => Promise.resolve({ receipt: "stale" })),
     ).rejects.toBeInstanceOf(ExecutionFencedError);
   });
 

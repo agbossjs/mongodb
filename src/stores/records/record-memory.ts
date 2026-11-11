@@ -2,14 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { Collection, Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
-import {
-  oldestFirst,
-  seqOf,
-  type NewSummaryRecord,
-  type StoredRecord,
-  type StoredSummary,
-} from "./record-documents.js";
+import { oldestFirst, seqOf } from "./record-documents.js";
 import { newest, oldest } from "./record-reads.js";
+import type { NewSummary, Summary, Turn } from "@agboss/core";
 
 /**
  * Conversation memory on the records (#77, #120 PR 3): the turns a compaction has not summarised,
@@ -17,7 +12,7 @@ import { newest, oldest } from "./record-reads.js";
  * place is its record's `seq`.
  */
 
-interface SummaryDocument extends Omit<StoredSummary, "id" | "createdAt"> {
+interface SummaryDocument extends Omit<Summary, "id" | "createdAt"> {
   _id: string;
   fromSeq: number | null;
   toSeq: number | null;
@@ -38,7 +33,7 @@ const StoredSummaryDocument = z.object({
   createdAt: z.date(),
 });
 
-const summaryOf = (found: unknown): StoredSummary => {
+const summaryOf = (found: unknown): Summary => {
   const { _id, createdAt, ...summary } = StoredSummaryDocument.parse(found);
   return { ...summary, id: _id, createdAt: createdAt.toISOString() };
 };
@@ -54,7 +49,7 @@ export async function uncoveredRecords(
   tenantId: string,
   threadId: string,
   compaction: string,
-): Promise<StoredRecord[]> {
+): Promise<Turn[]> {
   const last = await summariesIn(db).findOne(
     { tenantId, threadId, compaction, toSeq: { $ne: null } },
     { sort: { toSeq: -1 } },
@@ -70,7 +65,7 @@ export async function recordsBefore(
   threadId: string,
   recordId: string,
   limit: number,
-): Promise<StoredRecord[]> {
+): Promise<Turn[]> {
   const before = await seqOf(db, recordId);
   if (before === undefined) return [];
   return newest(db, { tenantId, threadId, seq: { $lt: before } }, limit);
@@ -91,12 +86,8 @@ export async function turnNumberOf(
 }
 
 /** Adds a summary of a run of turns: its bounds kept as their records' `seq`. */
-export async function addSummary(
-  db: Db,
-  summary: NewSummaryRecord,
-  now: Date,
-): Promise<StoredSummary> {
-  const stored: StoredSummary = { ...summary, id: randomUUID(), createdAt: now.toISOString() };
+export async function addSummary(db: Db, summary: NewSummary, now: Date): Promise<Summary> {
+  const stored: Summary = { ...summary, id: randomUUID(), createdAt: now.toISOString() };
   const [fromSeq, toSeq] = await Promise.all([
     seqOf(db, summary.fromTernId),
     seqOf(db, summary.toTernId),
@@ -119,7 +110,7 @@ export async function latestSummariesOf(
   threadId: string,
   compaction: string,
   limit: number,
-): Promise<StoredSummary[]> {
+): Promise<Summary[]> {
   if (limit <= 0) return [];
   const found = await summariesIn(db)
     .find({ tenantId, threadId, compaction })

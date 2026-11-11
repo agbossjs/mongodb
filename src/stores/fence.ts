@@ -80,7 +80,7 @@ export async function checkFence(
   const { scopeKey, token } = key;
   const lease = await lockedLeaseOf(db, session, key.tenantId, key.leaseExecutionId, clock);
   const refused = (observedToken: number | undefined): ExecutionFencedError =>
-    new ExecutionFencedError({ scopeKey, token, observedToken });
+    ExecutionFencedError.of({ scopeKey, token, observedToken });
   if (lease === undefined) throw refused(undefined);
   if (lease.released || lease.token !== token) throw refused(lease.token);
   // live while expiresAt > now, by the store's time read in this transaction (#534, #533)

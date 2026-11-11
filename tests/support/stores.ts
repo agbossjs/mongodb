@@ -1,9 +1,8 @@
-import { ExecutionRecordStatus, IdGenerator } from "@agboss/core";
+import { ExecutionRecordStatus, IdGenerator, type NewTurn, type TurnOutcome } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
 import { afterEach } from "vitest";
 import { MongoConnection, MongoExecutionRecordRepository } from "../../src/index.js";
 import { TestApplicationContext } from "./application-context.js";
-import type { NewRecord, RecordOutcome } from "../../src/stores/records/record-documents.js";
 
 /** The connections a test opened, ended after it. */
 const opened: MongoConnection[] = [];
@@ -55,8 +54,8 @@ export function recordsOn(
 /** An outcome with `status`. */
 export const outcomeOf = (
   status: ExecutionRecordStatus,
-  fields: Partial<RecordOutcome> = {},
-): RecordOutcome => ({
+  fields: Partial<TurnOutcome> = {},
+): TurnOutcome => ({
   replyWith: status === ExecutionRecordStatus.Answered ? "Done." : "",
   status,
   stopReason: "",
@@ -70,8 +69,8 @@ export const outcomeOf = (
 export const recordOf = (
   threadId: string,
   status: ExecutionRecordStatus,
-  fields: Partial<NewRecord> = {},
-): NewRecord => ({
+  fields: Partial<NewTurn> = {},
+): NewTurn => ({
   ...outcomeOf(status),
   runId: "run-1",
   threadId,

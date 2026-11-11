@@ -89,7 +89,7 @@ export class MongoMeshRequestRepository extends MeshRequestRepository {
     await this.#requests.deleteOne({ _id: idOfKey(key) });
   }
 
-  async deleteCreatedBefore(cutoff: Date): Promise<void> {
+  async deleteByCreatedAtBefore(cutoff: Date): Promise<void> {
     await this.#requests.deleteMany({ createdAt: { $lt: cutoff } });
   }
 }

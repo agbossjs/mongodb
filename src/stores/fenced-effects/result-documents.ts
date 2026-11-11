@@ -1,11 +1,5 @@
-import {
-  effectKeyIdentityOf,
-  FencedEffectStatus,
-  replayedFromOf,
-  storedKeyFactsOf,
-  type EffectKey,
-  type FencedEffectOutcome,
-} from "@agboss/core";
+import { FencedEffectStatus, type EffectKey, type FencedEffectOutcome } from "@agboss/core";
+import { effectKeyIdentityOf, replayedFromOf, storedKeyFactsOf } from "@agboss/core/stores";
 import { z } from "zod";
 import { idOf } from "../keys.js";
 

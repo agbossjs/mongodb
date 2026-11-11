@@ -4,7 +4,6 @@ import {
   ExecutionFencedError,
   FencedEffectSettings,
   FencedEffectStatus,
-  effectKeyIdentityOf,
   type ExecutionLease,
   type EffectKey,
   type FencedEffectOutcome,
@@ -12,6 +11,7 @@ import {
   StoreClock,
   StoreTimeSource,
 } from "@agboss/core";
+import { effectKeyIdentityOf } from "@agboss/core/stores";
 import { storeConformance, type StoreInstanceContext } from "@agboss/core/testing/contracts";
 import type { Milliseconds } from "@agboss/core/units";
 import {
@@ -144,7 +144,7 @@ class ReadOnlyFenceEffects extends MongoFencedEffectRepository {
         .collection<Lease>(Collections.ExecutionLeases)
         .findOne({ _id: JSON.stringify([key.tenantId, key.leaseExecutionId]) }, { session });
       const refused = (observedToken?: number): ExecutionFencedError =>
-        new ExecutionFencedError({ scopeKey: key.scopeKey, token: key.token, observedToken });
+        ExecutionFencedError.of({ scopeKey: key.scopeKey, token: key.token, observedToken });
       if (!isHeldAt(lease, key.token, now)) throw refused(lease?.token);
       const mark = await db
         .collection<{ _id: string; highestToken: number }>(Collections.FencedEffectMarks)

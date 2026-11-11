@@ -168,7 +168,7 @@ export class MongoPausedExecutionRepository extends PausedExecutionRepository {
     );
   }
 
-  async deleteResolvedBefore(cutoff: Date): Promise<void> {
+  async deleteByResolvedAtBefore(cutoff: Date): Promise<void> {
     await this.#pauses.deleteMany({
       status: { $in: [PauseStatus.Taken, PauseStatus.Cancelled] },
       resolvedAt: { $lt: cutoff },

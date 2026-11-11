@@ -2,12 +2,12 @@ import {
   ApplicationContext,
   ExecutionLeaseRepository,
   Injectable,
-  remainingOf,
   StoreClock,
   type ExecutionIdentity,
   type ExecutionLease,
   type StoreDescriptor,
 } from "@agboss/core";
+import { remainingOf } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
 import type { Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
