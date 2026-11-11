@@ -8,7 +8,7 @@ import {
   type A2ADirectMessageReply,
   type A2ADirectMessageSave,
   type NewA2ADirectMessage,
-} from "@agboss/core/a2a";
+} from "@agboss/core/stores";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import {
   directIdOf,

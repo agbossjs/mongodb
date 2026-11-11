@@ -3,7 +3,7 @@ import {
   type A2ADirectMessageKey,
   type A2ADirectMessageRecord,
   type A2ADirectMessageReply,
-} from "@agboss/core/a2a";
+} from "@agboss/core/stores";
 import { z } from "zod";
 import { messageIdOf, ownerColumnOf } from "../a2a-tasks/a2a-task-documents.js";
 

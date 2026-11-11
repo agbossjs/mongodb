@@ -94,7 +94,9 @@ describe("agbossjs/agboss#860: a MongoDB direct message's save and the sweep", (
       const messageId = `race-${String(round)}`;
       await saver.saveIfAbsent(newMessage(messageId));
       await saver.deleteIfInFlight(keyOf(messageId), `run-${messageId}`);
-      // the resend is accepted at 60 s, the sweep's cutoff at 30 s: the old claim alone is due
+      // the resend is accepted at 60 s, the sweep's cutoff at 30 s: the old claim alone is due —
+      // the sweep first frees it and the resend claims it anew; the resend first keeps it (its first
+      // acceptance's time, as every store keeps it) and the sweep leaves a claim with a message
       const resend = newMessage(messageId, { attemptId: "run-again", createdAt: at(60) });
       const [save] = await Promise.all([
         saver.saveIfAbsent(resend),
@@ -103,7 +105,8 @@ describe("agbossjs/agboss#860: a MongoDB direct message's save and the sweep", (
 
       expect(save.status).toBe(A2ADirectMessageSaveStatus.Saved);
       const claim = await collection(Collections.A2AMessages).findOne({ messageId });
-      expect(claim).toMatchObject({ taskId: "", savedAt: at(60) });
+      expect(claim).toMatchObject({ taskId: "" });
+      expect([at(0).getTime(), at(60).getTime()]).toContain(claim?.savedAt.getTime());
     }
   });
 });

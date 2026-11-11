@@ -1,4 +1,4 @@
-import { DIRECT_MESSAGE_CLAIM, type A2ADirectMessageRecord } from "@agboss/core/a2a";
+import { DIRECT_MESSAGE_CLAIM, type A2ADirectMessageRecord } from "@agboss/core/stores";
 import type { ClientSession, Db } from "mongodb";
 import { directMessageOf } from "./a2a-direct-message-documents.js";
 import { claimsOf, directMessagesOf } from "./a2a-direct-message-save.js";
