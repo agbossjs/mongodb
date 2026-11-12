@@ -266,7 +266,7 @@ export interface MongoCollationNotSimpleErrorOptions {
 
 // @public
 export class MongoConnection implements OnInit, OnDestroy {
-    constructor(source: ApplicationContext | MongoConnectionSettings);
+    constructor(source: ApplicationContext | MongoConnectionSettings, clock?: Clock | undefined);
     readonly client: MongoClient;
     readonly db: Db;
     inTransaction<TResult>(work: (transaction: MongoTransaction) => Promise<TResult>): Promise<TResult>;

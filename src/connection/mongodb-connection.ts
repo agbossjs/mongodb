@@ -1,11 +1,13 @@
 import {
   ApplicationContext,
+  Clock,
   EnvironmentField,
   Injectable,
   type OnDestroy,
   type OnInit,
 } from "@agboss/core";
 import { SchemaSetup } from "@agboss/core/stores";
+import { closeBounded } from "./close-bounded.js";
 import {
   MongoClient,
   type ClientSession,
@@ -64,7 +66,7 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
  * (`new MongoConnection({ url })`). The DI token the MongoDB stores will name in their `deps`.
  */
 @Injectable({
-  deps: [ApplicationContext],
+  deps: [ApplicationContext, Clock],
   // checked at the application's assembly (agbossjs/agboss#511): a contract without mongodbUrl
   // fails with [environment.missing-field] before anything starts
   environmentFields: {
@@ -82,7 +84,14 @@ export class MongoConnection implements OnInit, OnDestroy {
   readonly #transactionOptions: TransactionOptions;
   readonly #schemaSetup: SchemaSetup;
 
-  constructor(source: ApplicationContext | MongoConnectionSettings) {
+  /**
+   * @param clock bounds the close at the stop (agbossjs/agboss#923); a connection built without
+   *   one closes in order only.
+   */
+  constructor(
+    source: ApplicationContext | MongoConnectionSettings,
+    private readonly clock?: Clock,
+  ) {
     const settings =
       source instanceof ApplicationContext ? settingsOfEnvironment(source.environment) : source;
     // what the URL alone asks for: a weaker concern there is refused, never silently overridden
@@ -181,6 +190,6 @@ export class MongoConnection implements OnInit, OnDestroy {
 
   /** Closes the client when the instance stops (its stores are destroyed first: they depend on it). */
   async onDestroy(): Promise<void> {
-    await this.client.close();
+    await closeBounded(() => this.client.close(), this.clock);
   }
 }
