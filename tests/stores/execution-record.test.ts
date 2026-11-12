@@ -14,7 +14,7 @@ import { outcomeOf, recordOf, recordsOn } from "../support/stores.js";
 
 /**
  * Every method of MongoExecutionRecordRepository beyond the contract: what eval, replay,
- * golden sets, memory and the pause log read — as the core's Tern store answers them.
+ * golden sets, memory and the pause log read — as the core's Turn store answers them.
  */
 const database = testDatabase();
 const { Answered, Running, Paused, Failed } = ExecutionRecordStatus;
@@ -122,14 +122,14 @@ describe("MongoExecutionRecordRepository", () => {
     expect(stored).toMatchObject({ status: "answered", costUsd: 0.5, route: ["start", "finish"] });
   });
 
-  it("lastTerns: the newest records of a thread, oldest first; another tenant's thread is its own", async () => {
+  it("lastTurns: the newest records of a thread, oldest first; another tenant's thread is its own", async () => {
     const records = recordsOn(database.url());
     const { threadId } = await threadWith(records, [Answered, Answered, Answered]);
 
-    const last = await records.lastTerns("default", threadId, 2);
+    const last = await records.lastTurns("default", threadId, 2);
 
     expect(last.map((record) => record.runId)).toEqual(["run-2", "run-3"]);
-    expect(await records.lastTerns("acme", threadId, 2)).toEqual([]);
+    expect(await records.lastTurns("acme", threadId, 2)).toEqual([]);
   });
 
   it("findByStatus: a page after a record, oldest first", async () => {
@@ -175,12 +175,12 @@ describe("MongoExecutionRecordRepository", () => {
     expect(await records.summary("scored-workflow")).toEqual([
       {
         promptVersion: "p1",
-        terns: 3,
+        turns: 3,
         scored: 2,
         meanScore: expect.closeTo(0.7),
         costUsd: expect.closeTo(0.03),
       },
-      { promptVersion: "p2", terns: 1, scored: 0, meanScore: null, costUsd: expect.closeTo(0.01) },
+      { promptVersion: "p2", turns: 1, scored: 0, meanScore: null, costUsd: expect.closeTo(0.01) },
     ]);
     expect(await records.summary("no-such-workflow")).toEqual([]);
   });
@@ -239,8 +239,8 @@ describe("MongoExecutionRecordRepository", () => {
       threadId,
       bundle: "desk-workflow",
       compaction: "rolling",
-      fromTernId: one,
-      toTernId: two,
+      fromTurnId: one,
+      toTurnId: two,
       turns: 2,
       text: "asked about order 7",
       costUsd: 0.002,
@@ -268,8 +268,8 @@ describe("MongoExecutionRecordRepository", () => {
         threadId,
         bundle: "desk-workflow",
         compaction,
-        fromTernId: ids[from] ?? "",
-        toTernId: ids[to] ?? "",
+        fromTurnId: ids[from] ?? "",
+        toTurnId: ids[to] ?? "",
         turns: to - from + 1,
         text: `turns ${String(from)}-${String(to)}`,
         costUsd: 0.001,

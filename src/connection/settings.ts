@@ -77,14 +77,14 @@ export function settingsOfEnvironment(environment: unknown): MongoConnectionSett
     const problems = parsed.error.issues.map((issue) =>
       issue.path[0] === "mongodbUrl" && isUrlMissing ? MISSING_URL : issue.message,
     );
-    throw new MongoSettingsError(
-      `the MongoDB stores need their environment fields — ${problems.join("; ")}`,
-    );
+    throw new MongoSettingsError({
+      message: `the MongoDB stores need their environment fields — ${problems.join("; ")}`,
+    });
   }
   const { mongodbUrl, mongodbDatabase, mongodbTransactionReadConcern, mongodbSchemaSetup } =
     parsed.data;
   const url = mongodbUrl.reveal();
-  if (url.length === 0) throw new MongoSettingsError("mongodbUrl is empty");
+  if (url.length === 0) throw new MongoSettingsError({ message: "mongodbUrl is empty" });
   return {
     url,
     database: mongodbDatabase,

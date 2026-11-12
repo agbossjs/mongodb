@@ -250,6 +250,8 @@ export class MongoCollationNotSimpleError extends AGBossError {
     constructor(options: MongoCollationNotSimpleErrorOptions);
     // (undocumented)
     static readonly code: "mongodb.collation-not-simple";
+    // (undocumented)
+    readonly code: typeof MongoCollationNotSimpleError.code;
     readonly collections: readonly string[];
     // (undocumented)
     name: string;
@@ -257,6 +259,8 @@ export class MongoCollationNotSimpleError extends AGBossError {
 
 // @public
 export interface MongoCollationNotSimpleErrorOptions {
+    // (undocumented)
+    readonly cause?: unknown;
     readonly collections: readonly string[];
 }
 
@@ -307,11 +311,19 @@ export const MONGODB_STORES: readonly [typeof MongoExecutionLeaseRepository, typ
 
 // @public
 export class MongoDeploymentError extends AGBossError {
-    constructor();
+    constructor(options?: MongoDeploymentErrorOptions);
     // (undocumented)
     static readonly code: "mongodb.deployment-unsupported";
     // (undocumented)
+    readonly code: typeof MongoDeploymentError.code;
+    // (undocumented)
     name: string;
+}
+
+// @public
+export interface MongoDeploymentErrorOptions {
+    // (undocumented)
+    readonly cause?: unknown;
 }
 
 // @public
@@ -320,12 +332,16 @@ export class MongoDurabilityError extends AGBossError {
     // (undocumented)
     static readonly code: "mongodb.durability-insufficient";
     // (undocumented)
+    readonly code: typeof MongoDurabilityError.code;
+    // (undocumented)
     name: string;
     readonly problems: readonly string[];
 }
 
 // @public
 export interface MongoDurabilityErrorOptions {
+    // (undocumented)
+    readonly cause?: unknown;
     readonly problems: readonly string[];
 }
 
@@ -393,7 +409,7 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     // (undocumented)
     append(record: NewTurn): Promise<Turn>;
     // (undocumented)
-    before(tenantId: string, threadId: string, ternId: string, limit: number): Promise<Turn[]>;
+    before(tenantId: string, threadId: string, turnId: string, limit: number): Promise<Turn[]>;
     // (undocumented)
     byIds(ids: readonly string[]): Promise<Turn[]>;
     // (undocumented)
@@ -414,7 +430,7 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     // (undocumented)
     hasThread(workflow: string, tenantId: string, threadId: string): Promise<boolean>;
     // (undocumented)
-    lastTerns(tenantId: string, threadId: string, limit: number): Promise<Turn[]>;
+    lastTurns(tenantId: string, threadId: string, limit: number): Promise<Turn[]>;
     // (undocumented)
     latestSummaries(tenantId: string, threadId: string, compaction: string, limit: number): Promise<Summary[]>;
     // (undocumented)
@@ -440,7 +456,7 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
         readonly owner: string | undefined;
     } | undefined>;
     // (undocumented)
-    turnNumber(tenantId: string, threadId: string, ternId: string): Promise<number>;
+    turnNumber(tenantId: string, threadId: string, turnId: string): Promise<number>;
     // (undocumented)
     uncovered(tenantId: string, threadId: string, compaction: string): Promise<Turn[]>;
     // (undocumented)
@@ -473,14 +489,23 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
 
 // @public
 export class MongoLedgerMarkMissingError extends AGBossError {
-    constructor(found?: {
-        readonly malformed?: boolean;
-        readonly recreatedAt?: Date;
-    });
+    constructor(options?: MongoLedgerMarkMissingErrorOptions);
     // (undocumented)
     static readonly code: "mongodb.ledger-mark-missing";
     // (undocumented)
+    readonly code: typeof MongoLedgerMarkMissingError.code;
+    readonly malformed: boolean | undefined;
+    // (undocumented)
     name: string;
+    readonly recreatedAt: Date | undefined;
+}
+
+// @public
+export interface MongoLedgerMarkMissingErrorOptions {
+    // (undocumented)
+    readonly cause?: unknown;
+    readonly malformed?: boolean;
+    readonly recreatedAt?: Date;
 }
 
 // @public
@@ -590,6 +615,8 @@ export class MongoSchemaMissingError extends AGBossError {
     readonly applied: number | undefined;
     // (undocumented)
     static readonly code: "mongodb.schema-missing";
+    // (undocumented)
+    readonly code: typeof MongoSchemaMissingError.code;
     readonly collections: readonly string[];
     readonly expected: number;
     // (undocumented)
@@ -599,6 +626,8 @@ export class MongoSchemaMissingError extends AGBossError {
 // @public
 export interface MongoSchemaMissingErrorOptions {
     readonly applied: number | undefined;
+    // (undocumented)
+    readonly cause?: unknown;
     readonly collections?: readonly string[];
     readonly expected: number;
 }
@@ -609,6 +638,8 @@ export class MongoSchemaTooNewError extends AGBossError {
     readonly applied: number;
     // (undocumented)
     static readonly code: "mongodb.schema-too-new";
+    // (undocumented)
+    readonly code: typeof MongoSchemaTooNewError.code;
     readonly expected: number;
     // (undocumented)
     name: string;
@@ -617,15 +648,28 @@ export class MongoSchemaTooNewError extends AGBossError {
 // @public
 export interface MongoSchemaTooNewErrorOptions {
     readonly applied: number;
+    // (undocumented)
+    readonly cause?: unknown;
     readonly expected: number;
 }
 
 // @public
 export class MongoSettingsError extends AGBossError {
+    constructor(options: MongoSettingsErrorOptions);
     // (undocumented)
     static readonly code: "mongodb.settings-invalid";
     // (undocumented)
+    readonly code: typeof MongoSettingsError.code;
+    // (undocumented)
     name: string;
+}
+
+// @public
+export interface MongoSettingsErrorOptions {
+    // (undocumented)
+    readonly cause?: unknown;
+    // (undocumented)
+    readonly message: string;
 }
 
 // @public
@@ -657,20 +701,35 @@ export { SchemaSetup }
 // src/connection/migrate.ts:17:3 - (ae-undocumented) Missing documentation for "name".
 // src/connection/transaction.ts:9:3 - (ae-undocumented) Missing documentation for "session".
 // src/connection/transaction.ts:10:3 - (ae-undocumented) Missing documentation for "db".
-// src/errors.ts:23:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:24:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:41:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:42:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:61:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:62:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:84:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:85:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:115:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:116:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:155:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:156:12 - (ae-undocumented) Missing documentation for "name".
-// src/errors.ts:182:3 - (ae-undocumented) Missing documentation for "code".
-// src/errors.ts:183:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:18:3 - (ae-undocumented) Missing documentation for "message".
+// src/errors.ts:19:3 - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts:29:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:30:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:31:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:42:3 - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts:53:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:54:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:55:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:70:3 - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts:80:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:81:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:82:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:96:3 - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts:106:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:107:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:108:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:130:3 - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts:140:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:141:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:142:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:174:3 - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts:183:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:184:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:185:12 - (ae-undocumented) Missing documentation for "name".
+// src/errors.ts:207:3 - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts:221:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:222:3 - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts:223:12 - (ae-undocumented) Missing documentation for "name".
 // src/stores/mongo-a2a-direct-message.repository.ts:57:3 - (ae-undocumented) Missing documentation for "store".
 // src/stores/mongo-a2a-direct-message.repository.ts:63:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-a2a-direct-message.repository.ts:67:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
@@ -732,7 +791,7 @@ export { SchemaSetup }
 // src/stores/mongo-execution-record.repository.ts:88:3 - (ae-undocumented) Missing documentation for "append".
 // src/stores/mongo-execution-record.repository.ts:91:9 - (ae-undocumented) Missing documentation for "complete".
 // src/stores/mongo-execution-record.repository.ts:94:3 - (ae-undocumented) Missing documentation for "completeIfStatus".
-// src/stores/mongo-execution-record.repository.ts:101:3 - (ae-undocumented) Missing documentation for "lastTerns".
+// src/stores/mongo-execution-record.repository.ts:101:3 - (ae-undocumented) Missing documentation for "lastTurns".
 // src/stores/mongo-execution-record.repository.ts:104:3 - (ae-undocumented) Missing documentation for "findByTenantIdAndRunId".
 // src/stores/mongo-execution-record.repository.ts:107:3 - (ae-undocumented) Missing documentation for "byIds".
 // src/stores/mongo-execution-record.repository.ts:110:3 - (ae-undocumented) Missing documentation for "findByStatus".
