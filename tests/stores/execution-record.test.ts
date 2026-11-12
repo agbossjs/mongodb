@@ -321,6 +321,6 @@ describe("MongoExecutionRecordRepository", () => {
     await expect(records.byIds(ids)).rejects.toThrow();
     await expect(
       records.findPauseAnswersByTenantIdAndRootExecutionId("default", "root-bad"),
-    ).rejects.toThrow('a stored pause answer is not readable: {"role":1}');
+    ).rejects.toThrow(/^a stored pause answer is not readable: the field\(s\) .*executionId/);
   });
 });
