@@ -78,7 +78,7 @@ const StoredRun = z.looseObject({
   threadId: text,
   tenantId: text,
   runId: text,
-  ternId: text,
+  turnId: text,
   budgetUsd: z.custom<number>((value) => typeof value === "number" && !Number.isNaN(value)),
 });
 

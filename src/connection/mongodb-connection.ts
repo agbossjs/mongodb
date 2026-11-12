@@ -44,12 +44,10 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
     return new MongoClient(url, options);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new MongoSettingsError(
-      `mongodbUrl is not a usable MongoDB connection string: ${reason}`,
-      {
-        cause: error,
-      },
-    );
+    throw new MongoSettingsError({
+      message: `mongodbUrl is not a usable MongoDB connection string: ${reason}`,
+      cause: error,
+    });
   }
 }
 

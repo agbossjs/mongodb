@@ -13,6 +13,12 @@ import { AGBossError } from "@agboss/core";
  */
 export const MIGRATE_COMMAND = "npx agboss-mongodb migrate";
 
+/** What a refused setting takes: the message, and what made it fail when it has a cause. */
+export interface MongoSettingsErrorOptions {
+  readonly message: string;
+  readonly cause?: unknown;
+}
+
 /**
  * The environment does not give what the MongoDB stores need: `mongodbUrl` (a `Secret` holding a
  * MongoDB connection string), and when set, `mongodbDatabase` (a name),
@@ -21,13 +27,19 @@ export const MIGRATE_COMMAND = "npx agboss-mongodb migrate";
  */
 export class MongoSettingsError extends AGBossError {
   static override readonly code = "mongodb.settings-invalid" as const;
+  declare readonly code: typeof MongoSettingsError.code;
   override name = "MongoSettingsError";
+
+  constructor(options: MongoSettingsErrorOptions) {
+    super(options.message, options);
+  }
 }
 
 /** What `MongoDurabilityError` found: each weak setting of the connection string. */
 export interface MongoDurabilityErrorOptions {
   /** Each weak setting found, with why it breaks a guarantee and what to use instead. */
   readonly problems: readonly string[];
+  readonly cause?: unknown;
 }
 
 /**
@@ -39,6 +51,7 @@ export interface MongoDurabilityErrorOptions {
  */
 export class MongoDurabilityError extends AGBossError {
   static override readonly code = "mongodb.durability-insufficient" as const;
+  declare readonly code: typeof MongoDurabilityError.code;
   override name = "MongoDurabilityError";
   /** Each weak setting found, with why it breaks a guarantee and what to use instead. */
   readonly problems: readonly string[];
@@ -46,9 +59,15 @@ export class MongoDurabilityError extends AGBossError {
   constructor(options: MongoDurabilityErrorOptions) {
     super(
       `the MongoDB connection's concerns are too weak for the stores' guarantees — ${options.problems.join("; ")}`,
+      { cause: options.cause },
     );
     this.problems = options.problems;
   }
+}
+
+/** What a refused deployment takes: only a cause. */
+export interface MongoDeploymentErrorOptions {
+  readonly cause?: unknown;
 }
 
 /**
@@ -59,11 +78,13 @@ export class MongoDurabilityError extends AGBossError {
  */
 export class MongoDeploymentError extends AGBossError {
   static override readonly code = "mongodb.deployment-unsupported" as const;
+  declare readonly code: typeof MongoDeploymentError.code;
   override name = "MongoDeploymentError";
 
-  constructor() {
+  constructor(options: MongoDeploymentErrorOptions = {}) {
     super(
       "the MongoDB server is a standalone mongod: the stores need a replica set (write concern majority, multi-document transactions) — start it with --replSet and run rs.initiate(), or connect to a sharded cluster",
+      { cause: options.cause },
     );
   }
 }
@@ -72,6 +93,7 @@ export class MongoDeploymentError extends AGBossError {
 export interface MongoCollationNotSimpleErrorOptions {
   /** The collections found with another collation. */
   readonly collections: readonly string[];
+  readonly cause?: unknown;
 }
 
 /**
@@ -82,6 +104,7 @@ export interface MongoCollationNotSimpleErrorOptions {
  */
 export class MongoCollationNotSimpleError extends AGBossError {
   static override readonly code = "mongodb.collation-not-simple" as const;
+  declare readonly code: typeof MongoCollationNotSimpleError.code;
   override name = "MongoCollationNotSimpleError";
   /** The collections found with another collation. */
   readonly collections: readonly string[];
@@ -90,6 +113,7 @@ export class MongoCollationNotSimpleError extends AGBossError {
     const { collections } = options;
     super(
       `the MongoDB stores compare keys byte for byte, but ${collections.join(", ")} ${collections.length === 1 ? "has" : "have"} a non-simple collation — drop ${collections.length === 1 ? "it" : "them"} and migrate (\`${MIGRATE_COMMAND}\` with MONGODB_URL set in the environment), which creates the stores' collections with the simple collation`,
+      { cause: options.cause },
     );
     this.collections = collections;
   }
@@ -103,6 +127,7 @@ export interface MongoSchemaMissingErrorOptions {
   readonly expected: number;
   /** The stores' collections missing although the version is current (dropped by hand). */
   readonly collections?: readonly string[];
+  readonly cause?: unknown;
 }
 
 /**
@@ -113,6 +138,7 @@ export interface MongoSchemaMissingErrorOptions {
  */
 export class MongoSchemaMissingError extends AGBossError {
   static override readonly code = "mongodb.schema-missing" as const;
+  declare readonly code: typeof MongoSchemaMissingError.code;
   override name = "MongoSchemaMissingError";
   /** The schema version of the database; `undefined`: never migrated. */
   readonly applied: number | undefined;
@@ -131,6 +157,7 @@ export class MongoSchemaMissingError extends AGBossError {
           : `is at version ${String(options.applied)}`;
     super(
       `the MongoDB schema ${found}, this package needs version ${String(options.expected)}: run \`${MIGRATE_COMMAND}\` with MONGODB_URL set in the environment (or set mongodbSchemaSetup: SchemaSetup.MigrateOnStart in the environment)`,
+      { cause: options.cause },
     );
     this.applied = options.applied;
     this.expected = options.expected;
@@ -144,6 +171,7 @@ export interface MongoSchemaTooNewErrorOptions {
   readonly applied: number;
   /** The schema version of this package, lower. */
   readonly expected: number;
+  readonly cause?: unknown;
 }
 
 /**
@@ -153,6 +181,7 @@ export interface MongoSchemaTooNewErrorOptions {
  */
 export class MongoSchemaTooNewError extends AGBossError {
   static override readonly code = "mongodb.schema-too-new" as const;
+  declare readonly code: typeof MongoSchemaTooNewError.code;
   override name = "MongoSchemaTooNewError";
   /** The schema version of the database. */
   readonly applied: number;
@@ -162,10 +191,20 @@ export class MongoSchemaTooNewError extends AGBossError {
   constructor(options: MongoSchemaTooNewErrorOptions) {
     super(
       `the MongoDB schema is at version ${String(options.applied)}, newer than this package's ${String(options.expected)}: a newer @agboss/mongodb migrated it — deploy that version, the migrations are not rolled back`,
+      { cause: options.cause },
     );
     this.applied = options.applied;
     this.expected = options.expected;
   }
+}
+
+/** What a missing ledger mark knows: what was found instead (#906: its keys are the error's fields). */
+export interface MongoLedgerMarkMissingErrorOptions {
+  /** The mark's document is there but has no date in `prunedBefore`. */
+  readonly malformed?: boolean;
+  /** When `agboss_cost_entries` was dropped and made again while the counters held spend. */
+  readonly recreatedAt?: Date;
+  readonly cause?: unknown;
 }
 
 /**
@@ -180,13 +219,20 @@ export class MongoSchemaTooNewError extends AGBossError {
  */
 export class MongoLedgerMarkMissingError extends AGBossError {
   static override readonly code = "mongodb.ledger-mark-missing" as const;
+  declare readonly code: typeof MongoLedgerMarkMissingError.code;
   override name = "MongoLedgerMarkMissingError";
+  /** The mark's document is there but has no date in `prunedBefore`. */
+  readonly malformed: boolean | undefined;
+  /** When `agboss_cost_entries` was dropped and made again while the counters held spend. */
+  readonly recreatedAt: Date | undefined;
 
-  constructor(found: { readonly malformed?: boolean; readonly recreatedAt?: Date } = {}) {
-    super(MongoLedgerMarkMissingError.#messageOf(found));
+  constructor(options: MongoLedgerMarkMissingErrorOptions = {}) {
+    super(MongoLedgerMarkMissingError.#messageOf(options), { cause: options.cause });
+    this.malformed = options.malformed;
+    this.recreatedAt = options.recreatedAt;
   }
 
-  static #messageOf(found: { readonly malformed?: boolean; readonly recreatedAt?: Date }): string {
+  static #messageOf(found: MongoLedgerMarkMissingErrorOptions): string {
     if (found.recreatedAt !== undefined) {
       const at = found.recreatedAt.toISOString();
       return `the ledger's pruning mark is missing (agboss_cost_entries was dropped and made again at ${at} while agboss_cost_counters held spend: the entries it counted and the mark are gone): nothing was added — put the mark back at that time, so an entry made before it is refused and never counted again: db.agboss_cost_entries.replaceOne({ _id: "\\u0000pruned-before" }, { prunedBefore: new Date("${at}") })`;

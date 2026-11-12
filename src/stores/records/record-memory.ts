@@ -25,8 +25,8 @@ const StoredSummaryDocument = z.object({
   threadId: z.string(),
   bundle: z.string(),
   compaction: z.string(),
-  fromTernId: z.string(),
-  toTernId: z.string(),
+  fromTurnId: z.string(),
+  toTurnId: z.string(),
   turns: z.number(),
   text: z.string(),
   costUsd: z.number(),
@@ -89,8 +89,8 @@ export async function turnNumberOf(
 export async function addSummary(db: Db, summary: NewSummary, now: Date): Promise<Summary> {
   const stored: Summary = { ...summary, id: randomUUID(), createdAt: now.toISOString() };
   const [fromSeq, toSeq] = await Promise.all([
-    seqOf(db, summary.fromTernId),
-    seqOf(db, summary.toTernId),
+    seqOf(db, summary.fromTurnId),
+    seqOf(db, summary.toTurnId),
   ]);
   const { id, createdAt, ...fields } = stored;
   await summariesIn(db).insertOne({

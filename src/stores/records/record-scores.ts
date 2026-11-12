@@ -71,7 +71,7 @@ export async function versionScoresOf(db: Db, workflow: string): Promise<Version
     const version = VersionScoreDocument.parse(one);
     return {
       promptVersion: version._id,
-      terns: version.records,
+      turns: version.records,
       scored: version.scored,
       meanScore: version.scored === 0 ? null : version.total / version.scored,
       costUsd: version.costUsd,

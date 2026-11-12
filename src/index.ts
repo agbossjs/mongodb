@@ -28,7 +28,10 @@ export {
   MongoSchemaTooNewError,
   MongoSettingsError,
   type MongoCollationNotSimpleErrorOptions,
+  type MongoDeploymentErrorOptions,
   type MongoDurabilityErrorOptions,
+  type MongoLedgerMarkMissingErrorOptions,
+  type MongoSettingsErrorOptions,
   type MongoSchemaMissingErrorOptions,
   type MongoSchemaTooNewErrorOptions,
 } from "./errors.js";
