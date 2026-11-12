@@ -1,3 +1,4 @@
+import { closeBounded } from "../connection/close-bounded.js";
 import { ExecutionRecordStatus, type ChildExecutionQueueWatch, type Clock } from "@agboss/core";
 import { seconds } from "@agboss/core/units";
 import { Timestamp, type ChangeStream, type Collection, type Db, type Document } from "mongodb";
@@ -72,7 +73,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
     const stream = this.#stream;
     this.#stream = undefined;
     await this.#reopening;
-    await stream?.close().catch(() => undefined);
+    if (stream !== undefined) await closeBounded(() => stream.close(), this.clock);
   }
 
   async #start(): Promise<void> {
