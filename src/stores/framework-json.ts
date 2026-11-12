@@ -131,6 +131,21 @@ function unreadable(
   );
 }
 
+/**
+ * What the checks above established, as the type the core's normalisers take: the schema is the
+ * runtime check (the framework wrote the rest), `parse` returns the value it passed — no cast at a call.
+ */
+const CheckedAnswer = z.custom<StoredAnswerRecord>(
+  (value) => StoredPauseAnswer.safeParse(value).success,
+);
+const CheckedPause = z.custom<StoredPauseRecord>((value) => {
+  const stored = StoredPause.safeParse(value);
+  return stored.success && isAskOfItsKind(stored.data);
+});
+
+/** A paused run the checks above passed (`turnId` read by `withTurnId`): `parse` returns it typed. */
+const CheckedRun = z.custom<PausedExecution["run"]>((value) => StoredRun.safeParse(value).success);
+
 const ANSWER_IDS = ["pauseId", "executionId"];
 const PAUSE_IDS = ["pauseId", "tenantId", "executionId"];
 const RUN_IDS = ["threadId", "runId"];
@@ -140,7 +155,7 @@ export function pauseAnswerOfJson(json: string): PauseAnswer {
   const value: unknown = JSON.parse(json);
   const stored = StoredPauseAnswer.safeParse(value);
   if (!stored.success) throw unreadable("pause answer", ANSWER_IDS, value, { error: stored.error });
-  return pauseAnswerRecordOfStored(value as StoredAnswerRecord);
+  return pauseAnswerRecordOfStored(CheckedAnswer.parse(value));
 }
 
 /** A pause, from the record its document keeps (parsed). */
@@ -151,7 +166,7 @@ export function pauseRecordOf(value: unknown): PauseRecord {
     const ask = StoredApprovalAsk.safeParse(stored.data.ask);
     throw unreadable("pause", PAUSE_IDS, value, { error: ask.error, field: "ask" });
   }
-  return pauseRecordOfStored(value as StoredPauseRecord);
+  return pauseRecordOfStored(CheckedPause.parse(value));
 }
 
 /** JSON keeps no `Infinity` (a run without a cost limit has `budgetUsd: Infinity`): tagged. */
@@ -183,5 +198,5 @@ export function pausedRunOfJson(json: string): PausedExecution["run"] {
   if (!stored.success) throw unreadable("paused run", RUN_IDS, value, { error: stored.error });
   if ((stored.data.turnId ?? stored.data.ternId) === undefined)
     throw unreadable("paused run", RUN_IDS, value, { field: "turnId" });
-  return withTurnId(value as PausedExecution["run"]);
+  return withTurnId(CheckedRun.parse(value));
 }

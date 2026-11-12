@@ -30,6 +30,11 @@ const StoredHistoryRecord = z.looseObject({
   }),
 });
 
+/** What the check below established, as the type the core's normaliser takes (no cast at a call). */
+const CheckedHistory = z.custom<StoredHistory>(
+  (value) => StoredHistoryRecord.safeParse(value).success,
+);
+
 const HistoryDocument = z.object({ record: z.string() });
 
 /** The ids that name a stored record in an error: never its contexts (#906 D4: those are the caller's). */
@@ -47,7 +52,7 @@ const idsOf = (value: unknown): string =>
 
 /** The record of a document. */
 export function historyRecordOf(row: unknown): ExecutionHistoryRecord {
-  const record = JSON.parse(HistoryDocument.parse(row).record) as unknown;
+  const record: unknown = JSON.parse(HistoryDocument.parse(row).record);
   const stored = StoredHistoryRecord.safeParse(record);
   if (!stored.success) {
     const field = [
@@ -58,5 +63,5 @@ export function historyRecordOf(row: unknown): ExecutionHistoryRecord {
       { cause: stored.error },
     );
   }
-  return executionHistoryRecordOfStored(record as StoredHistory);
+  return executionHistoryRecordOfStored(CheckedHistory.parse(record));
 }

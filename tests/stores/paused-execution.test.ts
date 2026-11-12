@@ -40,7 +40,7 @@ const pauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
   kind: PauseKind.Approval,
   step: "clerk-agent",
   channel: "refund-approval-channel",
-  answeredBy: PauseAnswerer.Channel,
+  answerer: PauseAnswerer.Channel,
   ask: { callId: "call-1", tool: "charge", arguments: { text: "10 USD" }, summary: "charge" },
   status: PauseStatus.Pending,
   isSent: false,

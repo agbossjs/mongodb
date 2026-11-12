@@ -24,7 +24,7 @@ describe("AC3: a MongoDB database written by 0.1.0", () => {
   it("a Resolved pause's answer keeps its person (answeredBy) and its record says who may answer (answerer)", async () => {
     const { answer, status, resolution, resolvedAt, ...created } = oldPause;
     const { db } = connectionTo(database.url());
-    await db.collection(Collections.Pauses).insertOne({
+    await db.collection<{ _id: string; [field: string]: unknown }>(Collections.Pauses).insertOne({
       _id: idOf("default", "p1"),
       tenantId: "default",
       pauseId: "p1",
@@ -55,14 +55,16 @@ describe("AC3: a MongoDB database written by 0.1.0", () => {
 
   it("a log entry: answerer = the kind, answeredBy the person", async () => {
     const { db } = connectionTo(database.url());
-    await db.collection(Collections.PauseAnswers).insertOne({
-      _id: idOf("default", "run-1", "run-1:s:1"),
-      tenantId: "default",
-      rootExecutionId: "run-1",
-      askedAt: "2026-01-05T09:00:00.000Z",
-      seq: 1,
-      record: JSON.stringify(oldAnswerLogEntry),
-    });
+    await db
+      .collection<{ _id: string; [field: string]: unknown }>(Collections.PauseAnswers)
+      .insertOne({
+        _id: idOf("default", "run-1", "run-1:s:1"),
+        tenantId: "default",
+        rootExecutionId: "run-1",
+        askedAt: "2026-01-05T09:00:00.000Z",
+        seq: 1,
+        record: JSON.stringify(oldAnswerLogEntry),
+      });
 
     const [entry] = await recordsOn(database.url()).findPauseAnswersByTenantIdAndRootExecutionId(
       "default",
@@ -78,15 +80,17 @@ describe("AC3: a MongoDB database written by 0.1.0", () => {
 
   it("a kept history record and its children's pauses are normalised", async () => {
     const { db } = connectionTo(database.url());
-    await db.collection(Collections.ExecutionHistory).insertOne({
-      _id: idOf("default", "run-1"),
-      tenantId: "default",
-      executionId: "run-1",
-      threadId: "t-1",
-      startedAt: new Date("2026-01-05T09:00:00Z"),
-      endedAt: null,
-      record: JSON.stringify(oldHistoryRecord),
-    });
+    await db
+      .collection<{ _id: string; [field: string]: unknown }>(Collections.ExecutionHistory)
+      .insertOne({
+        _id: idOf("default", "run-1"),
+        tenantId: "default",
+        executionId: "run-1",
+        threadId: "t-1",
+        startedAt: new Date("2026-01-05T09:00:00Z"),
+        endedAt: null,
+        record: JSON.stringify(oldHistoryRecord),
+      });
     const history = new MongoExecutionHistoryRepository(connectionTo(database.url()));
 
     const record = await history.findByTenantIdAndExecutionId("default", "run-1");
