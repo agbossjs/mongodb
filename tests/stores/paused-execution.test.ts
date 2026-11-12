@@ -87,7 +87,7 @@ describe("MongoPausedExecutionRepository", () => {
     await other.resolveByTenantIdAndPauseId(
       "default",
       "p-question",
-      { decision: { verdict: "yes" }, answerer: undefined },
+      { decision: { verdict: "yes" }, answeredBy: undefined },
       NINE,
     );
 

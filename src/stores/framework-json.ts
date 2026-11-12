@@ -6,6 +6,12 @@ import {
   type PausedExecution,
   type PauseRecord,
 } from "@agboss/core";
+import {
+  pauseAnswerRecordOfStored,
+  pauseRecordOfStored,
+  type StoredAnswerRecord,
+  type StoredPause as StoredPauseRecord,
+} from "@agboss/core/stores";
 import { z } from "zod";
 import type { PauseAnswerRecord as PauseAnswer } from "@agboss/core";
 
@@ -32,7 +38,9 @@ const StoredPauseAnswer = z.looseObject({
     validationAttempts: z.number(),
   }),
   role: text,
-  answeredBy: z.enum(PauseAnswerer),
+  // 0.1.0's entry has no `answerer`: its `answeredBy` is the kind, `responder` the person (#934)
+  answerer: z.enum(PauseAnswerer).optional(),
+  answeredBy: optionalText,
   responder: optionalText,
   resolution: z.enum(PauseResolution),
   askedAt: text,
@@ -54,7 +62,9 @@ const StoredPause = z.looseObject({
   kind: z.enum(PauseKind),
   step: text,
   channel: text,
-  answeredBy: z.enum(PauseAnswerer),
+  // 0.1.0's record has `answeredBy` (who may answer), the new `answerer` (#934)
+  answerer: z.enum(PauseAnswerer).optional(),
+  answeredBy: z.enum(PauseAnswerer).optional(),
   // an approval's tool call, or a question role's own ask (agbossjs/agboss#659, #712): `kind` says
   ask: z.looseObject({}),
   component: StoredComponent.optional(),
@@ -130,7 +140,7 @@ export function pauseAnswerOfJson(json: string): PauseAnswer {
   const value: unknown = JSON.parse(json);
   const stored = StoredPauseAnswer.safeParse(value);
   if (!stored.success) throw unreadable("pause answer", ANSWER_IDS, value, { error: stored.error });
-  return value as PauseAnswer;
+  return pauseAnswerRecordOfStored(value as StoredAnswerRecord);
 }
 
 /** A pause, from the record its document keeps (parsed). */
@@ -141,7 +151,7 @@ export function pauseRecordOf(value: unknown): PauseRecord {
     const ask = StoredApprovalAsk.safeParse(stored.data.ask);
     throw unreadable("pause", PAUSE_IDS, value, { error: ask.error, field: "ask" });
   }
-  return value as PauseRecord;
+  return pauseRecordOfStored(value as StoredPauseRecord);
 }
 
 /** JSON keeps no `Infinity` (a run without a cost limit has `budgetUsd: Infinity`): tagged. */

@@ -59,6 +59,7 @@ const answerOf = (stepKey: string, askedAt: string): PauseAnswerRecord => ({
   },
   role: "refund-approval",
   answeredBy: PauseAnswerer.Channel,
+  answeredBy: "manager-17",
   responder: "manager-17",
   resolution: PauseResolution.Replied,
   askedAt,
