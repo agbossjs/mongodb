@@ -131,7 +131,7 @@ agbossjs/agboss#891). It is migrated explicitly, like `@agboss/postgres`'s — a
 the pods roll out:
 
 ```sh
-npx agboss-mongodb migrate [--database <name>]   # with MONGODB_URL set in the environment (a Secret in the Job)
+npx agboss-mongodb migrate [--database <name>]   # with MONGODB_URL set in the environment (a Secret in the Job); the database: --database, else MONGODB_DATABASE, else the URL's, else agboss
 # applied 0001_stores (agboss) — a second run: nothing to apply: agboss is at version 1
 ```
 

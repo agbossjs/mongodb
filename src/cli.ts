@@ -7,7 +7,7 @@ import {
 
 /**
  * `agboss-mongodb` — the package's command (agbossjs/agboss#891): `migrate [--database <name>]` on
- * `MONGODB_URL` (`--url` too, which shows the URL's credentials in the process list) makes the stores' collections and indexes and writes
+ * `MONGODB_URL` and `MONGODB_DATABASE` (`--url` too, which shows the URL's credentials in the process list) makes the stores' collections and indexes and writes
  * the schema's version; a second run applies nothing. Usable as a Kubernetes Job: exit code 0 when
  * the schema is current, 1 when the run failed, 2 for a wrong command line.
  */
@@ -27,8 +27,8 @@ export enum ExitCode {
 }
 
 export const USAGE = `usage: agboss-mongodb migrate [--database <name>] [--url <mongodb-url>]
-  Migrates the @agboss/mongodb schema on MONGODB_URL (the database: --database, else the URL's, else
-  agboss). Prefer MONGODB_URL: --url puts the URL, its credentials too, in the process list.`;
+  Migrates the @agboss/mongodb schema on MONGODB_URL (the database: --database, else
+  MONGODB_DATABASE, else the URL's, else agboss). Prefer MONGODB_URL: --url puts the URL, its credentials too, in the process list.`;
 
 const FLAGS = new Set(["--url", "--database"]);
 
@@ -44,20 +44,27 @@ const flagNamesOf = (rest: readonly string[]): string =>
     .map((name) => (FLAGS.has(name) ? name : "<flag>"))
     .join(" ");
 
+/** One flag and its value: `--flag=value` or `--flag value`; `at` is where the next one starts. */
+function flagAt(
+  rest: readonly string[],
+  at: number,
+): { readonly flag: string; readonly value: string | undefined; readonly next: number } {
+  const argument = rest[at] ?? "";
+  const equals = argument.startsWith("--") ? argument.indexOf("=") : -1;
+  return equals < 0
+    ? { flag: argument, value: rest[at + 1], next: at + 2 }
+    : { flag: argument.slice(0, equals), value: argument.slice(equals + 1), next: at + 1 };
+}
+
 /** The flags of `migrate`'s arguments, each once with a value; a string → a usage problem. */
 function flagsOf(rest: readonly string[]): ReadonlyMap<string, string> | string {
   const flags = new Map<string, string>();
-  for (let at = 0; at < rest.length; at += 2) {
-    const [flag, value] = [rest[at], rest[at + 1]];
-    if (
-      flag === undefined ||
-      !FLAGS.has(flag) ||
-      flags.has(flag) ||
-      value === undefined ||
-      value === ""
-    )
+  for (let at = 0; at < rest.length;) {
+    const { flag, value, next } = flagAt(rest, at);
+    if (!FLAGS.has(flag) || flags.has(flag) || value === undefined || value === "")
       return `unexpected arguments (flags: ${flagNamesOf(rest) || "none"})`;
     flags.set(flag, value);
+    at = next;
   }
   return flags;
 }
@@ -68,7 +75,9 @@ function optionsOf(args: readonly string[], env: CommandIo["env"]): MigrateMongo
   if (typeof flags === "string") return flags;
   const url = flags.get("--url") ?? env.MONGODB_URL;
   if (url === undefined || url === "") return "no --url and no MONGODB_URL";
-  const database = flags.get("--database");
+  // as the app's connection reads them: --database, MONGODB_DATABASE, the URL's database, agboss
+  const fromEnv = env.MONGODB_DATABASE === "" ? undefined : env.MONGODB_DATABASE;
+  const database = flags.get("--database") ?? fromEnv;
   return database === undefined ? { url } : { url, database };
 }
 

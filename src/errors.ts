@@ -156,7 +156,7 @@ export class MongoSchemaMissingError extends AGBossError {
           ? "was never migrated"
           : `is at version ${String(options.applied)}`;
     super(
-      `the MongoDB schema ${found}, this package needs version ${String(options.expected)}: run \`${MIGRATE_COMMAND}\` with MONGODB_URL set in the environment (or set mongodbSchemaSetup: SchemaSetup.MigrateOnStart in the environment)`,
+      `the MongoDB schema ${found}, this package needs version ${String(options.expected)}: run \`${MIGRATE_COMMAND}\` with MONGODB_URL set in the environment, and MONGODB_DATABASE (or --database) when the app names a database other than the URL's (or set mongodbSchemaSetup: SchemaSetup.MigrateOnStart in the environment)`,
       { cause: options.cause },
     );
     this.applied = options.applied;

@@ -10,9 +10,10 @@ const BIN = new URL("../../bin/agboss-mongodb.js", import.meta.url).pathname;
 const BUILT = new URL("../../dist/cli.js", import.meta.url).pathname;
 
 const database = freshDatabaseName();
+const [fromEnv, fromFlag] = [freshDatabaseName(), freshDatabaseName()];
 
 afterAll(async () => {
-  await dropDatabase(database);
+  for (const name of [database, fromEnv, fromFlag]) await dropDatabase(name);
 });
 
 describe("agbossjs/agboss#891 AC1: the agboss-mongodb bin (a Kubernetes Job)", () => {
@@ -43,5 +44,17 @@ describe("agbossjs/agboss#891 AC1: the agboss-mongodb bin (a Kubernetes Job)", (
       code: 2,
       stderr: expect.stringContaining("usage: agboss-mongodb"),
     });
+  });
+
+  it("agbossjs/agboss#891 D2: the database is --database (also --database=name), else MONGODB_DATABASE", async () => {
+    const env = { ...process.env, MONGODB_URL: REPLICA_SET_URL, MONGODB_DATABASE: fromEnv };
+
+    const byEnv = await run("node", [BIN, "migrate"], { env });
+    const byEnvAgain = await run("node", [BIN, "migrate"], { env });
+    const byFlag = await run("node", [BIN, "migrate", `--database=${fromFlag}`], { env });
+
+    expect(byEnv.stdout).toBe(`applied 0001_stores (${fromEnv})\n`);
+    expect(byEnvAgain.stdout).toBe(`nothing to apply: ${fromEnv} is at version 1\n`);
+    expect(byFlag.stdout).toBe(`applied 0001_stores (${fromFlag})\n`);
   });
 });
