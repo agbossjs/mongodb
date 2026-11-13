@@ -33,6 +33,7 @@ import {
   type MongoConnectionSettings,
 } from "./settings.js";
 import type { MongoTransaction } from "./transaction.js";
+import { rememberSettings } from "./watch-client.js";
 
 /**
  * Each connection's start (`onInit`) while it runs or once it succeeded: a component keeps no state
@@ -73,6 +74,7 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
     mongodbUrl: EnvironmentField.secret(),
     mongodbDatabase: EnvironmentField.text({ optional: true }),
     mongodbTransactionReadConcern: EnvironmentField.text({ optional: true }),
+    mongodbWatchLivenessSeconds: EnvironmentField.integer({ optional: true }),
     mongodbSchemaSetup: EnvironmentField.text({ optional: true }),
   },
 })
@@ -94,6 +96,7 @@ export class MongoConnection implements OnInit, OnDestroy {
   ) {
     const settings =
       source instanceof ApplicationContext ? settingsOfEnvironment(source.environment) : source;
+    rememberSettings(this, settings);
     // what the URL alone asks for: a weaker concern there is refused, never silently overridden
     requireConcerns(concernProblemsOf(clientOf(settings.url)));
     // a field left `undefined` is left out, never written as `null`: a document reads back as given

@@ -115,6 +115,7 @@ export class AppEnvironment {
   mongodbUrl!: Secret; // mongodb://h1,h2,h3/<database>?replicaSet=rs0 — secret("MONGODB_URL")
   mongodbDatabase?: string; // default: the URL's database, else "agboss"
   mongodbTransactionReadConcern?: string; // "snapshot" (default) or "majority"
+  mongodbWatchLivenessSeconds?: number; // the longest a silently dead change stream goes unnoticed: 10 (default), at least 2
   mongodbSchemaSetup?: SchemaSetup; // SchemaSetup.Check (default) or SchemaSetup.MigrateOnStart
 }
 ```
@@ -221,12 +222,24 @@ database with no counters starts at the epoch, "never pruned".
 - **A child queued by one pod wakes the others** (agbossjs/agboss#777): the child queue's
   `watchQueued` is a change stream on `agboss_child_execution_queue` — each document that becomes
   `queued` (inserted, or a resume's or a lost claim's requeue) wakes the claimers of every instance,
-  so an idle pod claims at once instead of at its next sweep (30 s). One stream per instance; idle on
-  an empty queue except one held `getMore` per 10 s (`maxAwaitTimeMS`, no document read). It starts
+  so an idle pod claims at once instead of at its next sweep (30 s). One stream per instance, on a
+  client of its own with one connection; idle on an empty queue except one held `getMore` per 2.5 s
+  (`maxAwaitTimeMS`, no document read) and one `ping` per 5 s. It starts
   at the cluster time of a `ping` sent before it opens, so a child queued once the watch is open is
   not missed. The driver resumes it after a resumable error; one the server ends (an `invalidate`)
   is opened again after a pause (1 s, doubling up to 30 s) and wakes the claimers once. A lost
   wake-up costs at most a sweep — the child stays queued.
+- **A connection that dies silently** (agbossjs/agboss#789) — a half-open TCP connection behind a
+  NAT or a load balancer: no FIN, no RST; the driver alone takes about 40 s to see it, longer than
+  the sweep — is noticed within `mongodbWatchLivenessSeconds` (default 10 s, at least 2). The watch
+  pings the server every half of it over its one connection — the stream's `getMore`s and the ping
+  take turns on it, so an answered ping proves the connection the stream listens on — and the answer
+  is due within the other half. A client that does not answer is dropped,
+  `child-queue.watch-connection-lost` is logged at `warn`, and the stream is opened on a new client
+  after the first pause (1 s), waking the claimers once: a child queued during the gap waits for
+  neither the sweep nor the next change. The worst case is the bound, plus 1 s, plus a connection
+  (a new client that is swallowed too is dropped at the bound and tried again, 2 s later, doubling
+  up to 30 s).
 - **Text.** BSON keeps every text as given, U+0000 included. A composite key is the JSON array of
   its parts, so a separator inside a tenant id cannot join two keys, and a lone surrogate (which the
   driver would write as U+FFFD) is escaped in it.
