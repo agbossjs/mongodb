@@ -59,11 +59,12 @@ export const messageIdOf = (key: A2AMessageKey): string =>
   idOf(key.tenantId, ownerColumnOf(key.ownerId), key.messageId);
 
 /**
- * A status as written: a corrupt one is refused, never read as a task's state — and so is a field
- * this store does not know (strict): a status the core grew is never read back without it
- * (agbossjs/agboss#810: a mesh refusal's facts and a completion's spend were dropped so).
+ * A status as written: a corrupt one is refused, never read as a task's state; a key this store does
+ * not know is kept as it was written (agbossjs/agboss#960, `a2aTaskContract`'s rule for every store)
+ * — a status the core grew is never read back without it (#810: a mesh refusal's facts and a
+ * completion's spend were dropped so).
  */
-const Status = z.strictObject({
+const Status = z.looseObject({
   state: z.enum(A2ATaskState),
   message: z.string().optional(),
   pendingPauses: z.array(

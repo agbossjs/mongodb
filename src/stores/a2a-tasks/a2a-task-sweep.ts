@@ -1,6 +1,8 @@
+import { DIRECT_MESSAGE_CLAIM } from "@agboss/core/stores";
 import type { Db } from "mongodb";
 import { Collections } from "../../connection/collections.js";
 import {
+  taskIdOf,
   TERMINAL_STATES,
   type A2AMessageDocument,
   type A2ATaskDocument,
@@ -31,5 +33,42 @@ export async function sweptTerminalBefore(
     await messages.deleteMany({
       $or: batch.map(({ tenantId, taskId }) => ({ tenantId, taskId })),
     });
+  }
+}
+
+/**
+ * The messages whose task is gone and whose `savedAt` is before `cutoff` (agbossjs/agboss#960): a
+ * follow-up saved while the sweep removed its task, or a message the crash between a batch's two
+ * commands left — which a resend would read as accepted before. Read by `_id`, `batchSize` at a
+ * time; a message and its task are saved in one transaction, so a message without a task is never a
+ * new task's, and a direct message's claim has no task by design (agbossjs/agboss#860): never an
+ * orphan. Resolves with the number of messages it removed.
+ */
+export async function sweptOrphanMessagesBefore(
+  db: Db,
+  cutoff: Date,
+  batchSize = SWEEP_BATCH,
+): Promise<number> {
+  const tasks = db.collection<A2ATaskDocument>(Collections.A2ATasks);
+  const messages = db.collection<A2AMessageDocument>(Collections.A2AMessages);
+  let removed = 0;
+  for (let after = ""; ;) {
+    const batch = await messages
+      .find(
+        { savedAt: { $lt: cutoff }, taskId: { $ne: DIRECT_MESSAGE_CLAIM }, _id: { $gt: after } },
+        { projection: { tenantId: 1, taskId: 1 }, sort: { _id: 1 }, limit: batchSize },
+      )
+      .toArray();
+    const last = batch.at(-1);
+    if (last === undefined) return removed;
+    const alive = await tasks
+      .find({ _id: { $in: batch.map(taskIdOf) } }, { projection: { _id: 1 } })
+      .toArray();
+    const kept = new Set(alive.map((task) => task._id));
+    const orphans = batch.filter((message) => !kept.has(taskIdOf(message)));
+    if (orphans.length > 0)
+      removed += (await messages.deleteMany({ _id: { $in: orphans.map(({ _id }) => _id) } }))
+        .deletedCount;
+    after = last._id;
   }
 }
