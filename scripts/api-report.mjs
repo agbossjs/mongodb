@@ -10,10 +10,15 @@
 import { Extractor, ExtractorConfig } from "@microsoft/api-extractor";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
+// `--package <dir>`: another package folder (the test plants a hole in a small one)
+const packageAt = process.argv.indexOf("--package");
+const ROOT =
+  packageAt === -1
+    ? fileURLToPath(new URL("..", import.meta.url))
+    : resolve(process.argv[packageAt + 1] ?? "");
 const REPORTS = join(ROOT, "api");
 const write = process.argv.includes("--write");
 const entry = join(ROOT, "dist", "index.d.ts");
@@ -40,9 +45,12 @@ const config = ExtractorConfig.prepare({
     tsdocMetadata: { enabled: false },
     newlineKind: "lf",
     messages: {
-      // findings (a public type using an unexported one) are notes in the report, not errors
+      // findings are notes in the report, not errors; an unexported type of a signature is the
+      // exception: `ae-forgotten-export` is collected below and fails the check (#895) — the
+      // package has one entry, so a type its entry does not export is one no user can name
       extractorMessageReporting: {
         default: { logLevel: "none", addToApiReportFile: true },
+        "ae-forgotten-export": { logLevel: "none", addToApiReportFile: false },
         "ae-missing-release-tag": { logLevel: "none", addToApiReportFile: false },
         "ae-wrong-input-file-type": { logLevel: "none", addToApiReportFile: false },
       },
@@ -54,8 +62,24 @@ const config = ExtractorConfig.prepare({
   packageJsonFullPath: join(ROOT, "package.json"),
 });
 
-const result = Extractor.invoke(config, { localBuild: write, showVerboseMessages: false });
+const forgotten = [];
+const result = Extractor.invoke(config, {
+  localBuild: write,
+  showVerboseMessages: false,
+  messageCallback: (message) => {
+    if (message.messageId !== "ae-forgotten-export") return;
+    forgotten.push(/"([^"]+)"/.exec(message.text)?.[1] ?? message.text);
+    message.handled = true;
+  },
+});
 rmSync(temp, { recursive: true, force: true });
+if (forgotten.length > 0) {
+  console.error(
+    `Types of the public API that the entry does not export (#895): ${[...new Set(forgotten)].join(", ")}.\n` +
+      "Export each, or narrow the signature so it is not named.",
+  );
+  process.exit(1);
+}
 if (!result.succeeded || (!write && result.apiReportChanged)) {
   console.error(
     "api/mongodb.api.md is stale: the public API changed — review it, then npm run api:update",
