@@ -170,6 +170,14 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   ): Promise<void> {
     return writes.savePauseAnswer(this.connection.db, tenantId, rootExecutionId, answer);
   }
+  markPauseAnswerNotTaken(
+    tenantId: string,
+    rootExecutionId: string,
+    answer: PauseAnswerRecord,
+  ): Promise<void> {
+    return writes.markPauseAnswerNotTaken(this.connection.db, tenantId, rootExecutionId, answer);
+  }
+
   async findPauseAnswersByTenantIdAndRootExecutionId(
     tenantId: string,
     rootExecutionId: string,

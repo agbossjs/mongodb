@@ -1,4 +1,4 @@
-import type { Db, IndexDescription } from "mongodb";
+import type { Db, Document, IndexDescription } from "mongodb";
 import { z } from "zod";
 import { MongoCollationNotSimpleError } from "../errors.js";
 import { Collections, type CollectionName } from "./collections.js";
@@ -20,10 +20,22 @@ import { createLedgerEntries } from "./ledger-mark.js";
 const ascending = (...fields: readonly string[]): Record<string, 1> =>
   Object.fromEntries(fields.map((field) => [field, 1 as const]));
 
-const index = (name: string, key: Record<string, 1 | -1>, unique = false): IndexDescription => ({
+const index = (
+  name: string,
+  key: Record<string, 1 | -1>,
+  unique = false,
+  partial?: Document,
+): IndexDescription => ({
   name,
   key,
   ...(unique ? { unique: true } : {}),
+  ...(partial === undefined ? {} : { partialFilterExpression: partial }),
+});
+
+/** A pending pause's deadline field is a date: without the `$type`, null and missing ones would fill the index and sort first. */
+const pendingWith = (field: string): Document => ({
+  status: "pending",
+  [field]: { $type: "date" },
 });
 
 /** The secondary indexes of each collection (its `_id` is the primary key). */
@@ -62,6 +74,16 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
     index("by_step", ascending("tenantId", "rootExecutionId", "stepKey"), true),
     index("by_tree", ascending("tenantId", "rootExecutionId", "seq")),
     index("by_resolution", ascending("status", "resolvedAt")),
+    // schema 2 (#938): the deadline and reminder scans, a tenant's pages, the open look
+    index("pending_by_expiry", ascending("status", "expiresAt"), false, pendingWith("expiresAt")),
+    index("pending_by_remind", ascending("status", "remindAt"), false, pendingWith("remindAt")),
+    index("by_tenant", ascending("tenantId", "status", "channel", "seq")),
+    index("open", ascending("status", "seq"), false, { status: { $in: ["pending", "resolved"] } }),
+  ],
+  [Collections.PauseNotices]: [
+    index("due", ascending("isDead", "nextAttemptAt")),
+    index("stale", ascending("isDead", "headWrittenAt")),
+    index("by_pause", ascending("pauseId", "tenantId")),
   ],
   [Collections.ChildExecutionQueue]: [
     index("by_claim", { status: 1, depth: -1, queuedAt: 1 }),

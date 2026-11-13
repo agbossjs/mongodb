@@ -41,6 +41,11 @@ export const Collections = {
   PausedExecutions: "agboss_paused_executions",
   /** One document per pause (#267 S35). */
   Pauses: "agboss_pauses",
+  /**
+   * One mailbox per pause and receiver (schema 2, #938): its notices in the order written, and the
+   * delivery's state.
+   */
+  PauseNotices: "agboss_pause_notices",
   /** The children queued for any instance (#333). */
   ChildExecutionQueue: "agboss_child_execution_queue",
   /** One counter per budget, scope, scope key and period (agbossjs/agboss#483). */

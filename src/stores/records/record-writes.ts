@@ -135,3 +135,29 @@ export async function pauseAnswerTextsOf(
     .toArray();
   return found.map((one) => PauseAnswerText.parse(one).record);
 }
+
+/**
+ * Writes that a pause's answer was not taken (I12, #938): the entry of the step is set to `answer`
+ * (`isTaken: false`) — an upsert that keeps the first entry's `seq` and `askedAt`, so the order
+ * `sort({ askedAt: 1, seq: 1 })` holds — and a `savePauseAnswer` that comes after is ignored (it
+ * only sets on insert), so in either order the last entry says *not taken* and keeps the answer.
+ * `replaceOne` takes no `$` operators and would lose `seq`, hence `$set` + `$setOnInsert`.
+ */
+export async function markPauseAnswerNotTaken(
+  db: Db,
+  tenantId: string,
+  rootExecutionId: string,
+  answer: PauseAnswerRecord,
+): Promise<void> {
+  const _id = idOf(tenantId, rootExecutionId, answer.step.idempotencyKey);
+  const seq = await nextSequence(db, Collections.PauseAnswers);
+  const entries = db.collection<{ _id: string }>(Collections.PauseAnswers);
+  await entries.updateOne(
+    { _id },
+    {
+      $set: { record: JSON.stringify(answer) },
+      $setOnInsert: { tenantId, rootExecutionId, askedAt: answer.askedAt, seq },
+    },
+    { upsert: true },
+  );
+}

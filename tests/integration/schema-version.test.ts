@@ -72,7 +72,11 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
       database,
       applied: [
         { version: 1, name: "stores" },
+<<<<<<< HEAD
         { version: 2, name: "checkpoint_latest_by_step" },
+=======
+        { version: 2, name: "pause-deadlines-and-notices" },
+>>>>>>> c46e0dd (feat-938: pause store contract v2 on MongoDB: deadlines, notices, not-taken answers; schema version 2)
       ],
       version: 2,
     });

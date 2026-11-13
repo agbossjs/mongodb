@@ -92,4 +92,21 @@ describe("agbossjs/agboss#527: the contract suites bite on MongoDB", () => {
       "a key built by hand, a zombie > #695: the lease released and taken while its holder's write runs: the hand-over waits for the write, or the write is refused — never the take during the work and the write landing after it",
     );
   });
+  it("agbossjs/agboss#938: the pause contract bites on each broken pause store — deadline, order, head time, noticeOnce", () => {
+    const failed = (name: string): string[] =>
+      failedIn(`paused execution contract (${name})`).map((one) => nameOf(one));
+
+    expect(failed("a pause deadline left out of the compare-and-set")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/deadline/u)]),
+    );
+    expect(failed("pause notices written in the wrong order")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/order/u)]),
+    );
+    expect(failed("a pause head time stored as a string")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/head time/u)]),
+    );
+    expect(failed("noticeOnce that relies on a duplicate-key error")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/noticeOnce/u)]),
+    );
+  });
 });
