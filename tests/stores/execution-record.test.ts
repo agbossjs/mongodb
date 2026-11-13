@@ -1,3 +1,4 @@
+import { pauseAnswerRecordOfStored } from "@agboss/core/stores";
 import {
   ComponentKind,
   ExecutionRecordStatus,
@@ -38,33 +39,34 @@ async function threadWith(
   return { threadId, ids };
 }
 
-const answerOf = (stepKey: string, askedAt: string): PauseAnswerRecord => ({
-  pauseId: undefined,
-  executionId: "run-1",
-  step: {
-    component: {
-      name: "clerk-agent",
-      kind: ComponentKind.Agent,
-      promptHash: undefined,
-      schemaHash: undefined,
+const answerOf = (stepKey: string, askedAt: string): PauseAnswerRecord =>
+  pauseAnswerRecordOfStored({
+    pauseId: undefined,
+    executionId: "run-1",
+    step: {
+      component: {
+        name: "clerk-agent",
+        kind: ComponentKind.Agent,
+        promptHash: undefined,
+        schemaHash: undefined,
+      },
+      nodeId: "clerk-agent",
+      visitNumber: 1,
+      idempotencyKey: stepKey,
+      callId: "call-1",
+      itemIndex: undefined,
+      copyNumber: 1,
+      toolLoopIteration: 2,
+      validationAttempts: 0,
     },
-    nodeId: "clerk-agent",
-    visitNumber: 1,
-    idempotencyKey: stepKey,
-    callId: "call-1",
-    itemIndex: undefined,
-    copyNumber: 1,
-    toolLoopIteration: 2,
-    validationAttempts: 0,
-  },
-  role: "refund-approval",
-  answeredBy: PauseAnswerer.Channel,
-  responder: "manager-17",
-  resolution: PauseResolution.Replied,
-  askedAt,
-  resolvedAt: "2026-01-05T10:00:00.000Z",
-  decision: { approved: true },
-});
+    role: "refund-approval",
+    answerer: PauseAnswerer.Channel,
+    answeredBy: "manager-17",
+    resolution: PauseResolution.Replied,
+    askedAt,
+    resolvedAt: "2026-01-05T10:00:00.000Z",
+    decision: { approved: true },
+  });
 
 describe("MongoExecutionRecordRepository", () => {
   it("threads: ids from the IdGenerator, a caller's own id kept, the first creation wins", async () => {
@@ -293,7 +295,10 @@ describe("MongoExecutionRecordRepository", () => {
 
     await records.savePauseAnswer("default", "root-log", later);
     await records.savePauseAnswer("default", "root-log", earlier);
-    await records.savePauseAnswer("default", "root-log", { ...earlier, responder: "someone else" });
+    await records.savePauseAnswer("default", "root-log", {
+      ...earlier,
+      answeredBy: "someone else",
+    });
 
     const log = await records.findPauseAnswersByTenantIdAndRootExecutionId("default", "root-log");
     expect(log).toEqual([earlier, later]);
