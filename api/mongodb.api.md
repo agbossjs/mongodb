@@ -217,6 +217,7 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     deleteThread(threadId: string): Promise<void>;
     // (undocumented)
     getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    latestByStep(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
     // (undocumented)
     list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
     ping(): Promise<void>;
@@ -749,9 +750,9 @@ export { SchemaSetup }
 // src/stores/mongo-a2a-task.repository.ts:120:9 - (ae-undocumented) Missing documentation for "compareAndSetStatus".
 // src/stores/mongo-a2a-task.repository.ts:137:3 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-a2a-task.repository.ts:141:9 - (ae-undocumented) Missing documentation for "deleteTerminalByStatusAtBefore".
-// src/stores/mongo-checkpoint-saver.ts:68:9 - (ae-undocumented) Missing documentation for "getTuple".
-// src/stores/mongo-checkpoint-saver.ts:77:10 - (ae-undocumented) Missing documentation for "list".
-// src/stores/mongo-checkpoint-saver.ts:124:9 - (ae-undocumented) Missing documentation for "putWrites".
+// src/stores/mongo-checkpoint-saver.ts:70:9 - (ae-undocumented) Missing documentation for "getTuple".
+// src/stores/mongo-checkpoint-saver.ts:120:10 - (ae-undocumented) Missing documentation for "list".
+// src/stores/mongo-checkpoint-saver.ts:168:9 - (ae-undocumented) Missing documentation for "putWrites".
 // src/stores/mongo-child-execution-queue.repository.ts:107:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-child-execution-queue.repository.ts:111:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
 // src/stores/mongo-child-execution-queue.repository.ts:145:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".

@@ -93,6 +93,8 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
   [Collections.Checkpoints]: [
     index("by_thread", { threadId: 1, namespace: 1, checkpointId: -1 }),
     index("by_checkpoint", { checkpointId: -1 }),
+    // agbossjs/agboss#962: a thread's newest checkpoint by step, then id: one index walk
+    index("latest_by_step", { threadId: 1, namespace: 1, step: -1, checkpointId: -1 }),
   ],
   [Collections.CheckpointWrites]: [
     index("by_checkpoint", ascending("threadId", "namespace", "checkpointId", "seq", "position")),
