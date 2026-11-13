@@ -4,6 +4,8 @@ import {
   Clock,
   ExecutionRecordStatus,
   Injectable,
+  Logger,
+  LogLevel,
   type ChildExecutionEnd,
   type ChildExecutionQueueCounts,
   type ChildExecutionQueueWatch,
@@ -90,12 +92,13 @@ const childOf = (found: unknown): QueuedChildExecution => {
  *
  * Times are the framework clock's.
  */
-@Injectable({ deps: [MongoConnection, Clock, ApplicationContext] })
+@Injectable({ deps: [MongoConnection, Clock, ApplicationContext, Logger] })
 export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepository {
   constructor(
     private readonly connection: MongoConnection,
     private readonly clock: Clock,
     private readonly applicationContext: ApplicationContext,
+    private readonly logger: Logger,
   ) {
     super();
   }
@@ -135,11 +138,21 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
     }
   }
 
-  /** Wakes `onQueued` whenever any instance queues a child (agbossjs/agboss#777). */
+  /**
+   * Wakes `onQueued` whenever any instance queues a child (agbossjs/agboss#777). A connection that
+   * dies silently is noticed within `mongodbWatchLivenessSeconds` (agbossjs/agboss#789): a warning
+   * (`child-queue.watch-connection-lost`), a new stream and one wake-up.
+   */
   override watchQueued(onQueued: () => void): Promise<ChildExecutionQueueWatch> {
-    const { db } = this.connection;
-    const queue = db.collection(Collections.ChildExecutionQueue);
-    return MongoQueueWatch.open(db, queue, this.clock, onQueued);
+    const warn = (message: string): void => {
+      this.logger.write({
+        level: LogLevel.Warn,
+        code: "child-queue.watch-connection-lost",
+        message,
+        time: this.clock.now(),
+      });
+    };
+    return MongoQueueWatch.open(this.connection, this.clock, warn, onQueued);
   }
 
   async findByTenantIdAndExecutionId(

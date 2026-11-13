@@ -4,6 +4,7 @@ import { seconds } from "@agboss/core/units";
 import { MongoClient } from "mongodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoChildExecutionQueueRepository } from "../../src/index.js";
+import { RecordingLogger } from "../support/recording-logger.js";
 import { TestApplicationContext } from "../support/application-context.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
@@ -22,11 +23,15 @@ afterEach(async () => {
   for (const watch of watches.splice(0)) await watch.close();
 });
 
-const queueOf = (instanceId: string): MongoChildExecutionQueueRepository =>
+const queueOf = (
+  instanceId: string,
+  logger = new RecordingLogger(),
+): MongoChildExecutionQueueRepository =>
   new MongoChildExecutionQueueRepository(
     connectionTo(database.url()),
     clock,
     new TestApplicationContext({}, instanceId),
+    logger,
   );
 
 const child = (executionId: string) => ({
@@ -66,12 +71,17 @@ async function dropQueue(): Promise<void> {
 
 describe("agbossjs/agboss#777: the child queue's change stream", () => {
   it("a stream the server ends opens again after a pause, wakes once, then hears the next save", async () => {
-    const queue = queueOf("instance-2");
+    const logger = new RecordingLogger();
+    const queue = queueOf("instance-2", logger);
     const watched = await watching(queue);
 
     await dropQueue();
-    await vi.waitFor(async () => {
-      await clock.advance(seconds(1));
+    // the loss is logged right before the pause begins: one advance of the pause, no more
+    await vi.waitFor(() => {
+      expect(logger.entries).toHaveLength(1);
+    });
+    await clock.advance(seconds(1));
+    await vi.waitFor(() => {
       expect(watched.wakes()).toBe(1);
     });
 

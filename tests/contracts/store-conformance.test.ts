@@ -1,3 +1,4 @@
+import { RecordingLogger } from "../support/recording-logger.js";
 import { RandomIdGenerator } from "@agboss/core";
 import { storeConformance, StoreCapability } from "@agboss/core/testing/contracts";
 import { minutes } from "@agboss/core/units";
@@ -44,7 +45,12 @@ storeConformance<MongoTransaction>({
       ...mongoStore(
         database,
         (connection, seam) =>
-          new MongoChildExecutionQueueRepository(connection, seam.clock, seam.application),
+          new MongoChildExecutionQueueRepository(
+            connection,
+            seam.clock,
+            seam.application,
+            new RecordingLogger(),
+          ),
       ),
       capabilities: [StoreCapability.WatchQueued],
     },

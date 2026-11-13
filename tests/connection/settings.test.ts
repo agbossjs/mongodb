@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SchemaSetup } from "@agboss/core/stores";
 import {
   DEFAULT_DATABASE,
+  DEFAULT_WATCH_LIVENESS_SECONDS,
   MongoSettingsError,
   MongoTransactionReadConcern,
 } from "../../src/index.js";
@@ -18,6 +19,13 @@ describe("the environment fields of the MongoDB stores", () => {
       transactionReadConcern: undefined,
     });
     expect(DEFAULT_DATABASE).toBe("agboss");
+    expect(DEFAULT_WATCH_LIVENESS_SECONDS).toBe(10);
+  });
+
+  it("agbossjs/agboss#789: mongodbWatchLivenessSeconds is read when set", () => {
+    expect(
+      settingsOfEnvironment({ mongodbUrl: revealing(URL), mongodbWatchLivenessSeconds: 6 }),
+    ).toMatchObject({ watchLivenessSeconds: 6 });
   });
 
   it("mongodbDatabase and mongodbTransactionReadConcern are read when set", () => {
@@ -86,6 +94,9 @@ describe("the environment fields of the MongoDB stores", () => {
     [{ mongodbTransactionReadConcern: "local" }, /must be snapshot or majority/],
     [{ mongodbTransactionReadConcern: "available" }, /must be snapshot or majority/],
     [{ mongodbTransactionReadConcern: true }, /must be snapshot or majority/],
+    [{ mongodbWatchLivenessSeconds: 1 }, /mongodbWatchLivenessSeconds must be at least 2/],
+    [{ mongodbWatchLivenessSeconds: 2.5 }, /mongodbWatchLivenessSeconds must be a whole number/],
+    [{ mongodbWatchLivenessSeconds: "5" }, /mongodbWatchLivenessSeconds must be a number/],
     [{ mongodbSchemaSetup: "ensure" }, /mongodbSchemaSetup must be check or migrate-on-start/],
     [{ mongodbSchemaSetup: true }, /mongodbSchemaSetup must be check or migrate-on-start/],
   ])("a mistyped field fails, naming it: %o", (fields, message) => {

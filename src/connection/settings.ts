@@ -7,6 +7,13 @@ import { MongoTransactionReadConcern } from "./concerns.js";
 export const DEFAULT_DATABASE = "agboss";
 
 /**
+ * How long a dead change stream connection may go unnoticed (agbossjs/agboss#789) when the
+ * environment does not set `mongodbWatchLivenessSeconds`: a ping every half of it, an answer due
+ * within the other half.
+ */
+export const DEFAULT_WATCH_LIVENESS_SECONDS = 10;
+
+/**
  * The database a connection string names (`mongodb://h1,h2/<database>?…`), `undefined` when it
  * names none.
  */
@@ -23,6 +30,14 @@ export interface MongoConnectionSettings {
   readonly database?: string;
   /** The read concern of the stores' transactions (default `snapshot`). */
   readonly transactionReadConcern?: MongoTransactionReadConcern;
+  /**
+   * The longest a silently dead connection of the child queue's change stream (a half-open TCP
+   * connection: no FIN, no RST) goes unnoticed, in seconds (agbossjs/agboss#789; default
+   * `DEFAULT_WATCH_LIVENESS_SECONDS`, 10, at least 2): the watch pings the server every half of it
+   * and gives the answer the other half, then warns, opens the stream on a new client and wakes
+   * once.
+   */
+  readonly watchLivenessSeconds?: number;
   /**
    * What the start does with the schema (agbossjs/agboss#891): `SchemaSetup.Check` (the default)
    * refuses a database not migrated to this package's version; `SchemaSetup.MigrateOnStart`
@@ -56,6 +71,11 @@ const MongoEnvironment = z.object({
       message: "mongodbTransactionReadConcern must be snapshot or majority",
     })
     .optional(),
+  mongodbWatchLivenessSeconds: z
+    .number({ message: "mongodbWatchLivenessSeconds must be a number" })
+    .int("mongodbWatchLivenessSeconds must be a whole number")
+    .min(2, "mongodbWatchLivenessSeconds must be at least 2")
+    .optional(),
   mongodbSchemaSetup: z
     .enum(SchemaSetup, { message: "mongodbSchemaSetup must be check or migrate-on-start" })
     .optional(),
@@ -66,8 +86,8 @@ const MISSING_URL =
 
 /**
  * The connection settings an application's environment gives: `mongodbUrl` (required, a
- * `Secret`), `mongodbDatabase`, `mongodbTransactionReadConcern` and `mongodbSchemaSetup`
- * (optional). A missing or
+ * `Secret`), `mongodbDatabase`, `mongodbTransactionReadConcern`, `mongodbWatchLivenessSeconds` and
+ * `mongodbSchemaSetup` (optional). A missing or
  * mistyped field fails with `MongoSettingsError`, naming it — the URL itself is never printed.
  */
 export function settingsOfEnvironment(environment: unknown): MongoConnectionSettings {
@@ -83,12 +103,14 @@ export function settingsOfEnvironment(environment: unknown): MongoConnectionSett
   }
   const { mongodbUrl, mongodbDatabase, mongodbTransactionReadConcern, mongodbSchemaSetup } =
     parsed.data;
+  const { mongodbWatchLivenessSeconds } = parsed.data;
   const url = mongodbUrl.reveal();
   if (url.length === 0) throw new MongoSettingsError({ message: "mongodbUrl is empty" });
   return {
     url,
     database: mongodbDatabase,
     transactionReadConcern: mongodbTransactionReadConcern,
+    watchLivenessSeconds: mongodbWatchLivenessSeconds,
     schemaSetup: mongodbSchemaSetup,
   };
 }

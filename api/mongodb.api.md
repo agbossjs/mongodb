@@ -59,6 +59,7 @@ import { FencedEffectSettings } from '@agboss/core';
 import { FencedEffectWork } from '@agboss/core';
 import { IdGenerator } from '@agboss/core';
 import { LedgerEntry } from '@agboss/core';
+import { Logger } from '@agboss/core';
 import { MeshRequestKey } from '@agboss/core';
 import { MeshRequestRecord } from '@agboss/core';
 import { MeshRequestRepository } from '@agboss/core';
@@ -146,6 +147,9 @@ export const Collections: {
 export const DEFAULT_DATABASE = "agboss";
 
 // @public
+export const DEFAULT_WATCH_LIVENESS_SECONDS = 10;
+
+// @public
 export function migrateMongodb(options: MigrateMongodbOptions): Promise<MongoMigrationReport>;
 
 // @public
@@ -228,7 +232,7 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
 
 // @public
 export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepository {
-    constructor(connection: MongoConnection, clock: Clock, applicationContext: ApplicationContext);
+    constructor(connection: MongoConnection, clock: Clock, applicationContext: ApplicationContext, logger: Logger);
     // (undocumented)
     claimFirstByStatusQueuedOrderByDepthDesc(): Promise<QueuedChildExecution | undefined>;
     // (undocumented)
@@ -285,6 +289,7 @@ export interface MongoConnectionSettings {
     readonly schemaSetup?: SchemaSetup;
     readonly transactionReadConcern?: MongoTransactionReadConcern;
     readonly url: string;
+    readonly watchLivenessSeconds?: number;
 }
 
 // @public
@@ -753,13 +758,13 @@ export { SchemaSetup }
 // src/stores/mongo-checkpoint-saver.ts:70:9 - (ae-undocumented) Missing documentation for "getTuple".
 // src/stores/mongo-checkpoint-saver.ts:89:10 - (ae-undocumented) Missing documentation for "list".
 // src/stores/mongo-checkpoint-saver.ts:137:9 - (ae-undocumented) Missing documentation for "putWrites".
-// src/stores/mongo-child-execution-queue.repository.ts:107:3 - (ae-undocumented) Missing documentation for "ping".
-// src/stores/mongo-child-execution-queue.repository.ts:111:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
-// src/stores/mongo-child-execution-queue.repository.ts:145:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
-// src/stores/mongo-child-execution-queue.repository.ts:153:9 - (ae-undocumented) Missing documentation for "claimFirstByStatusQueuedOrderByDepthDesc".
-// src/stores/mongo-child-execution-queue.repository.ts:168:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
-// src/stores/mongo-child-execution-queue.repository.ts:186:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
-// src/stores/mongo-child-execution-queue.repository.ts:193:9 - (ae-undocumented) Missing documentation for "countByStatus".
+// src/stores/mongo-child-execution-queue.repository.ts:110:3 - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-child-execution-queue.repository.ts:114:9 - (ae-undocumented) Missing documentation for "saveIfAbsent".
+// src/stores/mongo-child-execution-queue.repository.ts:158:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndExecutionId".
+// src/stores/mongo-child-execution-queue.repository.ts:166:9 - (ae-undocumented) Missing documentation for "claimFirstByStatusQueuedOrderByDepthDesc".
+// src/stores/mongo-child-execution-queue.repository.ts:181:9 - (ae-undocumented) Missing documentation for "completeByTenantIdAndExecutionId".
+// src/stores/mongo-child-execution-queue.repository.ts:199:9 - (ae-undocumented) Missing documentation for "deleteAllByTenantIdAndRootExecutionId".
+// src/stores/mongo-child-execution-queue.repository.ts:206:9 - (ae-undocumented) Missing documentation for "countByStatus".
 // src/stores/mongo-cost-ledger.repository.ts:102:3 - (ae-undocumented) Missing documentation for "ping".
 // src/stores/mongo-cost-ledger.repository.ts:106:9 - (ae-undocumented) Missing documentation for "findSpentByCounter".
 // src/stores/mongo-cost-ledger.repository.ts:111:9 - (ae-undocumented) Missing documentation for "saveAll".

@@ -8,7 +8,11 @@
 export { MongoConnection } from "./connection/mongodb-connection.js";
 export { Collections, type CollectionName } from "./connection/collections.js";
 export type { MongoTransaction } from "./connection/transaction.js";
-export { DEFAULT_DATABASE, type MongoConnectionSettings } from "./connection/settings.js";
+export {
+  DEFAULT_DATABASE,
+  DEFAULT_WATCH_LIVENESS_SECONDS,
+  type MongoConnectionSettings,
+} from "./connection/settings.js";
 export { MongoTransactionReadConcern } from "./connection/concerns.js";
 export { MongoTopology } from "./connection/deployment.js";
 // what the start does with the schema (agbossjs/agboss#891): the core's, shared with @agboss/postgres
