@@ -10,7 +10,7 @@ import {
   type CheckpointTuple,
   type PendingWrite,
 } from "@langchain/langgraph-checkpoint";
-import { Binary, type AnyBulkWriteOperation, type Collection } from "mongodb";
+import { Binary, type Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import {
@@ -20,14 +20,16 @@ import {
   listFilterOf,
   matchesMetadata,
   metadataOf,
+  stepOf,
   StoredCheckpoint,
   StoredWrite,
-  writeIndexOf,
   type CheckpointDocument,
   type PendingWrites,
   type WriteDocument,
 } from "./checkpoints/checkpoint-documents.js";
 import { idOf } from "./keys.js";
+import { latestDocumentOf } from "./checkpoints/latest-checkpoint.js";
+import { writeOperationsOf } from "./checkpoints/write-operations.js";
 import { nextSequence } from "./sequence.js";
 
 /** `checkpoint` (a copy) with `newVersions` laid over its channel versions. */
@@ -74,6 +76,16 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     return found === null ? undefined : this.#tupleOf(StoredCheckpoint.parse(found));
   }
 
+  /** The checkpoint of the thread and namespace newest by `(step, id)`: one index read (#962). */
+  async latestByStep(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    const found = await latestDocumentOf(
+      this.#checkpoints,
+      this.serde,
+      keyOf(config, "latestByStep"),
+    );
+    return found === null ? undefined : this.#tupleOf(StoredCheckpoint.parse(found));
+  }
+
   async *list(
     config: RunnableConfig,
     options: CheckpointListOptions = {},
@@ -115,6 +127,7 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
         parentCheckpointId: parentId ?? null,
         ...{ checkpointType, checkpoint: new Binary(dumped) },
         ...{ metadataType, metadata: new Binary(dumpedMetadata) },
+        step: stepOf(metadata),
       },
       { upsert: true },
     );
@@ -127,31 +140,12 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
       throw new Error("MongoCheckpointSaver.putWrites: the config has no checkpoint_id");
     if (writes.length === 0) return;
     const seq = await nextSequence(this.connection.db, Collections.CheckpointWrites);
-    const operations = await Promise.all(
-      writes.map(
-        async ([channel, value], position): Promise<AnyBulkWriteOperation<WriteDocument>> => {
-          const [valueType, bytes] = await this.serde.dumpsTyped(value);
-          const index = writeIndexOf(channel, position);
-          const placed = {
-            tenantId,
-            threadId,
-            namespace,
-            checkpointId,
-            taskId,
-            index,
-            seq,
-            position,
-          };
-          const written = { channel, valueType, value: new Binary(bytes) };
-          const filter = { _id: idOf(threadId, namespace, checkpointId, taskId, index) };
-          // a regular write is kept as first written; a special one (an error, …) replaces its own
-          const update =
-            index >= 0
-              ? { $setOnInsert: { ...placed, ...written } }
-              : { $set: written, $setOnInsert: placed };
-          return { updateOne: { filter, update, upsert: true } };
-        },
-      ),
+    const operations = await writeOperationsOf(
+      this.serde,
+      { tenantId, threadId, namespace, checkpointId },
+      taskId,
+      seq,
+      writes,
     );
     await this.connection.inTransaction(async ({ session }) => {
       await this.#writes.bulkWrite(operations, { session, ordered: true });

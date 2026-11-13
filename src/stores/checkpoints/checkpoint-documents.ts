@@ -31,6 +31,17 @@ export interface CheckpointDocument {
   checkpoint: Binary;
   metadataType: string;
   metadata: Binary;
+  /**
+   * LangGraph's `metadata.step` (-2: none, or not a number), written in the same document
+   * (agbossjs/agboss#962); absent in one written before — the first read of its thread gives it.
+   */
+  step?: number;
+}
+
+/** The step a checkpoint is ordered by: `metadata.step` when a finite number, else -2. */
+export function stepOf(metadata: { readonly step?: unknown } | undefined): number {
+  const step = metadata?.step;
+  return typeof step === "number" && Number.isFinite(step) ? step : -2;
 }
 
 export interface WriteDocument {
@@ -62,6 +73,13 @@ export const StoredCheckpoint = z.object({
   metadata: Bytes,
 });
 export type StoredCheckpoint = z.infer<typeof StoredCheckpoint>;
+
+/** The part of a checkpoint document the `step` backfill reads. */
+export const StoredMetadata = z.object({
+  _id: z.string(),
+  metadataType: z.string(),
+  metadata: Bytes,
+});
 
 export const StoredWrite = z.object({
   taskId: z.string(),

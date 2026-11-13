@@ -38,8 +38,10 @@ describe("agbossjs/agboss#891 AC1: the agboss-mongodb bin (a Kubernetes Job)", (
       (error: unknown) => error,
     );
 
-    expect(first.stdout).toBe(`applied 0001_stores (${database})\n`);
-    expect(second.stdout).toBe(`nothing to apply: ${database} is at version 1\n`);
+    expect(first.stdout).toBe(
+      `applied 0001_stores (${database})\napplied 0002_checkpoint_latest_by_step (${database})\n`,
+    );
+    expect(second.stdout).toBe(`nothing to apply: ${database} is at version 2\n`);
     expect(usage).toMatchObject({
       code: 2,
       stderr: expect.stringContaining("usage: agboss-mongodb"),
@@ -53,8 +55,12 @@ describe("agbossjs/agboss#891 AC1: the agboss-mongodb bin (a Kubernetes Job)", (
     const byEnvAgain = await run("node", [BIN, "migrate"], { env });
     const byFlag = await run("node", [BIN, "migrate", `--database=${fromFlag}`], { env });
 
-    expect(byEnv.stdout).toBe(`applied 0001_stores (${fromEnv})\n`);
-    expect(byEnvAgain.stdout).toBe(`nothing to apply: ${fromEnv} is at version 1\n`);
-    expect(byFlag.stdout).toBe(`applied 0001_stores (${fromFlag})\n`);
+    expect(byEnv.stdout).toBe(
+      `applied 0001_stores (${fromEnv})\napplied 0002_checkpoint_latest_by_step (${fromEnv})\n`,
+    );
+    expect(byEnvAgain.stdout).toBe(`nothing to apply: ${fromEnv} is at version 2\n`);
+    expect(byFlag.stdout).toBe(
+      `applied 0001_stores (${fromFlag})\napplied 0002_checkpoint_latest_by_step (${fromFlag})\n`,
+    );
   });
 });

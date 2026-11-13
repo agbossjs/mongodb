@@ -19,8 +19,15 @@ export interface MongoMigration {
   readonly name: string;
 }
 
-/** The package's migrations, in order. Version 1: every collection, index and the ledger's mark. */
-export const MIGRATIONS: readonly MongoMigration[] = [{ version: 1, name: "stores" }];
+/**
+ * The package's migrations, in order. Version 1: every collection, index and the ledger's mark.
+ * Version 2 (agbossjs/agboss#962): the checkpoints' `latest_by_step` index; a checkpoint written
+ * before has no `step` until the first read of its thread gives it one.
+ */
+export const MIGRATIONS: readonly MongoMigration[] = [
+  { version: 1, name: "stores" },
+  { version: 2, name: "checkpoint_latest_by_step" },
+];
 
 /** The schema version this package needs: its newest migration's. */
 export const SCHEMA_VERSION = Math.max(...MIGRATIONS.map((migration) => migration.version));
