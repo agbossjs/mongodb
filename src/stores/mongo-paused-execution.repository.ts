@@ -33,7 +33,12 @@ interface PausedDocument {
   pausedAt: Date;
 }
 
-const Paused = z.object({ run: z.string(), workflowVersion: z.string(), configHash: z.string() });
+const Paused = z.object({
+  runId: z.string(),
+  run: z.string(),
+  workflowVersion: z.string(),
+  configHash: z.string(),
+});
 
 /**
  * `PausedExecutionRepository` on MongoDB (#265, #267 S35, agbossjs/agboss#527): one document per
@@ -72,7 +77,7 @@ export class MongoPausedExecutionRepository extends PausedExecutionRepository {
     if (found === null) return undefined;
     const stored = Paused.parse(found);
     return {
-      run: pausedRunOfJson(stored.run),
+      run: pausedRunOfJson(stored.run, { threadId, runId: stored.runId }),
       workflowVersion: stored.workflowVersion,
       configHash: stored.configHash,
     };

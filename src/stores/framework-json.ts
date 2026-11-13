@@ -13,6 +13,7 @@ import {
   type StoredPause as StoredPauseRecord,
 } from "@agboss/core/stores";
 import { z } from "zod";
+import { parsedOrUnreadable, unreadable } from "./unreadable.js";
 import type { PauseAnswerRecord as PauseAnswer } from "@agboss/core";
 
 /**
@@ -94,43 +95,6 @@ const StoredRun = z.looseObject({
   budgetUsd: z.custom<number>((value) => typeof value === "number" && !Number.isNaN(value)),
 });
 
-/** The ids that name a stored value in an error: its keys, never its content. */
-/** ` (tenantId acme, …)`, or nothing when no id is readable. */
-const named = (ids: string): string => (ids === "" ? "" : ` (${ids})`);
-
-const idsOf = (value: unknown, keys: readonly string[]): string =>
-  keys
-    .flatMap((key) => {
-      const id: unknown =
-        typeof value === "object" && value !== null ? Reflect.get(value, key) : "";
-      return typeof id === "string" ? [`${key} ${id}`] : [];
-    })
-    .join(", ");
-
-/**
- * Why a stored value is refused (#906 D4): what it should have been, the ids that name it and the
- * field that failed — never the value, whose input and data are the caller's (PII reaches the logs
- * through a message). The schema's own error, which names paths and expectations only, is the `cause`.
- */
-function unreadable(
-  what: string,
-  keys: readonly string[],
-  value: unknown,
-  failure: { readonly error?: z.ZodError; readonly field?: string },
-): Error {
-  const field =
-    failure.field ??
-    [
-      ...new Set(
-        (failure.error?.issues ?? []).map((issue) => issue.path.join(".") || "(the value)"),
-      ),
-    ].join(", ");
-  return new Error(
-    `a stored ${what} is not readable${named(idsOf(value, keys))}: the field(s) ${field === "" ? "(the value)" : field} missing or not what the framework wrote`,
-    { cause: failure.error },
-  );
-}
-
 /**
  * What the checks above established, as the type the core's normalisers take: the schema is the
  * runtime check (the framework wrote the rest), `parse` returns the value it passed — no cast at a call.
@@ -147,7 +111,7 @@ const CheckedPause = z.custom<StoredPauseRecord>((value) => {
 const CheckedRun = z.custom<PausedExecution["run"]>((value) => StoredRun.safeParse(value).success);
 
 const ANSWER_IDS = ["pauseId", "executionId"];
-const PAUSE_IDS = ["pauseId", "tenantId", "executionId"];
+const PAUSE_IDS = ["pauseId", "executionId"];
 const RUN_IDS = ["threadId", "runId"];
 
 /** A resolved pause's log entry, from the JSON `savePauseAnswer` wrote. */
@@ -189,8 +153,11 @@ function withTurnId(run: PausedExecution["run"]): PausedExecution["run"] {
 }
 
 /** A paused run, from the text `pausedRunJsonOf` wrote (one stored by 0.1.0 under `ternId` too). */
-export function pausedRunOfJson(json: string): PausedExecution["run"] {
-  const value: unknown = JSON.parse(json, (_key, item: unknown) => {
+export function pausedRunOfJson(
+  json: string,
+  ids: { readonly threadId?: string; readonly runId?: string } = {},
+): PausedExecution["run"] {
+  const value = parsedOrUnreadable("paused run", json, ids, (_key, item: unknown) => {
     const tagged = NonFinite.safeParse(item);
     return tagged.success ? Number(tagged.data.$number) : item;
   });

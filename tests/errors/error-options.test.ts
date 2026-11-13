@@ -1,7 +1,7 @@
 /**
  * #906 AC1 (completing #890, G8): every error `@agboss/mongodb` exports is made from one options
  * object whose keys are its own properties, with a `cause` that is kept — the core's convention. The
- * test walks the entry's exports: a new error class without a fixture here fails it.
+ * test walks the entry's exports (every `Error` class, not only an `AGBossError`): a new error class without a fixture here fails it.
  */
 import { AGBossError } from "@agboss/core";
 import { describe, expect, it } from "vitest";
@@ -17,18 +17,18 @@ const FIXTURES: Readonly<Record<string, object>> = {
   MongoSettingsError: { message: "mongodbUrl is empty" },
 };
 
-type ErrorClass = abstract new (options: never) => AGBossError;
+type ErrorClass = abstract new (options: never) => Error;
 
 const classes = Object.entries(entry).flatMap(([name, value]): [string, ErrorClass][] =>
-  typeof value === "function" && value.prototype instanceof AGBossError
+  typeof value === "function" && value.prototype instanceof Error
     ? [[name, value as ErrorClass]]
     : [],
 );
 
 /** `new ErrorClass(options)`, however its options are typed. */
-const made = (ErrorClass: ErrorClass, options: object): AGBossError => {
+const made = (ErrorClass: ErrorClass, options: object): Error => {
   const error: unknown = Reflect.construct(ErrorClass, [options]);
-  if (!(error instanceof AGBossError)) throw new TypeError("not an AGBossError");
+  if (!(error instanceof Error)) throw new TypeError("not an Error");
   return error;
 };
 
@@ -47,7 +47,7 @@ describe("#906 AC1: every error takes one options bag with a cause", () => {
 
       expect(error.cause).toBe(cause);
       expect(Object.keys(options).filter((key) => !Object.hasOwn(error, key))).toEqual([]);
-      expect(error.code).toBe(Reflect.get(ErrorClass, "code"));
+      expect(Reflect.get(error, "code")).toBe(Reflect.get(ErrorClass, "code"));
       expect(made(ErrorClass, options)).toBeInstanceOf(AGBossError);
     },
   );
