@@ -53,5 +53,6 @@ export { MongoExecutionHistoryRepository } from "./stores/mongo-execution-histor
 export { MongoChildExecutionQueueRepository } from "./stores/mongo-child-execution-queue.repository.js";
 export { MongoRateLimitRepository } from "./stores/mongo-rate-limit.repository.js";
 export { MongoPausedExecutionRepository } from "./stores/mongo-paused-execution.repository.js";
+export { MongoPauseTransitions } from "./stores/paused/pause-transitions.repository.js";
 export { MongoExecutionRecordRepository } from "./stores/mongo-execution-record.repository.js";
 export { MongoCheckpointSaver } from "./stores/mongo-checkpoint-saver.js";

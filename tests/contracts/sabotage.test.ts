@@ -103,7 +103,7 @@ describe("agbossjs/agboss#527: the contract suites bite on MongoDB", () => {
       expect.arrayContaining([expect.stringMatching(/order/u)]),
     );
     expect(failed("a pause head time stored as a string")).toEqual(
-      expect.arrayContaining([expect.stringMatching(/head time/u)]),
+      expect.arrayContaining([expect.stringMatching(/closed appended on day 3/u)]),
     );
     expect(failed("noticeOnce that relies on a duplicate-key error")).toEqual(
       expect.arrayContaining([expect.stringMatching(/noticeOnce/u)]),

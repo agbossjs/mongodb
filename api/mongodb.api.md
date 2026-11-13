@@ -575,8 +575,6 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     static readonly store: StoreDescriptor_2;
 }
 
-// Warning: (ae-forgotten-export) The symbol "MongoPauseTransitions" needs to be exported by the entry point index.d.ts
-//
 // @public
 export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     // (undocumented)
@@ -602,6 +600,35 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     setAsideNotices(claim: PauseNoticeClaim, _at: Date, problem: string): Promise<boolean>;
     // (undocumented)
     setAsideStaleNoticesBefore(writtenBefore: Date, at: Date, problem: string, limit: number): Promise<readonly SetAsideMailbox[]>;
+}
+
+// @public
+export abstract class MongoPauseTransitions extends MongoPauseBase {
+    // (undocumented)
+    cancelByTenantIdAndPauseId(tenantId: string, pauseId: string, resolution: PauseCancellation, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
+    // (undocumented)
+    closeUntakenByTenantIdAndPauseId(tenantId: string, pauseId: string, resolution: PauseUntakenResolution, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
+    decideByTenantIdAndPauseId(tenantId: string, pauseId: string, answer: PauseAnswer, at: Date): Promise<boolean>;
+    // (undocumented)
+    expireByTenantIdAndPauseId(tenantId: string, pauseId: string, expiry: PauseExpiry, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
+    // (undocumented)
+    extendByTenantIdAndPauseId(tenantId: string, pauseId: string, change: PauseExtension, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
+    // (undocumented)
+    findAllByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<readonly PauseRecord[]>;
+    // (undocumented)
+    findByTenantIdAndPauseId(tenantId: string, pauseId: string): Promise<PauseRecord | undefined>;
+    // (undocumented)
+    findByTenantIdAndRootExecutionIdAndStepKey(tenantId: string, rootExecutionId: string, stepKey: string): Promise<PauseRecord | undefined>;
+    // (undocumented)
+    findOrCreateByStepKey(pause: PauseRecord): Promise<PauseRecord>;
+    markSentByTenantIdAndPauseId(tenantId: string, pauseId: string, recipients: PauseRecipients): Promise<boolean>;
+    // (undocumented)
+    markTakenByTenantIdAndPauseId(tenantId: string, pauseId: string): Promise<void>;
+    noticeOnceByTenantIdAndPauseId(tenantId: string, pauseId: string, kind: PauseNoticeKind, facts: PauseNoticeFacts, at: Date, recipients: PauseRecipients): Promise<boolean>;
+    // (undocumented)
+    remindByTenantIdAndPauseId(tenantId: string, pauseId: string, at: Date, recipients: PauseRecipients): Promise<boolean>;
+    // (undocumented)
+    resolveByTenantIdAndPauseId(tenantId: string, pauseId: string, answer: PauseAnswer, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
 }
 
 // @public
@@ -868,6 +895,17 @@ export { SchemaSetup }
 // src/stores/mongo-rate-limit.repository.ts:151:9 - (ae-undocumented) Missing documentation for "clearWindow".
 // src/stores/mongo-rate-limit.repository.ts:155:9 - (ae-undocumented) Missing documentation for "pauseUntil".
 // src/stores/mongo-rate-limit.repository.ts:159:9 - (ae-undocumented) Missing documentation for "pausedUntil".
+// src/stores/paused/pause-transitions.repository.ts:35:3 - (ae-undocumented) Missing documentation for "findOrCreateByStepKey".
+// src/stores/paused/pause-transitions.repository.ts:39:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts:47:9 - (ae-undocumented) Missing documentation for "findByTenantIdAndRootExecutionIdAndStepKey".
+// src/stores/paused/pause-transitions.repository.ts:56:9 - (ae-undocumented) Missing documentation for "findAllByTenantIdAndRootExecutionId".
+// src/stores/paused/pause-transitions.repository.ts:89:3 - (ae-undocumented) Missing documentation for "resolveByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts:121:3 - (ae-undocumented) Missing documentation for "cancelByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts:133:3 - (ae-undocumented) Missing documentation for "expireByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts:145:3 - (ae-undocumented) Missing documentation for "closeUntakenByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts:157:3 - (ae-undocumented) Missing documentation for "extendByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts:169:9 - (ae-undocumented) Missing documentation for "remindByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts:214:9 - (ae-undocumented) Missing documentation for "markTakenByTenantIdAndPauseId".
 
 // (No @packageDocumentation comment for this package)
 
