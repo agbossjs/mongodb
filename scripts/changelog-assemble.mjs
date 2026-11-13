@@ -9,7 +9,7 @@
 //
 // Format: see changes/README.md. A fragment with an unknown section, a file name that disagrees with
 // its `issue`, or an entry that does not mention its issue fails the run and changes nothing.
-// Idempotent: with no fragments left there is nothing to do and the file is not touched. The file is
+// Idempotent: with no fragments left only an unreleased heading is dated (nothing else is touched). The file is
 // replaced atomically and the fragments are deleted after, so a crash in between is repaired by a rerun.
 // `changes/config.json` names the form an entry must mention its issue in (`#981`, or
 // `agbossjs/agboss#981` in a repository other than the core).
@@ -122,16 +122,17 @@ function main(args) {
       "usage: changelog-assemble.mjs <version> [--date YYYY-MM-DD] [--dir D] [--changelog F]",
     );
   }
-  if (fragments.length === 0) {
-    console.log(`no fragments in ${dir}/: nothing to assemble`);
-    return;
-  }
   const date = option(args, "--date", new Date().toISOString().slice(0, 10));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`--date ${date} is not YYYY-MM-DD`);
   const path = option(args, "--changelog", "CHANGELOG.md");
   const before = existsSync(path) ? readFileSync(path, "utf8") : "";
   const after = foldFragments(before, version, date, fragments);
   if (after !== before) replaceFile(path, after);
+  if (fragments.length === 0) {
+    const dated = after === before ? "nothing to assemble" : `${version} dated ${date}`;
+    console.log(`no fragments in ${dir}/: ${dated}`);
+    return;
+  }
   for (const fragment of fragments) rmSync(join(dir, fragment.file));
   console.log(`${path}: ${version} assembled from ${fragments.length} fragment(s)`);
 }

@@ -38,15 +38,18 @@ export function sectionOf(version, date, fragments) {
   return `${parts.join("\n\n")}\n`;
 }
 
-/** Where a subheading sits in the canonical order; a custom one ("Fixed — other") sits with its kind. */
-function rank(heading) {
+/** The canonical heading a subheading belongs to (the longest match: "Fixed — other" is a Fixed), or -1. */
+function kind(heading) {
   let best = -1;
   for (const [i, own] of HEADINGS.entries()) {
     const kin = heading === own || heading.startsWith(`${own} `);
     if (kin && (best === -1 || own.length > HEADINGS[best].length)) best = i;
   }
-  return best === -1 ? Infinity : best;
+  return best;
 }
+
+/** Where a subheading sits in the canonical order; a custom one ("Fixed — other") sits with its kind. */
+const rank = (heading) => (kind(heading) === -1 ? Infinity : kind(heading));
 
 /** The `## ` section of a version as line indexes, or null. `released` is false for an unreleased one. */
 function findSection(lines, version) {
@@ -77,9 +80,16 @@ function split(body) {
   return { intro: trim(intro), blocks: blocks.map((b) => ({ ...b, lines: trim(b.lines) })) };
 }
 
-/** Add the bullets of one canonical section to the blocks: append to its `###`, or create it in order. */
+/**
+ * Add the bullets of one canonical section to the blocks: append to its `###`; else to the last
+ * custom heading of its kind ("Fixed — other" for Fixed: a release has one Fixed, not three); else
+ * create it in order. "Changed — breaking …" is of the kind Breaking, so Changed never lands there.
+ */
 function addTo(blocks, heading, bullets) {
-  const own = blocks.find((block) => block.heading === heading);
+  const index = HEADINGS.indexOf(heading);
+  const own =
+    blocks.find((block) => block.heading === heading) ??
+    blocks.findLast((block) => kind(block.heading) === index);
   if (!own) {
     const block = { heading, lines: bullets.join("\n").split("\n") };
     const at = blocks.findIndex((b) => rank(b.heading) > rank(heading));
@@ -103,6 +113,7 @@ export function foldFragments(changelog, version, date, fragments) {
   const lines = text.replace(/\n$/, "").split("\n");
   const found = findSection(lines, version);
   if (!found) {
+    if (fragments.length === 0) return changelog;
     const first = lines.findIndex((line) => line.startsWith("## ["));
     const section = sectionOf(version, date, fragments);
     if (first === -1) return `${text.trimEnd()}\n\n${section}`;

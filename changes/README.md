@@ -38,7 +38,9 @@ The version's section in `CHANGELOG.md` is one of three, and the script handles 
   fragment goes under the `### <heading>` of its section inside it, after the entries already there;
   a heading that is not there yet is created in the order Breaking (headed `Changed — breaking`),
   Changed, Added, Fixed, Deprecated, Security. Other subheadings (`Fixed — other`, `Docs`, …) stay
-  as they are. The heading, in either form, becomes `## [<version>] — <date>`; no PR edits it
+  as they are, except that a section with no `### Fixed` of its own gets its entries under the last
+  `### Fixed — …` (likewise Added, Deprecated, Security; `Changed — breaking …` is Breaking's, so
+  Changed gets its own). The heading, in either form, becomes `## [<version>] — <date>`; no PR edits it
   before (CI), so the draft heading stays as it is until the release PR.
 - **Absent**: a new dated section is written above the newest release; the file is created if the
   repository has none.
@@ -47,7 +49,7 @@ The version's section in `CHANGELOG.md` is one of three, and the script handles 
 
 Inside a section, new entries are ordered by issue number. A fragment with an unknown section, a
 name that disagrees with its `issue`, or an entry that does not mention its issue fails the run and
-changes nothing. With no fragments the run does nothing, so it is safe to repeat. `--check`
+changes nothing. With no fragments the run changes nothing but the heading of an unreleased section (it gets its date), so it is safe to repeat. `--check`
 validates the fragments without assembling.
 
 `changes/config.json` holds `issuePrefix`, the form an entry mentions its issue in (`"#"` here is
