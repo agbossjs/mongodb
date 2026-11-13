@@ -3,6 +3,7 @@ import { MongoClient } from "mongodb";
 import { afterAll, beforeAll } from "vitest";
 import { seedLedgerMark } from "../../src/connection/ledger-mark.js";
 import { Collections, MongoConnection } from "../../src/index.js";
+import { DROP_BOUND_MS, dropOnServer } from "./drop-databases.js";
 import { freshDatabaseName, REPLICA_SET_URL } from "./server.js";
 
 /**
@@ -28,11 +29,13 @@ export async function openConnection(url: string): Promise<MongoConnection> {
   return connection;
 }
 
-/** Drops `database` on the replica set. */
+/** Drops `database` on the replica set, within `DROP_BOUND_MS` (agbossjs/agboss#985); a failure names it. */
 export async function dropDatabase(database: string): Promise<void> {
   const client = new MongoClient(REPLICA_SET_URL);
   try {
-    await client.db(database).dropDatabase();
+    await dropOnServer(client)(database, DROP_BOUND_MS).catch((error: unknown) => {
+      throw new Error(`dropping the test database ${database}: ${String(error)}`, { cause: error });
+    });
   } finally {
     await client.close();
   }

@@ -3,7 +3,9 @@ import type { FaultSuiteOptions } from "@agboss/core/testing/faults";
 import { MongoClient } from "mongodb";
 import { afterAll } from "vitest";
 import { z } from "zod";
-import { dropDatabase, openConnection, urlOnDatabase } from "../support/database.js";
+import { endAbandonedTransactions, podAppName } from "../support/abandoned-sessions.js";
+import { openConnection, urlOnDatabase } from "../support/database.js";
+import { teardownDatabases, teardownTimeout } from "../support/drop-databases.js";
 import { freshDatabaseName, REPLICA_SET_URL } from "../support/server.js";
 
 /**
@@ -37,17 +39,31 @@ export async function primaryOf(url: string): Promise<string> {
   }
 }
 
-/** A direct connection's URL to `primary`, on `database`. */
+/**
+ * A direct connection's URL to `primary`, on `database`; the pod's client is named by the database
+ * (`appName`), so the teardown finds the transactions a killed pod left open (agbossjs/agboss#985).
+ */
 export const directUrlOf = (primary: string, database: string): string =>
-  `mongodb://${primary}/${database}?directConnection=true`;
+  `mongodb://${primary}/${database}?directConnection=true&appName=${podAppName(database)}`;
+
+/** The most databases a file makes (one per case of the core's suite, 38 today), for the hook's bound. */
+const MOST_DATABASES = 64;
 
 /** The fault suite's options on fresh databases of this file's own, on the real clock. */
 export function mongoFaultTarget(): FaultSuiteOptions {
   const databases: string[] = [];
   let url = "";
   afterAll(async () => {
-    for (const database of databases) await dropDatabase(database);
-  });
+    const client = new MongoClient(REPLICA_SET_URL);
+    try {
+      const ended = await endAbandonedTransactions(client, databases);
+      if (ended > 0)
+        process.stderr.write(`ended ${String(ended)} transactions the killed pods left open\n`);
+      await teardownDatabases(client, databases);
+    } finally {
+      await client.close();
+    }
+  }, teardownTimeout(MOST_DATABASES));
   return {
     name: "MongoDB",
     storesModule: MONGODB_FAULT_STORES,
