@@ -30,7 +30,7 @@ import {
 } from "./a2a-tasks/a2a-task-documents.js";
 import { savedOrKept } from "./a2a-tasks/a2a-message-save.js";
 import { pageOf } from "./a2a-tasks/a2a-task-pages.js";
-import { sweptTerminalBefore } from "./a2a-tasks/a2a-task-sweep.js";
+import { sweptOrphanMessagesBefore, sweptTerminalBefore } from "./a2a-tasks/a2a-task-sweep.js";
 import { DUPLICATE_KEY, hasCode } from "./keys.js";
 
 /** How often an accept that lost an insert race to a commit is read again (then it rejects). */
@@ -62,8 +62,11 @@ const messagesOf = (db: Db): Collection<A2AMessageDocument> =>
  * - `deleteTerminalByStatusAtBefore` removes the finished tasks in bounded batches, outside a
  *   transaction (a backlog of any size outlives no transaction's lifetime): each batch's tasks, then
  *   their messages. A terminal status never changes, so a batch read is still due when deleted; a
- *   crash between the two leaves messages whose task is gone, which a resend reads as accepted
- *   before (`MessageTaken`, no task) — never a second task within retention.
+ *   crash between the two leaves messages whose task is gone, as does a follow-up saved while its
+ *   task was removed; a second pass (agbossjs/agboss#960) removes every message whose task is gone
+ *   and whose `savedAt` is before the cutoff, so its id is free again. Until then a resend reads
+ *   such a message as accepted before (`MessageTaken`, no task) — never a second task within
+ *   retention.
  *
  * Listed in `@Application({ providers })` with `mongodbUrl`.
  */
@@ -137,6 +140,7 @@ export class MongoA2ATaskRepository extends A2ATaskRepository {
 
   async deleteTerminalByStatusAtBefore(cutoff: Date): Promise<void> {
     await sweptTerminalBefore(this.connection.db, cutoff);
+    await sweptOrphanMessagesBefore(this.connection.db, cutoff);
   }
 }
 

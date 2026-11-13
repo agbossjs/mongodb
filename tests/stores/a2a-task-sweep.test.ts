@@ -1,7 +1,10 @@
 import { A2ATaskSaveStatus, A2ATaskState, type NewA2ATask } from "@agboss/core";
 import { describe, expect, it } from "vitest";
 import { MongoA2ATaskRepository } from "../../src/index.js";
-import { sweptTerminalBefore } from "../../src/stores/a2a-tasks/a2a-task-sweep.js";
+import {
+  sweptOrphanMessagesBefore,
+  sweptTerminalBefore,
+} from "../../src/stores/a2a-tasks/a2a-task-sweep.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -49,5 +52,38 @@ describe("agbossjs/agboss#824: the MongoDB A2A task sweep", () => {
       expect((await tasks.findByMessage(newTask(n))) !== undefined).toBe(kept);
     }
     expect(await sweptTerminalBefore(connection.db, at(20), 2)).toBe(0);
+  });
+
+  it("agbossjs/agboss#960 AC1: removes the messages whose task is gone, batch by batch, by their age", async () => {
+    const connection = connectionTo(database.url());
+    const tasks = new MongoA2ATaskRepository(connection);
+    await tasks.saveIfAbsent(newTask(1));
+    const followUp = (n: number, taskId: string, savedAt: Date) => ({
+      tenantId: "default",
+      ownerId: "alice",
+      messageId: `m-orphan-${String(n)}`,
+      requestHash: "h-9",
+      taskId,
+      savedAt,
+    });
+    for (let n = 1; n <= 5; n += 1) await tasks.saveMessageIfAbsent(followUp(n, "t-gone", at(5)));
+    const live = followUp(6, "t-1", at(5));
+    await tasks.saveMessageIfAbsent(live);
+    const young = followUp(7, "t-gone", at(30));
+    await tasks.saveMessageIfAbsent(young);
+
+    // a direct message's claim has no task by design: never swept (agbossjs/agboss#860)
+    const claim = followUp(8, "", at(1));
+    await tasks.saveMessageIfAbsent(claim);
+
+    expect(await sweptOrphanMessagesBefore(connection.db, at(5), 2)).toBe(0);
+    expect(await sweptOrphanMessagesBefore(connection.db, at(20), 2)).toBe(5);
+
+    for (let n = 1; n <= 5; n += 1)
+      expect(await tasks.findByMessage(followUp(n, "t-gone", at(5)))).toBeUndefined();
+    expect(await tasks.findByMessage(live)).toBeDefined();
+    expect(await tasks.findByMessage(young)).toBeDefined();
+    expect(await tasks.findByMessage(claim)).toEqual(claim);
+    expect(await tasks.findById(newTask(1))).toBeDefined();
   });
 });
