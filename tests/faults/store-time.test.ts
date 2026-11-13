@@ -13,6 +13,8 @@ import { mongoFaultTarget } from "./mongodb-target.js";
 faultSuite({
   ...mongoFaultTarget(),
   timeScale: 5,
+  // the one scenario in every shard of CI's job (AGBOSS_FAULT_SHARD would leave two of three with none)
+  shard: { index: 1, count: 1 },
   scenarios: ["s01-sigterm-drains"],
   sabotages: false,
 });
