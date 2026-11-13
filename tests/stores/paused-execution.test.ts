@@ -111,9 +111,15 @@ describe("MongoPausedExecutionRepository", () => {
       ask: { tool: "charge", arguments: { text: "10 USD" }, summary: "charge" },
     }));
 
-    await expect(pauses.findByTenantIdAndPauseId("default", "p-no-call")).rejects.toThrow(
-      /a stored pause is not readable/,
+    const error: unknown = await pauses.findByTenantIdAndPauseId("default", "p-no-call").then(
+      () => undefined,
+      (thrown: unknown) => thrown,
     );
+
+    const message = error instanceof Error ? error.message : "";
+    // #906: ids and field paths only, as for a paused run — the tenant is not one of them
+    expect(message).toMatch(/a stored pause is not readable \(pauseId p-no-call, /);
+    expect(message).not.toContain("tenantId");
   });
 
   it("agbossjs/agboss#801: an approval's pause asks a tool call: a question's ask on it fails loudly", async () => {

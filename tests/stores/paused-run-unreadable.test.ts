@@ -38,13 +38,16 @@ interface StoredPaused {
 }
 
 /** The thread's stored run as `edit` makes it of `run` — a document no store write makes. */
-async function storedAs(edit: (stored: Record<string, unknown>) => Record<string, unknown>) {
+async function storedAs(
+  edit: (stored: Record<string, unknown>) => Record<string, unknown>,
+  text: (stored: Record<string, unknown>) => string = (stored) => JSON.stringify(stored),
+) {
   const { db } = connectionTo(database.url());
   await db.collection<StoredPaused>(Collections.PausedExecutions).replaceOne(
     { _id: idOf("acme", "thread-1") },
     {
       runId: "run-1",
-      run: JSON.stringify(edit({ ...run })),
+      run: text(edit({ ...run })),
       workflowVersion: "1.0.0",
       configHash: "hash",
       pausedAt: new Date(0),
@@ -99,5 +102,26 @@ describe("agbossjs/agboss#906 D4: MongoDB paused runs", () => {
     expect(error.message).not.toContain(SECRET);
     expect(error.cause).toBeInstanceOf(Error);
     expect((error.cause as Error).message).not.toContain(SECRET);
+  });
+
+  it("a stored text that is not JSON is refused by ids: no text, no parser message, no cause", async () => {
+    // one character of a real stored run edited: the secret loses its quotes
+    await storedAs(
+      (stored) => stored,
+      (stored) => JSON.stringify(stored).replace(`"${SECRET}"`, SECRET),
+    );
+
+    const error = await failureOf();
+
+    expect(error.message).toContain("a stored paused run is not readable");
+    expect(error.message).toContain("threadId thread-1");
+    expect(error.message).toContain("runId run-1");
+    expect(error).not.toBeInstanceOf(SyntaxError);
+    for (let link: unknown = error; link instanceof Error; link = link.cause) {
+      expect(link.message).not.toContain(SECRET);
+      expect(link.message).not.toContain("startInput");
+      expect(link.message).not.toContain("JSON.parse");
+      expect(link).not.toBeInstanceOf(SyntaxError);
+    }
   });
 });
