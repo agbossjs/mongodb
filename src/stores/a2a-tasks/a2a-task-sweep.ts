@@ -66,9 +66,15 @@ export async function sweptOrphanMessagesBefore(
       .toArray();
     const kept = new Set(alive.map((task) => task._id));
     const orphans = batch.filter((message) => !kept.has(taskIdOf(message)));
+    // each row is re-checked in the delete itself, as `sweptTerminalBefore` does: a second sweep may
+    // have removed the orphan and a resend created a new task's message under the same `_id` since
+    // this one read it — that message has another `taskId` and a `savedAt` past the cutoff, and stays
     if (orphans.length > 0)
-      removed += (await messages.deleteMany({ _id: { $in: orphans.map(({ _id }) => _id) } }))
-        .deletedCount;
+      removed += (
+        await messages.deleteMany({
+          $or: orphans.map(({ _id, taskId }) => ({ _id, taskId, savedAt: { $lt: cutoff } })),
+        })
+      ).deletedCount;
     after = last._id;
   }
 }
