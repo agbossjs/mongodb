@@ -18,6 +18,32 @@ env:
   AGBOSS_MONGODB_STANDALONE_TEST_URL: mongodb://localhost:27020/?directConnection=true
 
 jobs:
+  # Changelog fragments (agbossjs/agboss#981): a PR adds changes/<issue>-<slug>.md; only a release PR (branch
+  # release/<version>) edits CHANGELOG.md, where scripts/changelog-assemble.mjs folds the fragments in.
+  changelog-fragments:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/changelog-assemble.mjs --check
+      - name: CHANGELOG.md is edited only by a release PR
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          case "$HEAD_REF" in release/*) echo "release PR: CHANGELOG.md may change"; exit 0 ;; esac
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qx 'CHANGELOG.md'; then
+            echo "::error file=CHANGELOG.md::Do not edit CHANGELOG.md in a PR: add a fragment changes/<issue>-<slug>.md instead (see changes/README.md). Only a release PR (branch release/<version>) edits it."
+            exit 1
+          fi
+
   check:
     name: check (MongoDB 7, a 3-member replica set, @agboss/core at the pinned SHA)
     runs-on: ubuntu-latest

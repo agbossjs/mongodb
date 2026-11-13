@@ -17,6 +17,8 @@ every change starts as an issue there (stage = its `status:*` label: Triage → 
 - Branch from `main`: `<type>/<issue>-<slug>` (`chore/527-scaffold`).
 - Conventional commits naming the issue: `feat(agbossjs/agboss#527): …`, `fix(…): …`.
 - The PR body says `Refs agbossjs/agboss#<issue>`; it is squash-merged when CI is green.
+- Changelog: add a fragment `changes/<issue>-<slug>.md` (format: `changes/README.md`); never edit
+  `CHANGELOG.md` — CI fails a PR that does, unless its branch is `release/*`.
 - Labels: `type:feature` · `type:bugfix` · `type:chore` · `prio:mvp` · `blocked`, as the core.
 
 ## Releasing
