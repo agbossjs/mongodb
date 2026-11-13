@@ -112,13 +112,10 @@ export function foldFragments(changelog, version, date, fragments) {
   const text = changelog === "" ? "# Changelog\n" : changelog;
   const lines = text.replace(/\n$/, "").split("\n");
   const found = findSection(lines, version);
-  if (!found) {
-    if (fragments.length === 0) return changelog;
-    const first = lines.findIndex((line) => line.startsWith("## ["));
-    const section = sectionOf(version, date, fragments);
-    if (first === -1) return `${text.trimEnd()}\n\n${section}`;
-    return `${lines.slice(0, first).join("\n")}\n${section}\n${lines.slice(first).join("\n")}\n`;
-  }
+  if (!found)
+    return fragments.length === 0
+      ? changelog
+      : withNewSection(text, lines, version, date, fragments);
   const own = lines.slice(found.start + 1, found.end);
   const has = (fragment) => `\n${own.join("\n")}\n`.includes(`\n${bulletOf(fragment.entry)}\n`);
   const fresh = fragments.filter((fragment) => !has(fragment));
@@ -139,4 +136,12 @@ export function foldFragments(changelog, version, date, fragments) {
   for (const block of blocks) out.push(`### ${block.heading}`, "", ...block.lines, "");
   const after = lines.slice(found.end);
   return `${[...lines.slice(0, found.start), ...out, ...after].join("\n").trimEnd()}\n`;
+}
+
+/** The file with a new dated section written above the newest release. */
+function withNewSection(text, lines, version, date, fragments) {
+  const first = lines.findIndex((line) => line.startsWith("## ["));
+  const section = sectionOf(version, date, fragments);
+  if (first === -1) return `${text.trimEnd()}\n\n${section}`;
+  return `${lines.slice(0, first).join("\n")}\n${section}\n${lines.slice(first).join("\n")}\n`;
 }
