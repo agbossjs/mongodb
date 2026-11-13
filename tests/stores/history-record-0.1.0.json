@@ -1,0 +1,704 @@
+{
+  "executionId": "run-1",
+  "rootExecutionId": "run-1",
+  "threadId": "t-1",
+  "tenantId": "default",
+  "application": {
+    "name": "desk",
+    "version": "1.0.0",
+    "instanceId": "i-1"
+  },
+  "workflow": {
+    "name": "desk-workflow",
+    "version": "1",
+    "startedVersion": "1",
+    "configHash": "c1"
+  },
+  "status": "finished",
+  "startedAt": "2026-01-05T09:00:00.000Z",
+  "endedAt": "2026-01-05T09:10:00.000Z",
+  "start": {
+    "name": "desk-start",
+    "kind": "workflow-start",
+    "promptHash": "ph1"
+  },
+  "input": {
+    "q": 1
+  },
+  "finish": {
+    "name": "desk-finish",
+    "kind": "workflow-finish",
+    "promptHash": "ph1"
+  },
+  "output": {
+    "r": 2
+  },
+  "contexts": {
+    "tenant": {
+      "region": "eu"
+    },
+    "execution": {}
+  },
+  "error": {
+    "name": "Error",
+    "code": "tool.failed",
+    "lineage": ["tool.failed", "agboss"],
+    "message": "no",
+    "details": {
+      "tool": "refund"
+    },
+    "cause": {
+      "name": "Error",
+      "code": "Error",
+      "lineage": ["Error"],
+      "message": "inner"
+    }
+  },
+  "path": ["desk-start", "clerk-agent"],
+  "scope": [
+    {
+      "valueId": "clerk-agent#1:out",
+      "slot": "out",
+      "producer": "clerk-agent",
+      "value": {
+        "a": 1
+      },
+      "builtFrom": ["start#1:in"],
+      "about": ["x"],
+      "variant": "v",
+      "elementProducers": ["e"]
+    }
+  ],
+  "outdatedValues": [
+    {
+      "valueId": "clerk-agent#1:out",
+      "slot": "out",
+      "producer": "clerk-agent",
+      "value": {
+        "a": 1
+      },
+      "builtFrom": ["start#1:in"],
+      "about": ["x"],
+      "variant": "v",
+      "elementProducers": ["e"],
+      "outdated": {
+        "byValueId": "n",
+        "reason": "replaced"
+      }
+    }
+  ],
+  "lastError": {
+    "name": "Error",
+    "code": "tool.failed",
+    "lineage": ["tool.failed", "agboss"],
+    "message": "no",
+    "details": {
+      "tool": "refund"
+    },
+    "cause": {
+      "name": "Error",
+      "code": "Error",
+      "lineage": ["Error"],
+      "message": "inner"
+    }
+  },
+  "spend": {
+    "totalUsd": 0.0123,
+    "calls": 2,
+    "cacheReadTokens": 5,
+    "byCaller": {
+      "agent:clerk": 0.01
+    },
+    "byCategory": {
+      "agents": 0.01,
+      "routing": 0.0023,
+      "guards": 0,
+      "review": 0,
+      "tools": 0,
+      "compaction": 0,
+      "retrieval": 0
+    },
+    "byModel": {
+      "m/x": 0.0123
+    },
+    "trace": [
+      {
+        "caller": "agent:clerk",
+        "category": "agents",
+        "model": "m/x",
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheReadTokens": 5,
+        "cacheWriteTokens": 0,
+        "costUsd": 0.0123,
+        "costSource": "api",
+        "servedBy": "p1"
+      }
+    ]
+  },
+  "pauses": [
+    {
+      "executionId": "run-1",
+      "step": {
+        "component": {
+          "name": "clerk-agent",
+          "kind": "agent",
+          "promptHash": "ph1"
+        },
+        "nodeId": "clerk-agent",
+        "visitNumber": 1,
+        "idempotencyKey": "run-1:clerk-agent:1",
+        "callId": "call-1",
+        "copyNumber": 1,
+        "toolLoopIteration": 2,
+        "validationAttempts": 0
+      },
+      "role": "refund-approval-channel",
+      "answeredBy": "channel",
+      "responder": "manager-17",
+      "resolution": "replied",
+      "askedAt": "2026-01-05T09:00:00.000Z",
+      "resolvedAt": "2026-01-05T09:05:00.000Z",
+      "decision": {
+        "approved": true
+      }
+    }
+  ],
+  "compensations": [
+    {
+      "compensated": {
+        "component": {
+          "name": "book",
+          "kind": "agent",
+          "promptHash": "ph1"
+        },
+        "nodeId": "book",
+        "visitNumber": 1,
+        "idempotencyKey": "run-1:book:1",
+        "callId": "call-1",
+        "copyNumber": 1,
+        "toolLoopIteration": 2,
+        "validationAttempts": 0,
+        "compensates": {
+          "component": {
+            "name": "x",
+            "kind": "agent",
+            "promptHash": "ph1"
+          },
+          "nodeId": "x",
+          "visitNumber": 1,
+          "idempotencyKey": "run-1:x:1",
+          "callId": "call-1",
+          "copyNumber": 1,
+          "toolLoopIteration": 2,
+          "validationAttempts": 0
+        }
+      },
+      "compensator": {
+        "name": "undo-book",
+        "kind": "action",
+        "promptHash": "ph1"
+      },
+      "reason": "side-path",
+      "status": "failed",
+      "error": {
+        "name": "Error",
+        "code": "tool.failed",
+        "lineage": ["tool.failed", "agboss"],
+        "message": "no",
+        "details": {
+          "tool": "refund"
+        },
+        "cause": {
+          "name": "Error",
+          "code": "Error",
+          "lineage": ["Error"],
+          "message": "inner"
+        }
+      },
+      "startedAt": "2026-01-05T09:00:00.000Z",
+      "endedAt": "2026-01-05T09:00:01.000Z"
+    }
+  ],
+  "toolCalls": [
+    {
+      "step": {
+        "component": {
+          "name": "refund",
+          "kind": "tool",
+          "promptHash": "ph1"
+        },
+        "nodeId": "refund",
+        "visitNumber": 1,
+        "idempotencyKey": "run-1:refund:1",
+        "callId": "call-1",
+        "copyNumber": 1,
+        "toolLoopIteration": 2,
+        "validationAttempts": 0
+      },
+      "input": {
+        "orderId": "7"
+      },
+      "output": {
+        "ok": true
+      },
+      "status": "succeeded",
+      "isResultTruncated": false,
+      "startedAt": "2026-01-05T09:00:00.000Z",
+      "endedAt": "2026-01-05T09:00:01.000Z",
+      "remote": {
+        "application": "peer",
+        "executionId": "r-9"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "step": {
+        "component": {
+          "name": "clerk-agent",
+          "kind": "agent",
+          "promptHash": "ph1"
+        },
+        "nodeId": "clerk-agent",
+        "visitNumber": 1,
+        "idempotencyKey": "run-1:clerk-agent:1",
+        "callId": "call-1",
+        "copyNumber": 1,
+        "toolLoopIteration": 2,
+        "validationAttempts": 0
+      },
+      "inputHash": "h",
+      "decision": "refund",
+      "judgeVerdicts": [
+        {
+          "judge": {
+            "name": "j",
+            "kind": "judge",
+            "promptHash": "ph1"
+          },
+          "attempt": 1,
+          "passed": false,
+          "reason": "r",
+          "metrics": {
+            "score": 0.5,
+            "ok": true,
+            "label": "x"
+          }
+        }
+      ],
+      "guardrailDecisions": [
+        {
+          "guardrail": {
+            "name": "g",
+            "kind": "guardrail",
+            "promptHash": "ph1"
+          },
+          "side": "input",
+          "isBlocked": false,
+          "probability": 0.1
+        }
+      ],
+      "spend": {
+        "totalUsd": 0.0123,
+        "calls": 2,
+        "cacheReadTokens": 5,
+        "byCaller": {
+          "agent:clerk": 0.01
+        },
+        "byCategory": {
+          "agents": 0.01,
+          "routing": 0.0023,
+          "guards": 0,
+          "review": 0,
+          "tools": 0,
+          "compaction": 0,
+          "retrieval": 0
+        },
+        "byModel": {
+          "m/x": 0.0123
+        },
+        "trace": [
+          {
+            "caller": "agent:clerk",
+            "category": "agents",
+            "model": "m/x",
+            "inputTokens": 10,
+            "outputTokens": 5,
+            "cacheReadTokens": 5,
+            "cacheWriteTokens": 0,
+            "costUsd": 0.0123,
+            "costSource": "api",
+            "servedBy": "p1"
+          }
+        ]
+      },
+      "startedAt": "2026-01-05T09:00:00.000Z",
+      "endedAt": "2026-01-05T09:00:01.000Z",
+      "error": {
+        "name": "Error",
+        "code": "tool.failed",
+        "lineage": ["tool.failed", "agboss"],
+        "message": "no",
+        "details": {
+          "tool": "refund"
+        },
+        "cause": {
+          "name": "Error",
+          "code": "Error",
+          "lineage": ["Error"],
+          "message": "inner"
+        }
+      }
+    }
+  ],
+  "origin": {
+    "rootExecutionId": "r",
+    "executionId": "e",
+    "parentExecutionId": "p",
+    "workflow": {
+      "name": "w",
+      "version": "1"
+    },
+    "step": {
+      "component": "c",
+      "idempotencyKey": "k",
+      "tool": "t"
+    },
+    "application": "peer",
+    "hops": 1
+  },
+  "children": [
+    {
+      "executionId": "child-1",
+      "parentExecutionId": "run-1",
+      "rootExecutionId": "run-1",
+      "workflow": {
+        "name": "child-workflow",
+        "version": "1",
+        "startedVersion": "1",
+        "configHash": "c2"
+      },
+      "itemIndex": 0,
+      "depth": 2,
+      "launchedBy": {
+        "nodeId": "child-workflow",
+        "visitNumber": 1
+      },
+      "start": {
+        "name": "c-start",
+        "kind": "workflow-start",
+        "promptHash": "ph1"
+      },
+      "input": 1,
+      "status": "failed",
+      "error": {
+        "name": "Error",
+        "code": "tool.failed",
+        "lineage": ["tool.failed", "agboss"],
+        "message": "no",
+        "details": {
+          "tool": "refund"
+        },
+        "cause": {
+          "name": "Error",
+          "code": "Error",
+          "lineage": ["Error"],
+          "message": "inner"
+        }
+      },
+      "path": ["c-start"],
+      "spend": {
+        "totalUsd": 0.0123,
+        "calls": 2,
+        "cacheReadTokens": 5,
+        "byCaller": {
+          "agent:clerk": 0.01
+        },
+        "byCategory": {
+          "agents": 0.01,
+          "routing": 0.0023,
+          "guards": 0,
+          "review": 0,
+          "tools": 0,
+          "compaction": 0,
+          "retrieval": 0
+        },
+        "byModel": {
+          "m/x": 0.0123
+        },
+        "trace": [
+          {
+            "caller": "agent:clerk",
+            "category": "agents",
+            "model": "m/x",
+            "inputTokens": 10,
+            "outputTokens": 5,
+            "cacheReadTokens": 5,
+            "cacheWriteTokens": 0,
+            "costUsd": 0.0123,
+            "costSource": "api",
+            "servedBy": "p1"
+          }
+        ]
+      },
+      "toolCalls": [
+        {
+          "step": {
+            "component": {
+              "name": "refund",
+              "kind": "tool",
+              "promptHash": "ph1"
+            },
+            "nodeId": "refund",
+            "visitNumber": 1,
+            "idempotencyKey": "run-1:refund:1",
+            "callId": "call-1",
+            "copyNumber": 1,
+            "toolLoopIteration": 2,
+            "validationAttempts": 0
+          },
+          "input": {
+            "orderId": "7"
+          },
+          "output": {
+            "ok": true
+          },
+          "status": "succeeded",
+          "isResultTruncated": false,
+          "startedAt": "2026-01-05T09:00:00.000Z",
+          "endedAt": "2026-01-05T09:00:01.000Z",
+          "remote": {
+            "application": "peer",
+            "executionId": "r-9"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "step": {
+            "component": {
+              "name": "clerk-agent",
+              "kind": "agent",
+              "promptHash": "ph1"
+            },
+            "nodeId": "clerk-agent",
+            "visitNumber": 1,
+            "idempotencyKey": "run-1:clerk-agent:1",
+            "callId": "call-1",
+            "copyNumber": 1,
+            "toolLoopIteration": 2,
+            "validationAttempts": 0
+          },
+          "inputHash": "h",
+          "decision": "refund",
+          "judgeVerdicts": [
+            {
+              "judge": {
+                "name": "j",
+                "kind": "judge",
+                "promptHash": "ph1"
+              },
+              "attempt": 1,
+              "passed": false,
+              "reason": "r",
+              "metrics": {
+                "score": 0.5,
+                "ok": true,
+                "label": "x"
+              }
+            }
+          ],
+          "guardrailDecisions": [
+            {
+              "guardrail": {
+                "name": "g",
+                "kind": "guardrail",
+                "promptHash": "ph1"
+              },
+              "side": "input",
+              "isBlocked": false,
+              "probability": 0.1
+            }
+          ],
+          "spend": {
+            "totalUsd": 0.0123,
+            "calls": 2,
+            "cacheReadTokens": 5,
+            "byCaller": {
+              "agent:clerk": 0.01
+            },
+            "byCategory": {
+              "agents": 0.01,
+              "routing": 0.0023,
+              "guards": 0,
+              "review": 0,
+              "tools": 0,
+              "compaction": 0,
+              "retrieval": 0
+            },
+            "byModel": {
+              "m/x": 0.0123
+            },
+            "trace": [
+              {
+                "caller": "agent:clerk",
+                "category": "agents",
+                "model": "m/x",
+                "inputTokens": 10,
+                "outputTokens": 5,
+                "cacheReadTokens": 5,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0123,
+                "costSource": "api",
+                "servedBy": "p1"
+              }
+            ]
+          },
+          "startedAt": "2026-01-05T09:00:00.000Z",
+          "endedAt": "2026-01-05T09:00:01.000Z",
+          "error": {
+            "name": "Error",
+            "code": "tool.failed",
+            "lineage": ["tool.failed", "agboss"],
+            "message": "no",
+            "details": {
+              "tool": "refund"
+            },
+            "cause": {
+              "name": "Error",
+              "code": "Error",
+              "lineage": ["Error"],
+              "message": "inner"
+            }
+          }
+        }
+      ],
+      "pauses": [
+        {
+          "executionId": "child-1",
+          "step": {
+            "component": {
+              "name": "clerk-agent",
+              "kind": "agent",
+              "promptHash": "ph1"
+            },
+            "nodeId": "clerk-agent",
+            "visitNumber": 1,
+            "idempotencyKey": "run-1:clerk-agent:1",
+            "callId": "call-1",
+            "copyNumber": 1,
+            "toolLoopIteration": 2,
+            "validationAttempts": 0
+          },
+          "role": "refund-approval-channel",
+          "answeredBy": "thread-owner",
+          "responder": "alice",
+          "resolution": "replied",
+          "askedAt": "2026-01-05T09:00:00.000Z",
+          "resolvedAt": "2026-01-05T09:05:00.000Z",
+          "decision": {
+            "approved": true
+          }
+        }
+      ],
+      "children": [
+        {
+          "executionId": "child-2",
+          "parentExecutionId": "child-1",
+          "rootExecutionId": "run-1",
+          "workflow": {
+            "name": "g",
+            "version": "1",
+            "startedVersion": "1",
+            "configHash": "c3"
+          },
+          "depth": 3,
+          "launchedBy": {
+            "nodeId": "g",
+            "visitNumber": 1
+          },
+          "start": {
+            "name": "g-start",
+            "kind": "workflow-start",
+            "promptHash": "ph1"
+          },
+          "input": null,
+          "status": "finished",
+          "finish": {
+            "name": "g-finish",
+            "kind": "workflow-finish",
+            "promptHash": "ph1"
+          },
+          "output": "done",
+          "path": [],
+          "spend": {
+            "totalUsd": 0.0123,
+            "calls": 2,
+            "cacheReadTokens": 5,
+            "byCaller": {
+              "agent:clerk": 0.01
+            },
+            "byCategory": {
+              "agents": 0.01,
+              "routing": 0.0023,
+              "guards": 0,
+              "review": 0,
+              "tools": 0,
+              "compaction": 0,
+              "retrieval": 0
+            },
+            "byModel": {
+              "m/x": 0.0123
+            },
+            "trace": [
+              {
+                "caller": "agent:clerk",
+                "category": "agents",
+                "model": "m/x",
+                "inputTokens": 10,
+                "outputTokens": 5,
+                "cacheReadTokens": 5,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0123,
+                "costSource": "api",
+                "servedBy": "p1"
+              }
+            ]
+          },
+          "toolCalls": [],
+          "steps": [],
+          "pauses": [
+            {
+              "executionId": "child-2",
+              "step": {
+                "component": {
+                  "name": "clerk-agent",
+                  "kind": "agent",
+                  "promptHash": "ph1"
+                },
+                "nodeId": "clerk-agent",
+                "visitNumber": 1,
+                "idempotencyKey": "run-1:clerk-agent:1",
+                "callId": "call-1",
+                "copyNumber": 1,
+                "toolLoopIteration": 2,
+                "validationAttempts": 0
+              },
+              "role": "refund-approval-channel",
+              "answeredBy": "channel",
+              "responder": "bob",
+              "resolution": "replied",
+              "askedAt": "2026-01-05T09:00:00.000Z",
+              "resolvedAt": "2026-01-05T09:05:00.000Z",
+              "decision": {
+                "approved": true
+              }
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

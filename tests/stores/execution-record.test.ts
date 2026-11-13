@@ -1,4 +1,4 @@
-import { pauseAnswerRecordOfStored } from "@agboss/core/stores";
+import { pauseAnswerRecordOfValue } from "@agboss/core/stores";
 import {
   ComponentKind,
   ExecutionRecordStatus,
@@ -40,7 +40,7 @@ async function threadWith(
 }
 
 const answerOf = (stepKey: string, askedAt: string): PauseAnswerRecord =>
-  pauseAnswerRecordOfStored({
+  pauseAnswerRecordOfValue({
     pauseId: undefined,
     executionId: "run-1",
     step: {
