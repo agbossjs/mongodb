@@ -73,3 +73,6 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
   failover test steps the set's primary down and sets fail points, and heals the set after).
 - Every required database setting has a test that fails when it is not met (#527 AC3).
 - Conveyor, labels, branches and PRs as agbossjs/agboss (see CONTRIBUTING.md).
+- Changelog: a fragment `changes/<issue>-<slug>.md` (`section:` + `issue:` header, entry mentioning
+  `agbossjs/agboss#<issue>`; see `changes/README.md`), never an edit of `CHANGELOG.md` (CI fails it
+  outside a `release/*` branch).
