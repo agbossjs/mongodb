@@ -113,7 +113,7 @@ describe("MongoPausedExecutionRepository notices", () => {
     const store = await sentPause("p-dates");
     await store.resolveByTenantIdAndPauseId("default", "p-dates", ANSWER, NINE, AUDIT);
     const boxes = mailboxesOf(connectionTo(database.url()).db);
-    const typed = (type: string) =>
+    const typed = (type: "date") =>
       boxes.countDocuments({
         _id: mailboxIdOf("default", "p-dates", "listener:audit"),
         headWrittenAt: { $type: type },
