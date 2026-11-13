@@ -1,28 +1,33 @@
 #!/usr/bin/env node
 // Changelog fragments (agbossjs/agboss#981; vendored from agbossjs/agboss scripts/changelog-assemble.mjs,
 // keep the two identical below this note): every PR adds `changes/<issue>-<slug>.md` instead of editing
-// CHANGELOG.md, so parallel PRs never conflict. At release this script folds the fragments into one
-// `## [<version>] — <date>` section of CHANGELOG.md, in a fixed section order, and deletes them.
+// CHANGELOG.md, so parallel PRs never conflict. At release this script folds the fragments into the
+// `## [<version>]` section of CHANGELOG.md (an existing `— unreleased` one, or a new one) and deletes them.
 //
 //   node scripts/changelog-assemble.mjs <version> [--date YYYY-MM-DD] [--dir changes] [--changelog CHANGELOG.md]
 //   node scripts/changelog-assemble.mjs --check [--dir changes]     validate the fragments only
 //
 // Format: see changes/README.md. A fragment with an unknown section, a file name that disagrees with
 // its `issue`, or an entry that does not mention its issue fails the run and changes nothing.
-// Idempotent: with no fragments left there is nothing to do and the file is not touched.
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+// Idempotent: with no fragments left there is nothing to do and the file is not touched. The file is
+// replaced atomically and the fragments are deleted after, so a crash in between is repaired by a rerun.
+// `changes/config.json` names the form an entry must mention its issue in (`#981`, or
+// `agbossjs/agboss#981` in a repository other than the core).
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-/** Section name in a fragment → its heading in CHANGELOG.md, in the order they are written. */
-export const SECTIONS = new Map([
-  ["Breaking", "Changed — breaking"],
-  ["Changed", "Changed"],
-  ["Added", "Added"],
-  ["Fixed", "Fixed"],
-  ["Deprecated", "Deprecated"],
-  ["Security", "Security"],
-]);
+import { foldFragments, SECTIONS } from "./changelog-fold.mjs";
 
 const NAME = /^(\d+)-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
@@ -42,7 +47,7 @@ function splitFragment(fail, text) {
 }
 
 /** Parse one fragment; throws an Error naming the file when it is malformed. */
-export function parseFragment(file, text) {
+export function parseFragment(file, text, prefix) {
   const fail = (why) => {
     throw new Error(`${file}: ${why}`);
   };
@@ -56,49 +61,47 @@ export function parseFragment(file, text) {
   const issue = header.get("issue") ?? "";
   if (issue !== named[1]) fail(`\`issue: ${issue}\` must equal the file name's ${named[1]}`);
   if (!body) fail("the entry text is empty");
-  if (!new RegExp(`#${issue}(?!\\d)`).test(body)) fail(`the entry must mention #${issue}`);
+  const lead = /^\w/.test(prefix) ? "(?<![\\w/])" : "";
+  const mention = new RegExp(
+    `${lead}${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}${issue}(?!\\d)`,
+  );
+  if (!mention.test(body)) fail(`the entry must mention ${prefix}${issue}`);
   return { file, section, issue: Number(issue), entry: body };
 }
 
-/** The `- ` bullet of one entry: continuation lines indent by two spaces, blank lines stay blank. */
-function bulletOf(entry) {
-  return entry
-    .split("\n")
-    .map((line, i) => (i === 0 ? `- ${line}` : line === "" ? "" : `  ${line}`))
-    .join("\n");
-}
-
-/** The release section for already parsed fragments. */
-export function sectionOf(version, date, fragments) {
-  const parts = [`## [${version}] — ${date}`];
-  for (const [name, heading] of SECTIONS) {
-    const own = fragments
-      .filter((fragment) => fragment.section === name)
-      .sort((a, b) => a.issue - b.issue || (a.file < b.file ? -1 : 1));
-    if (own.length) parts.push(`### ${heading}\n\n${own.map((f) => bulletOf(f.entry)).join("\n")}`);
-  }
-  return `${parts.join("\n\n")}\n`;
-}
-
-const HEAD = "# Changelog\n";
-
-/** CHANGELOG.md with the release section above the newest release; throws if the version exists. */
-export function insertSection(changelog, version, section) {
-  const text = changelog === "" ? HEAD : changelog;
-  const heading = new RegExp(`^## \\[${version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`, "m");
-  if (heading.test(text)) throw new Error(`CHANGELOG.md already has a section for ${version}`);
-  const first = /^## \[/m.exec(text);
-  if (!first) return `${text.trimEnd()}\n\n${section}`;
-  return `${text.slice(0, first.index)}${section}\n${text.slice(first.index)}`;
+/** The form an entry mentions its issue in, from `<dir>/config.json` (`{ "issuePrefix": "#" }`). */
+export function readPrefix(dir) {
+  const path = join(dir, "config.json");
+  if (!existsSync(path))
+    throw new Error(`${path} is missing: it names the issue form, { "issuePrefix": "#" }`);
+  const prefix = JSON.parse(readFileSync(path, "utf8")).issuePrefix;
+  if (typeof prefix !== "string" || !prefix.endsWith("#"))
+    throw new Error(`${path}: issuePrefix must end with #`);
+  return prefix;
 }
 
 /** Read and validate every fragment of a directory (README.md and dotfiles are not fragments). */
 export function readFragments(dir) {
   if (!existsSync(dir)) return [];
   const files = readdirSync(dir)
-    .filter((name) => name !== "README.md" && !name.startsWith("."))
+    .filter((name) => name !== "README.md" && name !== "config.json" && !name.startsWith("."))
     .sort();
-  return files.map((name) => parseFragment(name, readFileSync(join(dir, name), "utf8")));
+  const prefix = readPrefix(dir);
+  return files.map((name) => parseFragment(name, readFileSync(join(dir, name), "utf8"), prefix));
+}
+
+/** Write `text` to a temp file beside `path`, then rename it over: a crash never leaves a torn file. */
+function replaceFile(path, text) {
+  const exists = existsSync(path);
+  if (exists) accessSync(path, constants.W_OK);
+  const temp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
+  try {
+    writeFileSync(temp, text);
+    if (exists) chmodSync(temp, statSync(path).mode);
+    renameSync(temp, path);
+  } finally {
+    rmSync(temp, { force: true });
+  }
 }
 
 function option(args, name, fallback) {
@@ -127,9 +130,8 @@ function main(args) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`--date ${date} is not YYYY-MM-DD`);
   const path = option(args, "--changelog", "CHANGELOG.md");
   const before = existsSync(path) ? readFileSync(path, "utf8") : "";
-  const after = insertSection(before, version, sectionOf(version, date, fragments));
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path, after);
+  const after = foldFragments(before, version, date, fragments);
+  if (after !== before) replaceFile(path, after);
   for (const fragment of fragments) rmSync(join(dir, fragment.file));
   console.log(`${path}: ${version} assembled from ${fragments.length} fragment(s)`);
 }
