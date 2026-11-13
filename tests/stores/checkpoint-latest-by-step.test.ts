@@ -2,6 +2,7 @@ import { emptyCheckpoint, type CheckpointMetadata } from "@langchain/langgraph-c
 import { Binary } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { Collections, MongoCheckpointSaver } from "../../src/index.js";
+import type { CheckpointDocument } from "../../src/stores/checkpoints/checkpoint-documents.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -32,11 +33,30 @@ const put = (
     { marker: (step ?? 0) + 1 },
   );
 
+/** A step of a random history: now and then missing or fractional. */
+function stepAt(next: () => number): number | undefined {
+  if (next() < 0.15) return undefined;
+  return next() < 0.15 ? 1.5 : Math.floor(next() * 6) - 1;
+}
+
+/** What the full scan answers: the newest by `(step, id by byte)` of a listed namespace. */
+async function scanned(saver: MongoCheckpointSaver, place: ReturnType<typeof at>) {
+  const listed = [];
+  for await (const tuple of saver.list(place)) listed.push(tuple);
+  const stepOf = (metadata: CheckpointMetadata | undefined): number =>
+    typeof metadata?.step === "number" ? metadata.step : -2;
+  const before = (a: string, b: string): number => (a < b ? 1 : a > b ? -1 : 0);
+  listed.sort(
+    (a, b) => stepOf(b.metadata) - stepOf(a.metadata) || before(a.checkpoint.id, b.checkpoint.id),
+  );
+  return listed[0]?.checkpoint.id;
+}
+
 describe("agbossjs/agboss#962: MongoCheckpointSaver.latestByStep", () => {
   it("AC1: 10 000 checkpoints — one sorted find walks the index: 1 document examined, no in-memory sort", async () => {
     const connection = connectionTo(database.url());
     const saver = new MongoCheckpointSaver(connection);
-    const collection = connection.db.collection(Collections.Checkpoints);
+    const collection = connection.db.collection<CheckpointDocument>(Collections.Checkpoints);
     const json = new Binary(Buffer.from(JSON.stringify({ ...emptyCheckpoint(), id: "x" })));
     const meta = (step: number) =>
       new Binary(Buffer.from(JSON.stringify({ source: "loop", step, parents: {} })));
@@ -61,10 +81,10 @@ describe("agbossjs/agboss#962: MongoCheckpointSaver.latestByStep", () => {
       .sort({ step: -1, checkpointId: -1 })
       .limit(1)
       .explain("executionStats");
-    const stats = JSON.stringify(plan["queryPlanner"]?.["winningPlan"]);
+    const stats = JSON.stringify(plan.queryPlanner?.winningPlan);
     expect(stats).toContain("latest_by_step");
     expect(stats).not.toContain('"stage":"SORT"');
-    expect(plan["executionStats"]?.["totalDocsExamined"]).toBe(1);
+    expect(plan.executionStats?.totalDocsExamined).toBe(1);
     expect((await saver.latestByStep(at("busy")))?.config.configurable?.checkpoint_id).toBe(
       "id-009999",
     );
@@ -76,22 +96,11 @@ describe("agbossjs/agboss#962: MongoCheckpointSaver.latestByStep", () => {
     const places = [at("random"), at("random", "child")];
     let seed = 962;
     const next = (): number => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32;
-    const stepOf = (metadata: CheckpointMetadata | undefined): number =>
-      typeof metadata?.step === "number" ? metadata.step : -2;
     for (let round = 0; round < 40; round += 1) {
       const where = places[Math.floor(next() * places.length)] ?? at("random");
-      const step = next() < 0.15 ? undefined : next() < 0.15 ? 1.5 : Math.floor(next() * 6) - 1;
-      await put(saver, where, ids[Math.floor(next() * ids.length)] ?? "a", step);
-      for (const place of places) {
-        const listed = [];
-        for await (const tuple of saver.list(place)) listed.push(tuple);
-        listed.sort(
-          (a, b) =>
-            stepOf(b.metadata) - stepOf(a.metadata) ||
-            (a.checkpoint.id < b.checkpoint.id ? 1 : a.checkpoint.id > b.checkpoint.id ? -1 : 0),
-        );
-        expect((await saver.latestByStep(place))?.checkpoint.id).toBe(listed[0]?.checkpoint.id);
-      }
+      await put(saver, where, ids[Math.floor(next() * ids.length)] ?? "a", stepAt(next));
+      for (const place of places)
+        expect((await saver.latestByStep(place))?.checkpoint.id).toBe(await scanned(saver, place));
     }
     expect(await saver.latestByStep(at("nobody"))).toBeUndefined();
   });

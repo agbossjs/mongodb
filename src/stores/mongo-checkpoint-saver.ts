@@ -10,7 +10,7 @@ import {
   type CheckpointTuple,
   type PendingWrite,
 } from "@langchain/langgraph-checkpoint";
-import { Binary, type AnyBulkWriteOperation, type Collection } from "mongodb";
+import { Binary, type Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import {
@@ -22,14 +22,14 @@ import {
   metadataOf,
   stepOf,
   StoredCheckpoint,
-  StoredMetadata,
   StoredWrite,
-  writeIndexOf,
   type CheckpointDocument,
   type PendingWrites,
   type WriteDocument,
 } from "./checkpoints/checkpoint-documents.js";
 import { idOf } from "./keys.js";
+import { latestDocumentOf } from "./checkpoints/latest-checkpoint.js";
+import { writeOperationsOf } from "./checkpoints/write-operations.js";
 import { nextSequence } from "./sequence.js";
 
 /** `checkpoint` (a copy) with `newVersions` laid over its channel versions. */
@@ -76,45 +76,14 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     return found === null ? undefined : this.#tupleOf(StoredCheckpoint.parse(found));
   }
 
-  /**
-   * The checkpoint of the thread and namespace newest by `(step, id)` (agbossjs/agboss#962, the
-   * core's optional `latestByStep`): one sorted `findOne` on the `latest_by_step` index, ids by
-   * byte (the simple collation). A checkpoint written before the index has no `step`: those of
-   * this thread and namespace, if any, are given theirs first (one indexed look when there are none).
-   */
+  /** The checkpoint of the thread and namespace newest by `(step, id)`: one index read (#962). */
   async latestByStep(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    const { threadId, namespace } = keyOf(config, "latestByStep");
-    await this.#stepMissing({ threadId, namespace });
-    const found = await this.#checkpoints.findOne(
-      { threadId, namespace },
-      { sort: { step: -1, checkpointId: -1 } },
+    const found = await latestDocumentOf(
+      this.#checkpoints,
+      this.serde,
+      keyOf(config, "latestByStep"),
     );
     return found === null ? undefined : this.#tupleOf(StoredCheckpoint.parse(found));
-  }
-
-  /** Gives each checkpoint of `place` without a `step` the one its metadata names. */
-  async #stepMissing(place: { threadId: string; namespace: string }): Promise<void> {
-    const unstepped = await this.#checkpoints
-      .find({ ...place, step: { $exists: false } })
-      .project({ metadataType: 1, metadata: 1 })
-      .toArray();
-    if (unstepped.length === 0) return;
-    const updates = await Promise.all(
-      unstepped.map(async (one) => {
-        const stored = StoredMetadata.parse(one);
-        const metadata = metadataOf(
-          await this.serde.loadsTyped(stored.metadataType, stored.metadata),
-        );
-        // only a document still without a step: a concurrent put's own step is never overwritten
-        return {
-          updateOne: {
-            filter: { _id: stored._id, step: { $exists: false } },
-            update: { $set: { step: stepOf(metadata) } },
-          },
-        };
-      }),
-    );
-    await this.#checkpoints.bulkWrite(updates, { ordered: false });
   }
 
   async *list(
@@ -171,31 +140,12 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
       throw new Error("MongoCheckpointSaver.putWrites: the config has no checkpoint_id");
     if (writes.length === 0) return;
     const seq = await nextSequence(this.connection.db, Collections.CheckpointWrites);
-    const operations = await Promise.all(
-      writes.map(
-        async ([channel, value], position): Promise<AnyBulkWriteOperation<WriteDocument>> => {
-          const [valueType, bytes] = await this.serde.dumpsTyped(value);
-          const index = writeIndexOf(channel, position);
-          const placed = {
-            tenantId,
-            threadId,
-            namespace,
-            checkpointId,
-            taskId,
-            index,
-            seq,
-            position,
-          };
-          const written = { channel, valueType, value: new Binary(bytes) };
-          const filter = { _id: idOf(threadId, namespace, checkpointId, taskId, index) };
-          // a regular write is kept as first written; a special one (an error, …) replaces its own
-          const update =
-            index >= 0
-              ? { $setOnInsert: { ...placed, ...written } }
-              : { $set: written, $setOnInsert: placed };
-          return { updateOne: { filter, update, upsert: true } };
-        },
-      ),
+    const operations = await writeOperationsOf(
+      this.serde,
+      { tenantId, threadId, namespace, checkpointId },
+      taskId,
+      seq,
+      writes,
     );
     await this.connection.inTransaction(async ({ session }) => {
       await this.#writes.bulkWrite(operations, { session, ordered: true });
