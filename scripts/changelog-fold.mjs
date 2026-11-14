@@ -86,19 +86,23 @@ function split(body) {
  * create it in order. "Changed — breaking …" is of the kind Breaking, so Changed never lands there.
  */
 function addTo(blocks, heading, bullets) {
+  const isLoose = (lines) =>
+    lines.some((line, i) => line.startsWith("- ") && blank(lines[i - 1] ?? "-"));
   const index = HEADINGS.indexOf(heading);
   const own =
     blocks.find((block) => block.heading === heading) ??
     blocks.findLast((block) => kind(block.heading) === index);
   if (!own) {
-    const block = { heading, lines: bullets.join("\n").split("\n") };
+    // a new heading takes the file's style: blank lines between entries when most of the headings
+    // that list several entries have them (a tie, or no such heading, stays tight)
+    const several = blocks.filter((b) => b.lines.filter((l) => l.startsWith("- ")).length > 1);
+    const loose = several.filter((b) => isLoose(b.lines)).length * 2 > several.length;
+    const block = { heading, lines: bullets.join(loose ? "\n\n" : "\n").split("\n") };
     const at = blocks.findIndex((b) => rank(b.heading) > rank(heading));
     blocks.splice(at === -1 ? blocks.length : at, 0, block);
     return;
   }
-  const loose = own.lines.some(
-    (line, i) => line.startsWith("- ") && blank(own.lines[i - 1] ?? "-"),
-  );
+  const loose = isLoose(own.lines);
   own.lines.push(
     ...bullets.flatMap((bullet) => (loose ? ["", ...bullet.split("\n")] : bullet.split("\n"))),
   );

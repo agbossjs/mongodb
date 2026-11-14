@@ -114,6 +114,27 @@ describe("D1b: the real 0.1.1 section's shape", () => {
     expect(text().match(/^### Fixed/gm)).toHaveLength(2);
   });
 
+  it("a new ### heading follows the file's style: blank lines between entries when the others have them, tight when they do not", async () => {
+    for (const [loose, sep] of [
+      [true, "\n\n"],
+      [false, "\n"],
+    ] as const) {
+      const bullets = ["- **A** (#1)", "- **B** (#2)"].join(sep);
+      fs.writeFileSync(
+        changelog,
+        at(
+          `# Changelog\n\n## [0.1.1] — unreleased\n\n### Added\n\n${bullets}\n\n### Deprecated\n\n- **D** (#3)\n`,
+        ),
+      );
+      for (const n of ["5", "4"]) frag(`${n}-c.md`, "Changed", n, `**C${n}** (#${n})`);
+      expect((await run("0.1.1", "--date", "2026-11-20")).status).toBe(0);
+      expect(text()).toContain(
+        at(`### Changed\n\n- **C4** (#4)${loose ? "\n\n" : "\n"}- **C5** (#5)\n\n###`),
+      );
+      for (const n of ["5", "4"]) fs.rmSync(join(dir, "changes", `${n}-c.md`), { force: true });
+    }
+  });
+
   it("with no kin heading at all, the canonical one is created in order", async () => {
     fs.writeFileSync(
       changelog,
