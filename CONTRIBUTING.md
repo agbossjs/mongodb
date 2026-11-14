@@ -7,10 +7,10 @@ every change starts as an issue there (stage = its `status:*` label: Triage → 
 ## Before a PR
 
 1. `npm ci && npm run pack:framework && npm run install:packed` — the core at the pinned SHA.
-2. `npm run check` — the gate CI runs too. The integration tests need a MongoDB replica set and a
-   standalone `mongod`; without `AGBOSS_MONGODB_TEST_URL` and `AGBOSS_MONGODB_STANDALONE_TEST_URL`
-   they are skipped locally (the run says so) — CI runs them on `mongo:7`. To run them locally,
-   start the servers the skip notice names and export the two URLs.
+2. `npm run check` — the gate CI runs too. The tests need a MongoDB replica set and a standalone
+   `mongod`: without `AGBOSS_MONGODB_TEST_URL` and `AGBOSS_MONGODB_STANDALONE_TEST_URL` the run
+   fails at once, before any test, with a message saying how to start them (a test is never
+   skipped, locally or in CI) — CI runs them on `mongo:7`.
 
 ## Branches, commits, PRs
 
