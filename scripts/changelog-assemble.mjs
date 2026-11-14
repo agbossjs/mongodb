@@ -10,7 +10,8 @@
 // Format: see changes/README.md. A fragment with an unknown section, a file name that disagrees with
 // its `issue`, or an entry that does not mention its issue fails the run and changes nothing.
 // Idempotent: with no fragments left only an unreleased heading is dated (nothing else is touched). The file is
-// replaced atomically and the fragments are deleted after, so a crash in between is repaired by a rerun.
+// replaced atomically, read back and verified, and only then are the fragments deleted, so a crash in between
+// is repaired by a rerun. A CRLF CHANGELOG.md keeps its line endings; one that mixes CRLF and LF fails untouched.
 // `changes/config.json` names the form an entry must mention its issue in (`#981`, or
 // `agbossjs/agboss#981` in a repository other than the core).
 import {
@@ -27,7 +28,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { foldFragments, SECTIONS } from "./changelog-fold.mjs";
+import { foldFragments, SECTIONS, verifyFolded } from "./changelog-fold.mjs";
 
 const NAME = /^(\d+)-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
@@ -109,13 +110,8 @@ function option(args, name, fallback) {
   return at === -1 ? fallback : args[at + 1];
 }
 
-function main(args) {
-  const dir = option(args, "--dir", "changes");
-  const fragments = readFragments(dir);
-  if (args.includes("--check")) {
-    console.log(`${fragments.length} changelog fragment(s) valid`);
-    return;
-  }
+/** The version and the date a run is for, from its arguments; throws on a malformed one. */
+function versionAndDate(args) {
   const version = args.find((arg, i) => !arg.startsWith("--") && !args[i - 1]?.startsWith("--"));
   if (!version || !/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(version)) {
     throw new Error(
@@ -124,10 +120,23 @@ function main(args) {
   }
   const date = option(args, "--date", new Date().toISOString().slice(0, 10));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`--date ${date} is not YYYY-MM-DD`);
+  return { version, date };
+}
+
+function main(args) {
+  const dir = option(args, "--dir", "changes");
+  const fragments = readFragments(dir);
+  if (args.includes("--check")) {
+    console.log(`${fragments.length} changelog fragment(s) valid`);
+    return;
+  }
+  const { version, date } = versionAndDate(args);
   const path = option(args, "--changelog", "CHANGELOG.md");
   const before = existsSync(path) ? readFileSync(path, "utf8") : "";
   const after = foldFragments(before, version, date, fragments);
   if (after !== before) replaceFile(path, after);
+  // write first, verify what is on disk, only then delete the fragments (#1087)
+  if (fragments.length > 0) verifyFolded(readFileSync(path, "utf8"), version, fragments);
   if (fragments.length === 0) {
     const dated = after === before ? "nothing to assemble" : `${version} dated ${date}`;
     console.log(`no fragments in ${dir}/: ${dated}`);

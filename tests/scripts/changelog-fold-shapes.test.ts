@@ -182,3 +182,113 @@ describe("M4: no fragments", () => {
     expect(text()).toBe(`# Changelog\n\n${OLD}`);
   });
 });
+
+/** #1087: a CRLF CHANGELOG.md folds like an LF one, keeps its line endings, and never grows a second section. */
+describe("#1087: CRLF CHANGELOG.md", () => {
+  const crlf = (lf: string): string => lf.replace(/\n/g, "\r\n");
+  const lone = (value: string): boolean => /(^|[^\r])\n/.test(value);
+  const unreleased =
+    at("# Changelog\n\n## [0.1.1] — unreleased\n\n### Fixed\n\n- **A** (#3)\n\n") + OLD;
+  const headings = (): number =>
+    text()
+      .split(/\r?\n/)
+      .filter((l) => l.startsWith("## [0.1.1]")).length;
+
+  it("AC1: folds into the existing unreleased section: one heading, dated, CRLF throughout, fragments gone", async () => {
+    fs.writeFileSync(changelog, crlf(unreleased));
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    const result = await run("0.1.1", "--date", "2026-11-14");
+    expect(result.status, result.stderr).toBe(0);
+    expect(text()).toBe(
+      crlf(
+        at(
+          "# Changelog\n\n## [0.1.1] — 2026-11-14\n\n### Fixed\n\n- **A** (#3)\n- **B** (#12)\n\n",
+        ) + OLD,
+      ),
+    );
+    expect(lone(text())).toBe(false);
+    expect(headings()).toBe(1);
+    expect(fs.existsSync(join(dir, "changes", "12-fix.md"))).toBe(false);
+  });
+
+  it("AC1: idempotent on rerun, and a fragment already in the section is not written a second time", async () => {
+    fs.writeFileSync(changelog, crlf(unreleased));
+    frag("3-again.md", "Fixed", "3", "**A** (#3)");
+    expect((await run("0.1.1", "--date", "2026-11-14")).status).toBe(0);
+    const once = text();
+    expect(once.match(/\*\*A\*\*/g)).toHaveLength(1);
+    frag("3-again.md", "Fixed", "3", "**A** (#3)");
+    expect((await run("0.1.1", "--date", "2026-11-14")).status).toBe(0);
+    expect(text()).toBe(once);
+    expect(headings()).toBe(1);
+  });
+
+  it("AC1: no fragments — the unreleased heading is dated and the line endings stay", async () => {
+    fs.writeFileSync(changelog, crlf(unreleased));
+    expect((await run("0.1.1", "--date", "2026-11-14")).status).toBe(0);
+    expect(text()).toBe(crlf(unreleased.replace("— unreleased", "— 2026-11-14")));
+  });
+
+  it("AC1: an absent version gets a new section in CRLF", async () => {
+    fs.writeFileSync(changelog, crlf(at(`# Changelog\n\n${OLD}`)));
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    expect((await run("0.1.1", "--date", "2026-11-14")).status).toBe(0);
+    expect(lone(text())).toBe(false);
+    expect(headings()).toBe(1);
+    expect(text()).toContain("## [0.1.1] — 2026-11-14\r\n");
+  });
+
+  it("AC1: mixed line endings fail before anything is written or deleted", async () => {
+    const mixed = unreleased.replace("# Changelog\n", "# Changelog\r\n");
+    fs.writeFileSync(changelog, mixed);
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    const result = await run("0.1.1", "--date", "2026-11-14");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("line endings");
+    expect(text()).toBe(mixed);
+    expect(fs.existsSync(join(dir, "changes", "12-fix.md"))).toBe(true);
+  });
+});
+
+describe("#1087: the fragments are deleted only after the written file is verified", () => {
+  interface Assemble {
+    verifyFolded: (
+      changelog: string,
+      version: string,
+      fragments: { file: string; section: string; issue: number; entry: string }[],
+    ) => void;
+  }
+  const load = async (): Promise<Assemble> =>
+    (await import(join(repo, "scripts/changelog-fold.mjs"))) as Assemble;
+  const fragment = { file: "12-fix.md", section: "Fixed", issue: 12, entry: at("**B** (#12)") };
+
+  it("a file with the entry once and one heading verifies, in LF and in CRLF", async () => {
+    const { verifyFolded } = await load();
+    const good = at("# Changelog\n\n## [0.1.1] — 2026-11-14\n\n### Fixed\n\n- **B** (#12)\n");
+    expect(() => {
+      verifyFolded(good, "0.1.1", [fragment]);
+    }).not.toThrow();
+    const crlf = good.replace(/\n/g, "\r\n");
+    expect(() => {
+      verifyFolded(crlf, "0.1.1", [fragment]);
+    }).not.toThrow();
+  });
+
+  it("two sections for the version, a missing entry, an undated heading each throw", async () => {
+    const { verifyFolded } = await load();
+    const two = at(
+      "# Changelog\n\n## [0.1.1] — 2026-11-14\n\n### Fixed\n\n- **B** (#12)\n\n## [0.1.1] — unreleased\n\n- x\n",
+    );
+    expect(() => {
+      verifyFolded(two, "0.1.1", [fragment]);
+    }).toThrow(/not folded/);
+    const missing = "# Changelog\n\n## [0.1.1] — 2026-11-14\n\n### Fixed\n\n- other\n";
+    expect(() => {
+      verifyFolded(missing, "0.1.1", [fragment]);
+    }).toThrow(/not folded/);
+    const undated = at("# Changelog\n\n## [0.1.1] — unreleased\n\n### Fixed\n\n- **B** (#12)\n");
+    expect(() => {
+      verifyFolded(undated, "0.1.1", [fragment]);
+    }).toThrow(/not folded/);
+  });
+});
