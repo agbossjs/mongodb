@@ -29,6 +29,8 @@ import { Collections } from "../connection/collections.js";
 
 /** One stream, its client and the end of its ping. */
 interface OpenStream {
+  /** Which stream of the watch this is: a stream is heard only while it is the current one. */
+  readonly generation: number;
   readonly client: MongoClient;
   readonly stream: ChangeStream;
   readonly beat: AbortController;
@@ -37,6 +39,7 @@ interface OpenStream {
 export class MongoQueueWatch implements ChildExecutionQueueWatch {
   readonly #stopped = new AbortController();
   #open: OpenStream | undefined;
+  #generations = 0;
   #reopening: Promise<void> | undefined;
 
   private constructor(
@@ -64,7 +67,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
     this.#open = undefined;
     open?.beat.abort();
     await this.#reopening;
-    if (open !== undefined) await closeBounded(() => open.client.close(), this.clock);
+    if (open !== undefined) await this.#closeStream(open);
   }
 
   async #start(): Promise<void> {
@@ -79,9 +82,13 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
         maxAwaitTimeMS: awaitFor(livenessSeconds),
         ...(startAtOperationTime === undefined ? {} : { startAtOperationTime }),
       });
-      const open = { client, stream, beat: new AbortController() };
+      this.#generations += 1;
+      const open = { generation: this.#generations, client, stream, beat: new AbortController() };
+      // a stream dropped as dead is closed, but its driver may still deliver what was in flight, or
+      // resume it once connections go through again: only the current stream is heard
+      // (agbossjs/agboss#1051)
       stream.on("change", () => {
-        this.onQueued();
+        if (this.#isCurrent(open)) this.onQueued();
       });
       stream.on("error", (error) => {
         this.#lost(open, `its change stream failed: ${error.message}`);
@@ -90,7 +97,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
         this.#lost(open, "its change stream closed");
       });
       if (this.#stopped.signal.aborted) {
-        await closeBounded(() => client.close(), this.clock);
+        await this.#closeStream(open);
         return;
       }
       this.#open = open;
@@ -120,14 +127,31 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
     if (dead !== undefined) this.#lost(open, dead);
   }
 
+  /** Whether `open` is the stream the watch listens to (not one it dropped, nor one not yet adopted). */
+  #isCurrent(open: OpenStream): boolean {
+    return !this.#stopped.signal.aborted && this.#open?.generation === open.generation;
+  }
+
+  /**
+   * Closes the stream and its client, each bounded on the clock: a silent connection never lets
+   * either finish, and the two must not wait for each other.
+   */
+  async #closeStream(open: OpenStream): Promise<void> {
+    await Promise.all([
+      closeBounded(() => open.stream.close(), this.clock),
+      closeBounded(() => open.client.close(), this.clock),
+    ]);
+  }
+
   /** The stream failed, closed or went silent: open another, unless the watch is closed or it was replaced. */
   #lost(open: OpenStream, reason: string): void {
-    if (this.#stopped.signal.aborted || this.#open !== open) return;
+    if (!this.#isCurrent(open)) return;
     this.#open = undefined;
     open.beat.abort();
     this.warn(`The child queue's change stream is lost (${reason}); opening it again`);
-    // a silent client never finishes an orderly close: it is left to end by itself
-    void closeBounded(() => open.client.close(), this.clock);
+    // closed, not just left: the driver resumes a stream on its own once connections go through
+    // again, and a silent client never finishes an orderly close, so it is left to end by itself
+    void this.#closeStream(open);
     this.#reopening = this.#reopen().finally(() => {
       this.#reopening = undefined;
     });

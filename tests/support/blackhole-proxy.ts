@@ -5,6 +5,8 @@ interface Leg {
   readonly client: net.Socket;
   readonly upstream: net.Socket | undefined;
   silent: boolean;
+  /** The connection has carried a change stream's `aggregate` or `getMore`. */
+  streaming: boolean;
 }
 
 /**
@@ -50,6 +52,15 @@ export class BlackholeProxy {
     for (const leg of this.#legs) leg.silent = true;
   }
 
+  /**
+   * Only the connections a change stream runs on (the ones that have carried its `aggregate` or
+   * `getMore`) go silent, for good (agbossjs/agboss#1051); the driver's monitors and every other
+   * connection stay alive, so the driver does not see the outage itself.
+   */
+  cutStreams(): void {
+    for (const leg of this.#legs) if (leg.streaming) leg.silent = true;
+  }
+
   /** Connections made from now on are accepted and swallowed (`true`), or forwarded (`false`). */
   swallowNew(on: boolean): void {
     this.#swallowing = on;
@@ -58,6 +69,11 @@ export class BlackholeProxy {
   /** How many connections the proxy has accepted so far (an attempt to connect each). */
   get accepted(): number {
     return this.#accepted;
+  }
+
+  /** How many open connections have carried a change stream's `aggregate` or `getMore`. */
+  get streams(): number {
+    return [...this.#legs].filter((leg) => leg.streaming).length;
   }
 
   /** How many connections are open (for a test that checks nothing leaked). */
@@ -80,7 +96,7 @@ export class BlackholeProxy {
   #accept(client: net.Socket): void {
     this.#accepted += 1;
     const upstream = this.#swallowing ? undefined : net.connect(this.target);
-    const leg: Leg = { client, upstream, silent: this.#swallowing };
+    const leg: Leg = { client, upstream, silent: this.#swallowing, streaming: false };
     this.#legs.add(leg);
     const drop = (): void => {
       this.#legs.delete(leg);
@@ -88,6 +104,7 @@ export class BlackholeProxy {
       upstream?.destroy();
     };
     client.on("data", (bytes) => {
+      if (bytes.includes("getMore") || bytes.includes("aggregate")) leg.streaming = true;
       if (!leg.silent) upstream?.write(bytes);
     });
     upstream?.on("data", (bytes) => {

@@ -57,10 +57,13 @@ describe("agbossjs/agboss#1028: where a new stream starts", () => {
     const watch = await watching(watched, cleanups);
 
     proxy.cut();
-    await direct.saveIfAbsent(child("r-1"));
     await vi.waitFor(() => {
       expect(logger.entries).toHaveLength(1);
     }, CONNECTS);
+    // saved right before the reopen's ping (the pause after the warning is 1 s), so the ping's
+    // cluster time is this write's, not a later no-op's: a stream that started AT it, not after
+    // it, would replay the child (the boundary of agbossjs/agboss#1028 is then what keeps it at one)
+    await direct.saveIfAbsent(child("r-1"));
     await vi.waitFor(() => {
       expect(watch.wakes()).toBeGreaterThanOrEqual(1);
     }, CONNECTS);
