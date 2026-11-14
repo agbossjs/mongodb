@@ -72,7 +72,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
       database,
       applied: [
         { version: 1, name: "stores" },
-        { version: 3, name: "checkpoint_latest_by_step" },
+        { version: 2, name: "checkpoint_latest_by_step" },
         { version: 3, name: "pause-deadlines-and-notices" },
       ],
       version: 3,
