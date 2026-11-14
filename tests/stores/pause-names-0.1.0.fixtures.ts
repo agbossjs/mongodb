@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
+
 /** What 0.1.0 wrote as JSON: a pause, an answer, a log entry, a kept history record (#934). */
 
-const STEP = {
+export const STEP = {
   component: { name: "clerk-agent", kind: "agent" },
   nodeId: "clerk-agent",
   visitNumber: 1,
@@ -35,7 +37,11 @@ export const oldPause = {
 };
 
 /** One 0.1.0 `PauseAnswerRecord`: `answeredBy` the kind, `responder` the person. */
-const oldAnswer = (executionId: string, kind: string, person: string) => ({
+export const oldAnswer = (
+  executionId: string,
+  kind: string,
+  person: string,
+): Record<string, unknown> => ({
   executionId,
   step: STEP,
   role: "refund-approval-channel",
@@ -49,26 +55,38 @@ const oldAnswer = (executionId: string, kind: string, person: string) => ({
 
 export const oldAnswerLogEntry = oldAnswer("run-1", "channel", "manager-17");
 
-/** A 0.1.0 history record: the root's pauses, a child's, and the child's child's. */
-export const oldHistoryRecord = {
-  executionId: "run-1",
-  rootExecutionId: "run-1",
-  threadId: "t-1",
-  tenantId: "default",
-  application: { name: "desk", version: "1.0.0", instanceId: "i-1" },
-  workflow: { name: "desk-workflow", version: "1" },
-  status: "finished",
-  startedAt: "2026-01-05T09:00:00.000Z",
-  start: { name: "desk-workflow-start", kind: "start" },
-  contexts: { tenant: {}, execution: {} },
-  pauses: [oldAnswer("run-1", "channel", "manager-17")],
-  children: [
-    {
-      executionId: "child-1",
-      pauses: [oldAnswer("child-1", "thread-owner", "alice")],
-      children: [
-        { executionId: "child-2", pauses: [oldAnswer("child-2", "channel", "bob")], children: [] },
-      ],
-    },
-  ],
-};
+/** A kept record's tree: what a test reaches into. */
+export interface RecordTree {
+  pauses: unknown[];
+  children: RecordTree[];
+  [field: string]: unknown;
+}
+
+const OLD_TEXT = readFileSync(new URL("./history-record-0.1.0.json", import.meta.url), "utf8");
+
+/**
+ * A 0.1.0 `ExecutionHistoryRecord` in full (`history-record-0.1.0.json`: written as a typed literal
+ * against the published `@agboss/core@0.1.0` declarations): the root's pauses, a child's, and the
+ * child's child's.
+ */
+export const oldHistoryRecord: Record<string, unknown> = JSON.parse(OLD_TEXT);
+
+/** A fresh copy of the record, changed by `change`. */
+export function historyRecordWith(change: (tree: RecordTree) => void): RecordTree {
+  const tree: RecordTree = JSON.parse(OLD_TEXT);
+  change(tree);
+  return tree;
+}
+
+/** The deepest child of a record. */
+export function leafOf(tree: RecordTree): RecordTree {
+  const [child] = tree.children;
+  const [leaf] = child?.children ?? [];
+  if (leaf === undefined) throw new TypeError("the fixture has a child's child");
+  return leaf;
+}
+
+/** A paused run in the shape 0.1.0 wrote it (`paused-run-0.1.0.json`). */
+export const oldPausedRun: Record<string, unknown> = JSON.parse(
+  readFileSync(new URL("./paused-run-0.1.0.json", import.meta.url), "utf8"),
+);

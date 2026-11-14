@@ -26,7 +26,12 @@ interface PausedDocument {
   pausedAt: Date;
 }
 
-const Paused = z.object({ run: z.string(), workflowVersion: z.string(), configHash: z.string() });
+const Paused = z.object({
+  runId: z.string(),
+  run: z.string(),
+  workflowVersion: z.string(),
+  configHash: z.string(),
+});
 
 /**
  * The first layer of `MongoPausedExecutionRepository`: the paused runs by thread, and the one way
@@ -103,7 +108,7 @@ export abstract class MongoPauseBase extends PausedExecutionRepository {
     if (found === null) return undefined;
     const stored = Paused.parse(found);
     return {
-      run: pausedRunOfJson(stored.run),
+      run: pausedRunOfJson(stored.run, { threadId, runId: stored.runId }),
       workflowVersion: stored.workflowVersion,
       configHash: stored.configHash,
     };

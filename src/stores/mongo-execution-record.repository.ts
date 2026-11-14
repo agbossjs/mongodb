@@ -183,6 +183,6 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     rootExecutionId: string,
   ): Promise<PauseAnswerRecord[]> {
     const texts = await writes.pauseAnswerTextsOf(this.connection.db, tenantId, rootExecutionId);
-    return texts.map(pauseAnswerOfJson);
+    return texts.map((text) => pauseAnswerOfJson(text, { executionId: rootExecutionId }));
   }
 }
