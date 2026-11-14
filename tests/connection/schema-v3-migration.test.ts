@@ -1,6 +1,6 @@
 /**
- * agbossjs/agboss#938 AC2 — a database at schema version 1 migrates to 2 and keeps its pauses: the
- * indexes and the notices' collection are made, a pause written by version 1 (no `channel`, no
+ * agbossjs/agboss#938 AC2 — a database at schema version 2 migrates to 3 and keeps its pauses: the
+ * indexes and the notices' collection are made, a pause written by version 2 or earlier (no `channel`, no
  * deadline fields) gets its `channel` from its record and still reads back, a second migrate
  * changes nothing, and two concurrent ones end in one schema.
  */
@@ -41,8 +41,8 @@ const PAUSE: PauseRecord = {
   askedAt: "2026-01-05T09:00:00.000Z",
 };
 
-/** A database at schema version 1: migrated, then v2's collection and indexes dropped, version set back, one v1 pause kept. */
-async function databaseAtVersion1(): Promise<string> {
+/** A database at schema version 2: migrated, then v3's collection and indexes dropped, version set back, one pause without v3 fields kept. */
+async function databaseAtVersion2(): Promise<string> {
   const database = freshDatabaseName();
   made.push(database);
   await migrateMongodb({ url: REPLICA_SET_URL, database });
@@ -55,7 +55,7 @@ async function databaseAtVersion1(): Promise<string> {
       await pauses.dropIndex(name);
     await db
       .collection<{ _id: string }>(Collections.SchemaVersion)
-      .updateOne({ _id: "agboss" }, { $set: { version: 1 } });
+      .updateOne({ _id: "agboss" }, { $set: { version: 2 } });
     await pauses.insertOne({
       _id: idOf("default", "p1"),
       tenantId: "default",
@@ -87,19 +87,19 @@ async function onDatabase<T>(database: string, work: (db: Db) => Promise<T>): Pr
   }
 }
 
-describe("agbossjs/agboss#938 AC2: schema version 1 to 2", () => {
-  it("AC2: version 1 → 2 keeps pauses, fills channel, makes the indexes, twice is a no-op", async () => {
-    const database = await databaseAtVersion1();
+describe("agbossjs/agboss#938 AC2: schema version 2 to 3", () => {
+  it("AC2: version 2 → 3 keeps pauses, fills channel, makes the indexes, twice is a no-op", async () => {
+    const database = await databaseAtVersion2();
 
     const first = await migrateMongodb({ url: REPLICA_SET_URL, database });
     const second = await migrateMongodb({ url: REPLICA_SET_URL, database });
 
     expect(first).toEqual({
       database,
-      applied: [{ version: 2, name: "pause-deadlines-and-notices" }],
-      version: 2,
+      applied: [{ version: 3, name: "pause-deadlines-and-notices" }],
+      version: 3,
     });
-    expect(second).toEqual({ database, applied: [], version: 2 });
+    expect(second).toEqual({ database, applied: [], version: 3 });
     await onDatabase(database, async (db) => {
       expect(await indexNamesOf(db, Collections.Pauses)).toEqual(
         expect.arrayContaining(["pending_by_expiry", "pending_by_remind", "by_tenant", "open"]),
@@ -131,14 +131,14 @@ describe("agbossjs/agboss#938 AC2: schema version 1 to 2", () => {
     expect(page.pauses.map((pause) => pause.pauseId)).toEqual(["p1"]);
   });
 
-  it("AC2: two concurrent migrations of a version 1 database end in one schema", async () => {
-    const database = await databaseAtVersion1();
+  it("AC2: two concurrent migrations of a version 2 database end in one schema", async () => {
+    const database = await databaseAtVersion2();
 
     const reports = await Promise.all(
       [1, 2].map(() => migrateMongodb({ url: REPLICA_SET_URL, database })),
     );
 
-    expect(reports.every((report) => report.version === 2)).toBe(true);
+    expect(reports.every((report) => report.version === 3)).toBe(true);
     await onDatabase(database, async (db) => {
       expect(
         await db.collection(Collections.Pauses).countDocuments({ channel: { $exists: false } }),
