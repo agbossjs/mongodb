@@ -17,6 +17,7 @@ interface Leg {
 export class BlackholeProxy {
   readonly #legs = new Set<Leg>();
   #swallowing = false;
+  #accepted = 0;
 
   private constructor(
     private readonly server: net.Server,
@@ -54,6 +55,11 @@ export class BlackholeProxy {
     this.#swallowing = on;
   }
 
+  /** How many connections the proxy has accepted so far (an attempt to connect each). */
+  get accepted(): number {
+    return this.#accepted;
+  }
+
   /** How many connections are open (for a test that checks nothing leaked). */
   get open(): number {
     return this.#legs.size;
@@ -72,6 +78,7 @@ export class BlackholeProxy {
   }
 
   #accept(client: net.Socket): void {
+    this.#accepted += 1;
     const upstream = this.#swallowing ? undefined : net.connect(this.target);
     const leg: Leg = { client, upstream, silent: this.#swallowing };
     this.#legs.add(leg);

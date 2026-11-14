@@ -27,6 +27,7 @@ import {
 import { supportedTopologyOf, topologyOf, type MongoTopology } from "./deployment.js";
 import { checkSchema, migrateSchema } from "./schema-version.js";
 import {
+  checkedWatchLivenessOf,
   databaseOfUrl,
   DEFAULT_DATABASE,
   settingsOfEnvironment,
@@ -96,6 +97,7 @@ export class MongoConnection implements OnInit, OnDestroy {
   ) {
     const settings =
       source instanceof ApplicationContext ? settingsOfEnvironment(source.environment) : source;
+    checkedWatchLivenessOf(settings.watchLivenessSeconds);
     rememberSettings(this, settings);
     // what the URL alone asks for: a weaker concern there is refused, never silently overridden
     requireConcerns(concernProblemsOf(clientOf(settings.url)));
