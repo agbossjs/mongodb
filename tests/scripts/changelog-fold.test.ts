@@ -1,4 +1,7 @@
-/** agbossjs/agboss#981 fix-forward: folding into an unreleased section (D1), crash recovery (M2). */
+/**
+ * agbossjs/agboss#981 (fix-forward): the assemble script folds fragments into an existing unreleased section of its
+ * version (D1), in either heading shape, and survives a crash between the write and the deletes (M2).
+ */
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,9 +80,6 @@ The release in one line.
 ### Changed — breaking for stores outside the core
 
 - **Custom** (#2)
-
-### Changed — breaking
-
 - **Store** (#20)
 
 ### Added
@@ -91,10 +91,7 @@ The release in one line.
 
 - **Other one** (#3)
 ${loose ? "\n" : ""}- **Other two** (#4)
-
-### Fixed
-
-- **Bug** (#7)
+${loose ? "\n" : ""}- **Bug** (#7)
 
 ### Docs
 

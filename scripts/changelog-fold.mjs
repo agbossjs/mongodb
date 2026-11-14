@@ -38,15 +38,18 @@ export function sectionOf(version, date, fragments) {
   return `${parts.join("\n\n")}\n`;
 }
 
-/** Where a subheading sits in the canonical order; a custom one ("Fixed — other") sits with its kind. */
-function rank(heading) {
+/** The canonical heading a subheading belongs to (the longest match: "Fixed — other" is a Fixed), or -1. */
+function kind(heading) {
   let best = -1;
   for (const [i, own] of HEADINGS.entries()) {
     const kin = heading === own || heading.startsWith(`${own} `);
     if (kin && (best === -1 || own.length > HEADINGS[best].length)) best = i;
   }
-  return best === -1 ? Infinity : best;
+  return best;
 }
+
+/** Where a subheading sits in the canonical order; a custom one ("Fixed — other") sits with its kind. */
+const rank = (heading) => (kind(heading) === -1 ? Infinity : kind(heading));
 
 /** The `## ` section of a version as line indexes, or null. `released` is false for an unreleased one. */
 function findSection(lines, version) {
@@ -77,9 +80,16 @@ function split(body) {
   return { intro: trim(intro), blocks: blocks.map((b) => ({ ...b, lines: trim(b.lines) })) };
 }
 
-/** Add the bullets of one canonical section to the blocks: append to its `###`, or create it in order. */
+/**
+ * Add the bullets of one canonical section to the blocks: append to its `###`; else to the last
+ * custom heading of its kind ("Fixed — other" for Fixed: a release has one Fixed, not three); else
+ * create it in order. "Changed — breaking …" is of the kind Breaking, so Changed never lands there.
+ */
 function addTo(blocks, heading, bullets) {
-  const own = blocks.find((block) => block.heading === heading);
+  const index = HEADINGS.indexOf(heading);
+  const own =
+    blocks.find((block) => block.heading === heading) ??
+    blocks.findLast((block) => kind(block.heading) === index);
   if (!own) {
     const block = { heading, lines: bullets.join("\n").split("\n") };
     const at = blocks.findIndex((b) => rank(b.heading) > rank(heading));
@@ -102,12 +112,10 @@ export function foldFragments(changelog, version, date, fragments) {
   const text = changelog === "" ? "# Changelog\n" : changelog;
   const lines = text.replace(/\n$/, "").split("\n");
   const found = findSection(lines, version);
-  if (!found) {
-    const first = lines.findIndex((line) => line.startsWith("## ["));
-    const section = sectionOf(version, date, fragments);
-    if (first === -1) return `${text.trimEnd()}\n\n${section}`;
-    return `${lines.slice(0, first).join("\n")}\n${section}\n${lines.slice(first).join("\n")}\n`;
-  }
+  if (!found)
+    return fragments.length === 0
+      ? changelog
+      : withNewSection(text, lines, version, date, fragments);
   const own = lines.slice(found.start + 1, found.end);
   const has = (fragment) => `\n${own.join("\n")}\n`.includes(`\n${bulletOf(fragment.entry)}\n`);
   const fresh = fragments.filter((fragment) => !has(fragment));
@@ -128,4 +136,12 @@ export function foldFragments(changelog, version, date, fragments) {
   for (const block of blocks) out.push(`### ${block.heading}`, "", ...block.lines, "");
   const after = lines.slice(found.end);
   return `${[...lines.slice(0, found.start), ...out, ...after].join("\n").trimEnd()}\n`;
+}
+
+/** The file with a new dated section written above the newest release. */
+function withNewSection(text, lines, version, date, fragments) {
+  const first = lines.findIndex((line) => line.startsWith("## ["));
+  const section = sectionOf(version, date, fragments);
+  if (first === -1) return `${text.trimEnd()}\n\n${section}`;
+  return `${lines.slice(0, first).join("\n")}\n${section}\n${lines.slice(first).join("\n")}\n`;
 }
