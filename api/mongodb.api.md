@@ -614,7 +614,7 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     countNotices(): Promise<PauseNoticeCounts>;
     deleteByResolvedAtBefore(cutoff: Date): Promise<void>;
     // (undocumented)
-    findClosedByResolvedAtBefore(cutoff: Date, limit: number): Promise<readonly PauseRecord[]>;
+    findClosedByResolvedAtBefore(cutoff: Date, limit: number, after?: string): Promise<PausePage>;
     // (undocumented)
     findOpenAfter(after: string | undefined, limit: number): Promise<PausePage>;
     // (undocumented)
