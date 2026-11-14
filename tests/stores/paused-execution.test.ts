@@ -7,6 +7,7 @@ import {
   PauseStatus,
   type PauseRecord,
 } from "@agboss/core";
+import { NO_RECIPIENTS } from "@agboss/core/stores";
 import { VirtualClock } from "@agboss/core/testing";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -89,6 +90,7 @@ describe("MongoPausedExecutionRepository", () => {
       "p-question",
       { decision: { verdict: "yes" }, answeredBy: undefined },
       NINE,
+      NO_RECIPIENTS,
     );
 
     expect(await other.findAllByTenantIdAndRootExecutionId("default", "run-1")).toEqual([

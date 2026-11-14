@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import { z } from "zod";
 import { MongoSchemaMissingError, MongoSchemaTooNewError } from "../errors.js";
 import { Collections } from "./collections.js";
+import { fillPauseChannels } from "./pause-channels.js";
 import { ensureSchema, existingCollectionsOf, requireSimpleCollation } from "./schema.js";
 
 /**
@@ -22,11 +23,13 @@ export interface MongoMigration {
 /**
  * The package's migrations, in order. Version 1: every collection, index and the ledger's mark.
  * Version 2 (agbossjs/agboss#962): the checkpoints' `latest_by_step` index; a checkpoint written
- * before has no `step` until the first read of its thread gives it one.
+ * before has no `step` until the first read of its thread gives it one. Version 3 (#938): the
+ * pauses' deadline indexes, the notices' collection, the pauses' `channel`.
  */
 export const MIGRATIONS: readonly MongoMigration[] = [
   { version: 1, name: "stores" },
   { version: 2, name: "checkpoint_latest_by_step" },
+  { version: 3, name: "pause-deadlines-and-notices" },
 ];
 
 /** The schema version this package needs: its newest migration's. */
@@ -113,6 +116,7 @@ export async function migrateSchema(db: Db, signal?: AbortSignal): Promise<Schem
   refuseNewer(from);
   await ensureSchema(db);
   signal?.throwIfAborted();
+  if ((from ?? 0) < 3) await fillPauseChannels(db, signal);
   await raiseVersion(db);
   const applied = MIGRATIONS.filter((migration) => migration.version > (from ?? 0));
   return { from, applied };

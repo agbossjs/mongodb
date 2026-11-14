@@ -62,7 +62,7 @@ const versionDocumentOf = (database: string) =>
   onDatabase(database, (db) => versionsIn(db).findOne({ _id: "agboss" }));
 
 describe("agbossjs/agboss#891 AC1: the schema's version", () => {
-  it("AC1: migrateMongodb makes every collection and writes version 2; a second run applies nothing", async () => {
+  it("AC1: migrateMongodb makes every collection and writes version 3; a second run applies nothing", async () => {
     const database = freshDatabase();
 
     const first = await migrateMongodb({ url: REPLICA_SET_URL, database });
@@ -73,26 +73,27 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
       applied: [
         { version: 1, name: "stores" },
         { version: 2, name: "checkpoint_latest_by_step" },
+        { version: 3, name: "pause-deadlines-and-notices" },
       ],
-      version: 2,
+      version: 3,
     });
-    expect(second).toEqual({ database, applied: [], version: 2 });
-    expect(await versionDocumentOf(database)).toMatchObject({ _id: "agboss", version: 2 });
+    expect(second).toEqual({ database, applied: [], version: 3 });
+    expect(await versionDocumentOf(database)).toMatchObject({ _id: "agboss", version: 3 });
     const names = await onDatabase(database, async (db) =>
       (await db.listCollections({}, { nameOnly: true }).toArray()).map((info) => info.name),
     );
     expect(names).toEqual(expect.arrayContaining(Object.values(Collections)));
   });
 
-  it("AC1: concurrent migrations end in one schema at version 2", async () => {
+  it("AC1: concurrent migrations end in one schema at version 3", async () => {
     const database = freshDatabase();
 
     const reports = await Promise.all(
       [1, 2, 3].map(() => migrateMongodb({ url: REPLICA_SET_URL, database })),
     );
 
-    expect(reports.every((report) => report.version === 2)).toBe(true);
-    expect(await versionDocumentOf(database)).toMatchObject({ version: 2 });
+    expect(reports.every((report) => report.version === 3)).toBe(true);
+    expect(await versionDocumentOf(database)).toMatchObject({ version: 3 });
     await expect(startOn(database)).resolves.toBeUndefined();
   });
 
@@ -105,7 +106,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
     await expect(refused).rejects.toMatchObject({
       code: "mongodb.schema-missing",
       applied: undefined,
-      expected: 2,
+      expected: 3,
       collections: [],
     });
     await expect(refused).rejects.toThrow(
@@ -127,7 +128,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
     await expect(startOn(database, SchemaSetup.Check)).rejects.toMatchObject({
       code: "mongodb.schema-missing",
       applied: 0,
-      expected: 2,
+      expected: 3,
     });
   });
 
@@ -138,7 +139,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
 
     await expect(startOn(database)).rejects.toMatchObject({
       code: "mongodb.schema-missing",
-      applied: 2,
+      applied: 3,
       collections: [Collections.OutboundCalls],
     });
   });
@@ -154,7 +155,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
     await expect(startOn(database, SchemaSetup.MigrateOnStart)).rejects.toMatchObject({
       code: "mongodb.schema-too-new",
       applied: 7,
-      expected: 2,
+      expected: 3,
     });
     await expect(migrateMongodb({ url: REPLICA_SET_URL, database })).rejects.toThrow(
       MongoSchemaTooNewError,
@@ -167,7 +168,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
 
     await startOn(database, SchemaSetup.MigrateOnStart);
 
-    expect(await versionDocumentOf(database)).toMatchObject({ version: 2 });
+    expect(await versionDocumentOf(database)).toMatchObject({ version: 3 });
     await expect(startOn(database, SchemaSetup.Check)).resolves.toBeUndefined();
   });
 

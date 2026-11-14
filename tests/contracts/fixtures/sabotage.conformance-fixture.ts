@@ -20,6 +20,7 @@ import {
   MongoExecutionLeaseRepository,
   MongoFencedEffectRepository,
   MongoOutboundCallRepository,
+  MongoPausedExecutionRepository,
   type MongoConnection,
   type MongoTransaction,
 } from "../../../src/index.js";
@@ -29,6 +30,13 @@ import {
   resultDocumentOf,
   type ResultDocument,
 } from "../../../src/stores/fenced-effects/result-documents.js";
+import {
+  DuplicateKeyNoticeOnce,
+  MARKERS,
+  NoDeadlineGuards,
+  ReversedOrder,
+  StringHeadTime,
+} from "../../stores/pause-sabotage.js";
 import { TestApplicationContext } from "../../support/application-context.js";
 import { emptyAll, testDatabase } from "../../support/database.js";
 import { fenceRaceCases } from "../fence-races.js";
@@ -275,3 +283,29 @@ fenceRaceCases("a fence check that only reads", async () => {
     committed: () => two.db.collection("fence_race_rows").countDocuments(),
   };
 });
+
+// #938: broken pause stores, each through the pause contract alone (a store set of one)
+type PauseStore = new (
+  ...args: ConstructorParameters<typeof MongoPausedExecutionRepository>
+) => MongoPausedExecutionRepository;
+
+const brokenPauseStores: readonly (readonly [string, PauseStore])[] = [
+  ["a pause deadline left out of the compare-and-set", NoDeadlineGuards],
+  ["pause notices written in the wrong order", ReversedOrder],
+  ["a pause head time stored as a string", StringHeadTime],
+  ["noticeOnce that relies on a duplicate-key error", DuplicateKeyNoticeOnce],
+];
+
+for (const [name, Store] of brokenPauseStores)
+  storeConformance({
+    name,
+    reset: () => emptyAll(database.url(), [CONTRACT_ROWS, MARKERS]),
+    without: ["fencedEffect", "outboundCall"],
+    interleavings: false,
+    stores: {
+      pausedExecution: mongoStore(
+        database,
+        (connection, seam) => new Store(connection, seam.clock),
+      ),
+    },
+  });

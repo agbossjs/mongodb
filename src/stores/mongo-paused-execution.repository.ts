@@ -1,177 +1,137 @@
-import {
-  Clock,
-  Injectable,
-  PausedExecutionRepository,
-  PauseResolution,
-  PauseStatus,
-  type PauseAnswer,
-  type PauseCancellation,
-  type PausedExecution,
-  type PauseRecord,
-} from "@agboss/core";
-import type { Collection } from "mongodb";
-import { z } from "zod";
+import { Clock, Injectable, PauseStatus, type PauseRecord } from "@agboss/core";
+import type {
+  PauseFilter,
+  PauseNoticeClaim,
+  PauseNoticeCounts,
+  PausePage,
+  SetAsideMailbox,
+} from "@agboss/core/stores";
+import type { Milliseconds } from "@agboss/core/units";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
-import { pausedRunJsonOf, pausedRunOfJson } from "./framework-json.js";
-import { idOf } from "./keys.js";
 import {
-  closePause,
-  findOrCreatePause,
-  pauseIdOf,
-  pauseOfDocument,
-  type PauseDocument,
-} from "./paused/pause-documents.js";
+  acknowledge,
+  claimDue,
+  countMailboxes,
+  giveUp,
+  retry,
+  setAsideStale,
+} from "./paused/pause-delivery.js";
+import { mailboxesOf } from "./paused/pause-mailboxes.js";
+import { pauseOfDocument, type PauseDocument } from "./paused/pause-documents.js";
+import {
+  assertPauseFilter,
+  assertScanLimit,
+  dueBy,
+  pageOf,
+  removableBefore,
+  tenantFilter,
+} from "./paused/pause-scans.js";
+import { MongoPauseTransitions } from "./paused/pause-transitions.repository.js";
 
-/** One thread's paused run: the run as JSON text (its non-finite numbers tagged) and its versions. */
-interface PausedDocument {
-  _id: string;
-  runId: string;
-  run: string;
-  workflowVersion: string;
-  configHash: string;
-  pausedAt: Date;
-}
-
-const Paused = z.object({ run: z.string(), workflowVersion: z.string(), configHash: z.string() });
+/** What the retention removes per transaction. */
+const RETENTION_BATCH = 500;
 
 /**
- * `PausedExecutionRepository` on MongoDB (#265, #267 S35, agbossjs/agboss#527): one document per
- * thread of a tenant — the paused run and the versions it paused under — and one per pause. Every
- * transition of a pending pause is one compare-and-set (`findOneAndUpdate` filtered on `status:
- * "pending"`), so of two resumes on two instances exactly one records its decision; the other gets
- * nothing back — `NotPausedError` from the core. With `MongoCheckpointSaver` a pause made on one
- * instance is resumed on any.
+ * `PausedExecutionRepository` on MongoDB (#265, #267 S35, #910 contract v2, #938,
+ * agbossjs/agboss#527): one document per thread of a tenant — the paused run and the versions it
+ * paused under — one per pause, and one mailbox per pause and receiver (`agboss_pause_notices`).
+ * Every transition of a pause is one compare-and-set in a transaction with the notices it writes
+ * (`MongoPauseBase.change`), the deadline in the filter, so of two instances exactly one records
+ * it; the claims, acknowledgements and set-asides of the notices are one conditional command on one
+ * mailbox. The scans' cursor is the insertion sequence (a counter that only grows). With
+ * `MongoCheckpointSaver` a pause made on one instance is resumed on any.
  */
 @Injectable({ deps: [MongoConnection, Clock] })
-export class MongoPausedExecutionRepository extends PausedExecutionRepository {
-  constructor(
-    private readonly connection: MongoConnection,
-    private readonly clock: Clock,
-  ) {
-    super();
+export class MongoPausedExecutionRepository extends MongoPauseTransitions {
+  async findPendingByExpiresAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]> {
+    assertScanLimit(limit);
+    return dueBy(this.connection.db, "expiresAt", at, limit);
   }
 
-  get #paused(): Collection<PausedDocument> {
-    return this.connection.db.collection<PausedDocument>(Collections.PausedExecutions);
+  async findPendingByRemindAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]> {
+    assertScanLimit(limit);
+    return dueBy(this.connection.db, "remindAt", at, limit);
   }
 
-  get #pauses(): Collection<PauseDocument> {
-    return this.connection.db.collection<PauseDocument>(Collections.Pauses);
+  async findOpenAfter(after: string | undefined, limit: number): Promise<PausePage> {
+    assertScanLimit(limit);
+    const open = { status: { $in: [PauseStatus.Pending, PauseStatus.Resolved] } };
+    return pageOf(this.connection.db, open, limit, after);
   }
 
-  ping(): Promise<void> {
-    return this.connection.ping();
-  }
-
-  async findByTenantIdAndThreadId(
+  async findPageByTenantId(
     tenantId: string,
-    threadId: string,
-  ): Promise<PausedExecution | undefined> {
-    const found = await this.#paused.findOne({ _id: idOf(tenantId, threadId) });
-    if (found === null) return undefined;
-    const stored = Paused.parse(found);
-    return {
-      run: pausedRunOfJson(stored.run),
-      workflowVersion: stored.workflowVersion,
-      configHash: stored.configHash,
-    };
+    filter: PauseFilter,
+    limit: number,
+    after?: string,
+  ): Promise<PausePage> {
+    assertScanLimit(limit);
+    assertPauseFilter(filter);
+    return pageOf(this.connection.db, tenantFilter(tenantId, filter), limit, after);
   }
 
-  async save(paused: PausedExecution): Promise<void> {
-    const { run } = paused;
-    await this.#paused.replaceOne(
-      { _id: idOf(run.tenantId, run.threadId) },
-      {
-        runId: run.runId,
-        run: pausedRunJsonOf(run),
-        workflowVersion: paused.workflowVersion,
-        configHash: paused.configHash,
-        pausedAt: this.clock.now(),
-      },
-      { upsert: true },
-    );
+  async findClosedByResolvedAtBefore(cutoff: Date, limit: number): Promise<readonly PauseRecord[]> {
+    assertScanLimit(limit);
+    const removable = await removableBefore(this.connection.db, cutoff, limit);
+    return removable.map(pauseOfDocument);
   }
 
-  async deleteByTenantIdAndThreadId(tenantId: string, threadId: string): Promise<void> {
-    await this.#paused.deleteOne({ _id: idOf(tenantId, threadId) });
-  }
-
-  findOrCreateByStepKey(pause: PauseRecord): Promise<PauseRecord> {
-    return findOrCreatePause(this.connection.db, pause);
-  }
-
-  async findByTenantIdAndPauseId(
-    tenantId: string,
-    pauseId: string,
-  ): Promise<PauseRecord | undefined> {
-    const found = await this.#pauses.findOne({ _id: pauseIdOf(tenantId, pauseId) });
-    return found === null ? undefined : pauseOfDocument(found);
-  }
-
-  async findAllByTenantIdAndRootExecutionId(
-    tenantId: string,
-    rootExecutionId: string,
-  ): Promise<readonly PauseRecord[]> {
-    const found = await this.#pauses.find({ tenantId, rootExecutionId }).sort({ seq: 1 }).toArray();
-    return found.map(pauseOfDocument);
-  }
-
-  async markSentByTenantIdAndPauseId(tenantId: string, pauseId: string): Promise<boolean> {
-    const sent = await this.#pauses.updateOne(
-      { _id: pauseIdOf(tenantId, pauseId), status: PauseStatus.Pending },
-      { $set: { isSent: true } },
-    );
-    return sent.matchedCount === 1;
-  }
-
-  resolveByTenantIdAndPauseId(
-    tenantId: string,
-    pauseId: string,
-    answer: PauseAnswer,
-    at: Date,
-  ): Promise<PauseRecord | undefined> {
-    const resolution = PauseResolution.Replied;
-    return closePause(this.#pauses, tenantId, pauseId, {
-      ...{ status: PauseStatus.Resolved, answer, resolution, at },
-    });
-  }
-
-  async decideByTenantIdAndPauseId(
-    tenantId: string,
-    pauseId: string,
-    answer: PauseAnswer,
-    at: Date,
-  ): Promise<boolean> {
-    const closed = await closePause(this.#pauses, tenantId, pauseId, {
-      ...{ status: PauseStatus.Taken, answer, resolution: PauseResolution.Decided, at },
-    });
-    return closed !== undefined;
-  }
-
-  async cancelByTenantIdAndPauseId(
-    tenantId: string,
-    pauseId: string,
-    resolution: PauseCancellation,
-    at: Date,
-  ): Promise<boolean> {
-    const closed = await closePause(this.#pauses, tenantId, pauseId, {
-      ...{ status: PauseStatus.Cancelled, resolution, at },
-    });
-    return closed !== undefined;
-  }
-
-  async markTakenByTenantIdAndPauseId(tenantId: string, pauseId: string): Promise<void> {
-    await this.#pauses.updateOne(
-      { _id: pauseIdOf(tenantId, pauseId), status: PauseStatus.Resolved },
-      { $set: { status: PauseStatus.Taken } },
-    );
-  }
-
+  /** Removes the closed pauses before `cutoff` with no live mailbox, and their mailboxes, a batch per transaction. */
   async deleteByResolvedAtBefore(cutoff: Date): Promise<void> {
-    await this.#pauses.deleteMany({
-      status: { $in: [PauseStatus.Taken, PauseStatus.Cancelled] },
-      resolvedAt: { $lt: cutoff },
+    for (;;) {
+      const removed = await this.connection.inTransaction(async ({ db, session }) => {
+        const batch = await removableBefore(db, cutoff, RETENTION_BATCH, session);
+        if (batch.length === 0) return 0;
+        const ids = batch.map((one) => one._id);
+        await db
+          .collection<PauseDocument>(Collections.Pauses)
+          .deleteMany({ _id: { $in: ids } }, { session });
+        const sites = batch.map(({ tenantId, pauseId }) => ({ tenantId, pauseId }));
+        await mailboxesOf(db).deleteMany({ $or: sites }, { session });
+        return batch.length;
+      });
+      if (removed === 0) return;
+    }
+  }
+
+  claimNoticesDue(
+    at: Date,
+    limit: number,
+    claimFor: Milliseconds,
+    recipients: readonly string[],
+  ): Promise<readonly PauseNoticeClaim[]> {
+    return Promise.resolve().then(() => {
+      assertScanLimit(limit);
+      return claimDue(this.connection.db, at, limit, claimFor, recipients);
     });
+  }
+
+  ackNotice(claim: PauseNoticeClaim, at: Date): Promise<PauseNoticeClaim | undefined> {
+    return acknowledge(this.connection.db, claim, at);
+  }
+
+  retryNotice(claim: PauseNoticeClaim, nextAttemptAt: Date, problem: string): Promise<boolean> {
+    return retry(this.connection.db, claim, nextAttemptAt, problem);
+  }
+
+  setAsideNotices(claim: PauseNoticeClaim, _at: Date, problem: string): Promise<boolean> {
+    return giveUp(this.connection.db, claim, problem);
+  }
+
+  setAsideStaleNoticesBefore(
+    writtenBefore: Date,
+    at: Date,
+    problem: string,
+    limit: number,
+  ): Promise<readonly SetAsideMailbox[]> {
+    return Promise.resolve().then(() => {
+      assertScanLimit(limit);
+      return setAsideStale(this.connection.db, writtenBefore, at, problem, limit);
+    });
+  }
+
+  countNotices(): Promise<PauseNoticeCounts> {
+    return countMailboxes(this.connection.db);
   }
 }
