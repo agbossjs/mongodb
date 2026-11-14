@@ -8,10 +8,12 @@
  * Runs on the built declarations: `npm run build` first.
  */
 import { Extractor, ExtractorConfig } from "@microsoft/api-extractor";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { normalizePositions } from "./api-positions.mjs";
 
 // `--package <dir>`: another package folder (the test plants a hole in a small one)
 const packageAt = process.argv.indexOf("--package");
@@ -37,7 +39,9 @@ const config = ExtractorConfig.prepare({
     apiReport: {
       enabled: true,
       reportFileName: "mongodb",
-      reportFolder: REPORTS,
+      // api-extractor leaves its raw report in `temp` (same folder: nothing for it to compare or
+      // copy); the committed report is that text without source positions (#1040), see below
+      reportFolder: temp,
       reportTempFolder: temp,
     },
     docModel: { enabled: false },
@@ -64,7 +68,7 @@ const config = ExtractorConfig.prepare({
 
 const forgotten = [];
 const result = Extractor.invoke(config, {
-  localBuild: write,
+  localBuild: true, // never fails on a changed report itself: the comparison is ours, below
   showVerboseMessages: false,
   messageCallback: (message) => {
     if (message.messageId !== "ae-forgotten-export") return;
@@ -72,6 +76,17 @@ const result = Extractor.invoke(config, {
     message.handled = true;
   },
 });
+const committed = join(REPORTS, "mongodb.api.md");
+const text = normalizePositions(readFileSync(join(temp, "mongodb.api.md"), "utf8"));
+const changed = !existsSync(committed) || readFileSync(committed, "utf8") !== text;
+if (write && changed) writeFileSync(committed, text);
+if (!write && changed) {
+  // show what differs, so a CI failure is readable without the temp file
+  const fresh = join(temp, "normalized.api.md");
+  writeFileSync(fresh, text);
+  const diff = spawnSync("diff", ["-u", committed, fresh], { encoding: "utf8" });
+  console.error(diff.stdout.split("\n").slice(0, 60).join("\n"));
+}
 rmSync(temp, { recursive: true, force: true });
 if (forgotten.length > 0) {
   console.error(
@@ -80,7 +95,7 @@ if (forgotten.length > 0) {
   );
   process.exit(1);
 }
-if (!result.succeeded || (!write && result.apiReportChanged)) {
+if (!result.succeeded || (!write && changed)) {
   console.error(
     "api/mongodb.api.md is stale: the public API changed — review it, then npm run api:update",
   );
