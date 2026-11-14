@@ -582,6 +582,29 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
 }
 
 // @public
+export abstract class MongoPauseBase extends PausedExecutionRepository {
+    constructor(connection: MongoConnection, clock: Clock);
+    protected appendNotices(transaction: MongoTransaction, pause: PauseRecord, notices: readonly PlannedNotice[]): Promise<void>;
+    protected change(tenantId: string, pauseId: string, guard: Filter<PauseDocument>, plan: (before: PauseRecord) => PauseChange | undefined): Promise<PauseRecord | undefined>;
+    // (undocumented)
+    protected readonly clock: Clock;
+    // (undocumented)
+    protected readonly connection: MongoConnection;
+    // (undocumented)
+    deleteByTenantIdAndThreadId(tenantId: string, threadId: string): Promise<void>;
+    deleteByTenantIdAndThreadIdAndRunId(tenantId: string, threadId: string, runId: string): Promise<void>;
+    // (undocumented)
+    findByTenantIdAndThreadId(tenantId: string, threadId: string): Promise<PausedExecution | undefined>;
+    protected get guards(): PauseGuards;
+    // (undocumented)
+    protected get pauses(): Collection<PauseDocument>;
+    // (undocumented)
+    ping(): Promise<void>;
+    // (undocumented)
+    save(paused: PausedExecution): Promise<void>;
+}
+
+// @public
 export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     // (undocumented)
     ackNotice(claim: PauseNoticeClaim, at: Date): Promise<PauseNoticeClaim | undefined>;
@@ -740,6 +763,71 @@ export interface MongoTransaction {
 export enum MongoTransactionReadConcern {
     Majority = "majority",
     Snapshot = "snapshot"
+}
+
+// @public
+export interface PauseChange {
+    // (undocumented)
+    readonly notices: readonly PlannedNotice[];
+    // (undocumented)
+    readonly pause: PauseRecord;
+}
+
+// @public
+export interface PauseDocument {
+    // (undocumented)
+    channel: string;
+    closing: string | null;
+    // (undocumented)
+    expiresAt: Date | null;
+    // (undocumented)
+    expiryBound: string | null;
+    // (undocumented)
+    _id: string;
+    // (undocumented)
+    isSent: boolean;
+    noticeWrites?: number;
+    // (undocumented)
+    pauseId: string;
+    record: string;
+    // (undocumented)
+    remindAt: Date | null;
+    // (undocumented)
+    resolvedAt: Date | null;
+    // (undocumented)
+    rootExecutionId: string;
+    // (undocumented)
+    seq: number;
+    // (undocumented)
+    status: PauseStatus;
+    // (undocumented)
+    stepKey: string;
+    // (undocumented)
+    tenantId: string;
+}
+
+// @public
+export interface PauseGuards {
+    // (undocumented)
+    due(at: Date): Filter<PauseDocument>;
+    // (undocumented)
+    extendable(at: Date): Filter<PauseDocument>;
+    // (undocumented)
+    inStatus(status: PauseStatus): Filter<PauseDocument>;
+    // (undocumented)
+    open(at: Date): Filter<PauseDocument>;
+    // (undocumented)
+    remindable(at: Date): Filter<PauseDocument>;
+}
+
+// @public
+export interface PlannedNotice {
+    // (undocumented)
+    readonly at: Date;
+    // (undocumented)
+    readonly notice: Omit<PauseNotice, "seq">;
+    // (undocumented)
+    readonly recipient: string;
 }
 
 export { SchemaSetup }
@@ -901,6 +989,36 @@ export { SchemaSetup }
 // src/stores/mongo-rate-limit.repository.ts - (ae-undocumented) Missing documentation for "clearWindow".
 // src/stores/mongo-rate-limit.repository.ts - (ae-undocumented) Missing documentation for "pauseUntil".
 // src/stores/mongo-rate-limit.repository.ts - (ae-undocumented) Missing documentation for "pausedUntil".
+// src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "connection".
+// src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "clock".
+// src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "pauses".
+// src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "ping".
+// src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "findByTenantIdAndThreadId".
+// src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "save".
+// src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "deleteByTenantIdAndThreadId".
+// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "recipient".
+// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "at".
+// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "notice".
+// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "pause".
+// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "notices".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "_id".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "tenantId".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "pauseId".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "rootExecutionId".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "stepKey".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "seq".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "status".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "isSent".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "resolvedAt".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "channel".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "expiresAt".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "remindAt".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "expiryBound".
+// src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "open".
+// src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "due".
+// src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "extendable".
+// src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "remindable".
+// src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "inStatus".
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "findOrCreateByStepKey".
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "findByTenantIdAndPauseId".
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "findByTenantIdAndRootExecutionIdAndStepKey".
