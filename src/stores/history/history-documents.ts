@@ -1,6 +1,7 @@
 import type { ExecutionHistoryRecord } from "@agboss/core";
 import { executionHistoryRecordOfJson } from "@agboss/core/stores";
 import { z } from "zod";
+import { parsedOrUnreadable } from "../unreadable.js";
 
 /**
  * A document of `agboss_execution_history` read back: its `record` is the JSON `save` wrote, or
@@ -8,8 +9,12 @@ import { z } from "zod";
  * so is every pause of the record and of its children, at any depth. A document that is not one fails
  * with `StoredNamesUnreadableError`, naming the ids and the field, never half-read.
  */
-const HistoryDocument = z.object({ record: z.string() });
+const HistoryDocument = z.object({ record: z.string(), executionId: z.string().optional() });
 
 /** The record of a document. */
-export const historyRecordOf = (row: unknown): ExecutionHistoryRecord =>
-  executionHistoryRecordOfJson(JSON.parse(HistoryDocument.parse(row).record));
+export const historyRecordOf = (row: unknown): ExecutionHistoryRecord => {
+  const { record, executionId } = HistoryDocument.parse(row);
+  return executionHistoryRecordOfJson(
+    parsedOrUnreadable("execution history record", record, { executionId }),
+  );
+};

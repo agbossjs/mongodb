@@ -3,6 +3,7 @@ import type { Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { pauseRecordOf } from "../framework-json.js";
+import { parsedOrUnreadable } from "../unreadable.js";
 import { pauseFieldsOfVersion } from "./pause-kind.js";
 import { DUPLICATE_KEY, hasCode, idOf } from "../keys.js";
 import { nextSequence } from "../sequence.js";
@@ -53,6 +54,7 @@ const Stored = z.object({
   remindAt: z.date().nullable().optional(),
   expiryBound: z.string().nullable().optional(),
 });
+const Ids = z.object({ pauseId: z.string().optional(), rootExecutionId: z.string().optional() });
 
 const Fields = z.record(z.string(), z.unknown());
 
@@ -82,8 +84,13 @@ function deadlinesOf(stored: z.infer<typeof Stored>): readonly (readonly [string
 /** The record a document keeps: the created record, its closing over it, its status, sending and deadlines. */
 export function pauseOfDocument(found: unknown): PauseRecord {
   const stored = Stored.parse(found);
-  const closing = stored.closing === null ? {} : Fields.parse(JSON.parse(stored.closing));
-  const created = pauseFieldsOfVersion(Fields.parse(JSON.parse(stored.record)));
+  // a text that is not JSON names the pause by its ids, never by the text or a tenant (#906 D4)
+  const ids = Ids.parse(found);
+  const closing =
+    stored.closing === null ? {} : Fields.parse(parsedOrUnreadable("pause", stored.closing, ids));
+  const created = pauseFieldsOfVersion(
+    Fields.parse(parsedOrUnreadable("pause", stored.record, ids)),
+  );
   const record: Record<string, unknown> = {
     ...created,
     ...closing,
