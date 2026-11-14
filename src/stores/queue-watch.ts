@@ -5,15 +5,16 @@ import { watchClientOf } from "../connection/watch-client.js";
 import type { ChildExecutionQueueWatch, Clock } from "@agboss/core";
 import { seconds } from "@agboss/core/units";
 import type { ChangeStream, MongoClient } from "mongodb";
-import { awaitFor, clusterTimeOf, PAUSES, QUEUED_CHANGES } from "./queue-changes.js";
+import { awaitFor, startAfter, PAUSES, QUEUED_CHANGES } from "./queue-changes.js";
 import { Collections } from "../connection/collections.js";
 
 /**
  * The child queue's watch on MongoDB (agbossjs/agboss#777): a change stream on the queue's
  * collection, every document that becomes `queued` — inserted so, or set so by a resume or a lost
- * claim's requeue — waking the claimers. The stream starts at the cluster time of a `ping` sent
- * before `open` resolves, so a child queued once the watch is open is never missed while the
- * server starts the stream. Idle on an empty queue: the server holds each `getMore` up to
+ * claim's requeue — waking the claimers. The stream starts just after the cluster time of a `ping`
+ * sent before `open` resolves, so a child queued once the watch is open is never missed while the
+ * server starts the stream, and one queued before is not replayed (the watch wakes for it only
+ * as the catch-up of a reopen, once; agbossjs/agboss#1028). Idle on an empty queue: the server holds each `getMore` up to
  * a quarter of the liveness bound (one idle round trip per instance per 2.5 s, no document read). The driver resumes a
  * stream after a resumable error on its own; a stream that closes otherwise is opened again after a
  * pause that doubles from 1 s up to 30 s on the application's `Clock`, and wakes the claimers once
@@ -71,7 +72,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
     const attempt = new AbortController();
     try {
       const startAtOperationTime = await Promise.race([
-        db.command({ ping: 1 }).then(clusterTimeOf),
+        db.command({ ping: 1 }).then(startAfter),
         this.#unanswered(livenessSeconds, AbortSignal.any([attempt.signal, this.#stopped.signal])),
       ]);
       const stream = db.collection(Collections.ChildExecutionQueue).watch(QUEUED_CHANGES, {

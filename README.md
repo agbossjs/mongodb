@@ -225,9 +225,11 @@ database with no counters starts at the epoch, "never pruned".
   so an idle pod claims at once instead of at its next sweep (30 s). One stream per instance, on a
   client of its own with one connection; idle on an empty queue except one held `getMore` per 2.5 s
   (`maxAwaitTimeMS`, no document read) and one `ping` per 5 s. It starts
-  at the cluster time of a `ping` sent before it opens, so a child queued once the watch is open is
-  not missed. The driver resumes it after a resumable error; one the server ends (an `invalidate`)
-  is opened again after a pause (1 s, doubling up to 30 s) and wakes the claimers once. A lost
+  just after the cluster time of a `ping` sent before it opens (a stream's start is inclusive, so
+  one tick past it), so a child queued once the watch is open is not missed, and one queued before
+  does not wake it (agbossjs/agboss#1028). The driver resumes it after a resumable error; one the
+  server ends (an `invalidate`) is opened again after a pause (1 s, doubling up to 30 s), past the
+  invalidate, and wakes the claimers exactly once — as the PostgreSQL and Redis stores do. A lost
   wake-up costs at most a sweep — the child stays queued.
 - **A connection that dies silently** (agbossjs/agboss#789) — a half-open TCP connection behind a
   NAT or a load balancer: no FIN, no RST; the driver alone takes about 40 s to see it, longer than
@@ -239,7 +241,11 @@ database with no counters starts at the epoch, "never pruned".
   after the first pause (1 s), waking the claimers once: a child queued during the gap waits for
   neither the sweep nor the next change. The worst case is the bound, plus 1 s, plus a connection
   (a new client that is swallowed too is dropped at the bound and tried again, 2 s later, doubling
-  up to 30 s).
+  up to 30 s). The watch's client gives up on a connection that is not up within half the bound,
+  waits at most the bound for a reply, and checks the server every quarter of it, so a client
+  dropped as silent ends by itself within about the bound, not the driver's 30 s timeouts. After
+  `close()` and `MongoConnection.onDestroy()` nothing the watch opened keeps the process alive past
+  twice the bound (agbossjs/agboss#1027).
 - **Text.** BSON keeps every text as given, U+0000 included. A composite key is the JSON array of
   its parts, so a separator inside a tenant id cannot join two keys, and a lone surrogate (which the
   driver would write as U+FFFD) is escaped in it.

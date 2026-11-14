@@ -1,3 +1,4 @@
+import { seconds } from "@agboss/core/units";
 import { MongoClient, type Db } from "mongodb";
 import { ENFORCED_CLIENT_OPTIONS } from "./concerns.js";
 import { databaseOfUrl, DEFAULT_DATABASE, DEFAULT_WATCH_LIVENESS_SECONDS } from "./settings.js";
@@ -29,14 +30,27 @@ export interface WatchClient {
 export function watchClientOf(connection: object): WatchClient {
   const settings = SETTINGS.get(connection);
   if (settings === undefined) throw new Error("a MongoConnection made outside its constructor");
+  const livenessSeconds = settings.watchLivenessSeconds ?? DEFAULT_WATCH_LIVENESS_SECONDS;
+  const bound = seconds(livenessSeconds);
   const client = new MongoClient(settings.url, {
     ...ENFORCED_CLIENT_OPTIONS,
     ignoreUndefined: true,
     maxPoolSize: 1,
+    // a client dropped as silent ends by itself within the bound: the driver's 30 s defaults would
+    // keep its sockets and monitors, and the process, alive long after the instance's stop (#1027).
+    // A connection must be up in half the bound (the ping has the rest); the monitor looks every
+    // quarter, so the server a dropped client still thinks it knows is given up soon, and the
+    // `endSessions` its close waits on fails with it; it never retries: the watch reopens itself
+    connectTimeoutMS: seconds(livenessSeconds / 2),
+    serverSelectionTimeoutMS: bound,
+    socketTimeoutMS: bound,
+    retryReads: false,
+    retryWrites: false,
+    heartbeatFrequencyMS: Math.max(500, seconds(livenessSeconds / 4)),
   });
   return {
     client,
     db: client.db(settings.database ?? databaseOfUrl(settings.url) ?? DEFAULT_DATABASE),
-    livenessSeconds: settings.watchLivenessSeconds ?? DEFAULT_WATCH_LIVENESS_SECONDS,
+    livenessSeconds,
   };
 }

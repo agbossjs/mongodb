@@ -30,8 +30,17 @@ export const QUEUED_CHANGES: Document[] = [
   { $project: { _id: 1 } },
 ];
 
-/** The cluster time a command's reply carries, when it does. */
-export const clusterTimeOf = (reply: Document): Timestamp | undefined => {
+/**
+ * The first cluster time after the one a command's reply carries (`ping`'s `operationTime`: the
+ * last write the server had applied), or undefined when the reply has none. A stream's
+ * `startAtOperationTime` is inclusive, so it starts here, not at the ping's own time:
+ * that write — a child already queued, or a `drop` that invalidated the last stream — is not
+ * replayed (agbossjs/agboss#1028). Cluster times are unique, so a write made after the ping is
+ * never before this one.
+ */
+export const startAfter = (reply: Document): Timestamp | undefined => {
   const time: unknown = reply.operationTime;
-  return time instanceof Timestamp ? time : undefined;
+  if (!(time instanceof Timestamp)) return undefined;
+  const wraps = time.i === 0xffffffff;
+  return new Timestamp({ t: wraps ? time.t + 1 : time.t, i: wraps ? 0 : time.i + 1 });
 };
