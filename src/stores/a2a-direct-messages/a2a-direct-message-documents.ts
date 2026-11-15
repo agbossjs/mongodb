@@ -6,6 +6,7 @@ import {
 } from "@agboss/core/stores";
 import { z } from "zod";
 import { messageIdOf, ownerColumnOf } from "../a2a-tasks/a2a-task-documents.js";
+import { parsedOrUnreadable } from "../unreadable.js";
 
 /**
  * The document of `MongoA2ADirectMessageRepository` (agbossjs/agboss#860): one per accepted direct
@@ -99,7 +100,12 @@ function replyOf(
       `agboss_a2a_direct_messages ${JSON.stringify(stored.messageId)}: its state and its reply disagree`,
     );
   if (stored.reply === undefined || stored.completedAt === undefined) return {};
-  return { reply: Reply.parse(JSON.parse(stored.reply)), completedAt: stored.completedAt };
+  return {
+    reply: Reply.parse(
+      parsedOrUnreadable("a2a direct message reply", stored.reply, { messageId: stored.messageId }),
+    ),
+    completedAt: stored.completedAt,
+  };
 }
 
 /** A document read back, parsed: a corrupt one is refused, never read as a message. */

@@ -11,6 +11,7 @@ import {
 } from "@agboss/core";
 import { z } from "zod";
 import { idOf } from "../keys.js";
+import { parsedOrUnreadable } from "../unreadable.js";
 
 /**
  * The documents of `MongoA2ATaskRepository` (agbossjs/agboss#824): a task and an accepted message,
@@ -137,7 +138,9 @@ export const replyTextOf = (reply: unknown): string =>
 
 export function taskOf(document: unknown): A2ATaskRecord {
   const stored = StoredTask.parse(document);
-  const status: A2ATaskStatus = Status.parse(JSON.parse(stored.status));
+  const status: A2ATaskStatus = Status.parse(
+    parsedOrUnreadable("a2a task status", stored.status, { taskId: stored.taskId }),
+  );
   if (status.state !== stored.state)
     throw new Error(`agboss_a2a_tasks ${stored.taskId}: its state and its status disagree`);
   return {
@@ -164,7 +167,13 @@ export function messageOf(document: unknown): A2AMessageRecord {
     requestHash: stored.requestHash,
     taskId: stored.taskId,
     savedAt: stored.savedAt,
-    ...(stored.reply === undefined ? {} : { reply: JSON.parse(stored.reply) as unknown }),
+    ...(stored.reply === undefined
+      ? {}
+      : {
+          reply: parsedOrUnreadable("a2a message reply", stored.reply, {
+            messageId: stored.messageId,
+          }),
+        }),
   };
 }
 

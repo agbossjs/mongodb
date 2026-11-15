@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { idOf } from "./keys.js";
+import { parsedOrUnreadable } from "./unreadable.js";
 
 /** A stored value as JSON gives it back: what `saveIfAbsentInTree` wrote. */
 const TreeValue: z.ZodType<ExecutionTreeValue> = z.lazy(() =>
@@ -68,7 +69,11 @@ export class MongoExecutionTreeRepository extends ExecutionTreeRepository {
 
   async findByIdInTree(tree: ExecutionTree, key: string): Promise<ExecutionTreeValue | undefined> {
     const found = await this.#keys.findOne({ _id: idOf(tree.tenantId, tree.rootExecutionId, key) });
-    return found === null ? undefined : TreeValue.parse(JSON.parse(Stored.parse(found).value));
+    return found === null
+      ? undefined
+      : TreeValue.parse(
+          parsedOrUnreadable("execution tree value", Stored.parse(found).value, { key }),
+        );
   }
 
   async deleteAllInTree(tree: ExecutionTree): Promise<void> {

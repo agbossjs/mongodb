@@ -9,6 +9,7 @@ import {
   type ExecutionAuditEventRecord,
 } from "@agboss/core";
 import { z } from "zod";
+import { parsedOrUnreadable } from "../unreadable.js";
 
 /**
  * A document of `agboss_execution_lease_events` read back: its `record` is the JSON `save`
@@ -119,4 +120,8 @@ function currentNamesOf(record: unknown): unknown {
 
 /** The record of a document. */
 export const auditEventOf = (found: unknown): ExecutionAuditEventRecord =>
-  Record.parse(currentNamesOf(JSON.parse(EventDocument.parse(found).record)));
+  Record.parse(
+    currentNamesOf(
+      parsedOrUnreadable("execution audit event", EventDocument.parse(found).record, {}),
+    ),
+  );

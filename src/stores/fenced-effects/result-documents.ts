@@ -2,6 +2,7 @@ import { FencedEffectStatus, type EffectKey, type FencedEffectOutcome } from "@a
 import { effectKeyIdentityOf, replayedFromOf, storedKeyFactsOf } from "@agboss/core/stores";
 import { z } from "zod";
 import { idOf } from "../keys.js";
+import { parsedOrUnreadable } from "../unreadable.js";
 
 /** One stored result: its key's identity, the token it was written under, its JSON as text. */
 export interface ResultDocument {
@@ -32,7 +33,9 @@ export function replayOf<TResult>(key: EffectKey, found: unknown): FencedEffectO
   return {
     status: FencedEffectStatus.Replayed,
     // written by this store as the JSON of the work's result
-    result: JSON.parse(stored.result) as TResult,
+    result: parsedOrUnreadable("fenced effect result", stored.result, {
+      name: key.name,
+    }) as TResult,
     token: stored.token,
     ...(replayedFrom === undefined ? {} : { replayedFrom }),
   };

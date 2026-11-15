@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { idOf } from "./keys.js";
+import { parsedOrUnreadable } from "./unreadable.js";
 
 /** One trusted mesh request: its answer as JSON text once it has one (absent while it runs). */
 interface MeshRequestDocument {
@@ -75,7 +76,12 @@ export class MongoMeshRequestRepository extends MeshRequestRepository {
       createdAt: stored.createdAt.toISOString(),
       ...(stored.response === undefined
         ? {}
-        : { response: JSON.parse(stored.response) as unknown }),
+        : {
+            response: parsedOrUnreadable("mesh request response", stored.response, {
+              peer: stored.peer,
+              idempotencyKey: stored.idempotencyKey,
+            }),
+          }),
     };
   }
 

@@ -1,6 +1,7 @@
 import type { Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "./collections.js";
+import { parsedOrUnreadable } from "../stores/unreadable.js";
 
 const Record = z.object({ record: z.string() });
 const Channel = z.object({ channel: z.string() });
@@ -16,7 +17,7 @@ export async function fillPauseChannels(db: Db, signal?: AbortSignal): Promise<v
   const cursor = pauses.find({ channel: { $exists: false } }, { projection: { record: 1 } });
   for await (const found of cursor) {
     signal?.throwIfAborted();
-    const { channel } = Channel.parse(JSON.parse(Record.parse(found).record));
+    const { channel } = Channel.parse(parsedOrUnreadable("pause", Record.parse(found).record, {}));
     await pauses.updateOne({ _id: found._id, channel: { $exists: false } }, { $set: { channel } });
   }
 }
