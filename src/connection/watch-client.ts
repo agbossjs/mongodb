@@ -27,7 +27,10 @@ export interface WatchClient {
  * stream's `getMore`s and the liveness ping take turns on it, so an answered ping proves the very
  * connection the stream listens on. Never throws: the driver connects on the first operation.
  */
-export function watchClientOf(connection: object): WatchClient {
+export function watchClientOf(
+  connection: object,
+  options: { readonly monitorCommands: boolean } = { monitorCommands: false },
+): WatchClient {
   const settings = SETTINGS.get(connection);
   if (settings === undefined) throw new Error("a MongoConnection made outside its constructor");
   const livenessSeconds = settings.watchLivenessSeconds ?? DEFAULT_WATCH_LIVENESS_SECONDS;
@@ -36,6 +39,10 @@ export function watchClientOf(connection: object): WatchClient {
     ...ENFORCED_CLIENT_OPTIONS,
     ignoreUndefined: true,
     maxPoolSize: 1,
+    // the watch reads the cursor id of its stream (and nothing else of a reply) from the command
+    // events, to kill a dropped stream's cursor by id on another connection (#1088); only on a
+    // client that asks for it, a client of the watch's own
+    monitorCommands: options.monitorCommands,
     // a client dropped as silent ends by itself within the bound: the driver's 30 s defaults would
     // keep its sockets and monitors, and the process, alive long after the instance's stop (#1027).
     // A connection must be up in half the bound (the ping has the rest); the monitor looks every
