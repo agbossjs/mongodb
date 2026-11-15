@@ -95,8 +95,13 @@ export class MongoConnection implements OnInit, OnDestroy {
     source: ApplicationContext | MongoConnectionSettings,
     private readonly clock?: Clock,
   ) {
-    const settings =
-      source instanceof ApplicationContext ? settingsOfEnvironment(source.environment) : source;
+    // a copy: the caller changing its object after this line must not bypass the checks below, nor
+    // change what the watch reads later (agbossjs/agboss#1129)
+    const settings: MongoConnectionSettings = Object.freeze({
+      ...(source instanceof ApplicationContext
+        ? settingsOfEnvironment(source.environment)
+        : source),
+    });
     checkedWatchLivenessOf(settings.watchLivenessSeconds);
     rememberSettings(this, settings);
     // what the URL alone asks for: a weaker concern there is refused, never silently overridden

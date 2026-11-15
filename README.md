@@ -115,7 +115,7 @@ export class AppEnvironment {
   mongodbUrl!: Secret; // mongodb://h1,h2,h3/<database>?replicaSet=rs0 — secret("MONGODB_URL")
   mongodbDatabase?: string; // default: the URL's database, else "agboss"
   mongodbTransactionReadConcern?: string; // "snapshot" (default) or "majority"
-  mongodbWatchLivenessSeconds?: number; // the longest a silently dead change stream goes unnoticed: 10 (default), at least 2
+  mongodbWatchLivenessSeconds?: number; // the longest a silently dead change stream goes unnoticed: 10 (default), 2 to 3600
   mongodbSchemaSetup?: SchemaSetup; // SchemaSetup.Check (default) or SchemaSetup.MigrateOnStart
 }
 ```
@@ -233,7 +233,7 @@ database with no counters starts at the epoch, "never pruned".
   wake-up costs at most a sweep — the child stays queued.
 - **A connection that dies silently** (agbossjs/agboss#789) — a half-open TCP connection behind a
   NAT or a load balancer: no FIN, no RST; the driver alone takes about 40 s to see it, longer than
-  the sweep — is noticed within `mongodbWatchLivenessSeconds` (default 10 s, at least 2). The watch
+  the sweep — is noticed within `mongodbWatchLivenessSeconds` (default 10 s, 2 to 3600). The watch
   pings the server every half of it over its one connection — the stream's `getMore`s and the ping
   take turns on it, so an answered ping proves the connection the stream listens on — and the answer
   is due within the other half. A client that does not answer is dropped,

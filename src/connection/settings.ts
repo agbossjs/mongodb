@@ -14,15 +14,26 @@ export const DEFAULT_DATABASE = "agboss";
 export const DEFAULT_WATCH_LIVENESS_SECONDS = 10;
 
 /**
- * `seconds` when the child queue's watch can run on it — a whole number of at least 2, as the
+ * The longest liveness bound the watch accepts, in seconds (agbossjs/agboss#1129): an hour, far
+ * under the 2^31-1 ms (about 24.8 days) a Node timer holds — beyond it the timer fires at once, the
+ * watch fails and the instance silently falls back to the sweep.
+ */
+export const MAX_WATCH_LIVENESS_SECONDS = 3600;
+
+/**
+ * `seconds` when the child queue's watch can run on it — a whole number from 2 to `MAX_WATCH_LIVENESS_SECONDS`, as the
  * environment's field is checked —, else `MongoSettingsError` naming `watchLivenessSeconds`
  * (agbossjs/agboss#1029): a settings object a script or a provider builds is trusted no more than
  * the environment.
  */
 export function checkedWatchLivenessOf(seconds: number | undefined): number | undefined {
-  if (seconds === undefined || (Number.isInteger(seconds) && seconds >= 2)) return seconds;
+  if (
+    seconds === undefined ||
+    (Number.isInteger(seconds) && seconds >= 2 && seconds <= MAX_WATCH_LIVENESS_SECONDS)
+  )
+    return seconds;
   throw new MongoSettingsError({
-    message: `watchLivenessSeconds must be a whole number of at least 2, got ${String(seconds)}`,
+    message: `watchLivenessSeconds must be a whole number of at least 2 and at most ${String(MAX_WATCH_LIVENESS_SECONDS)}, got ${String(seconds)}`,
   });
 }
 
@@ -46,10 +57,10 @@ export interface MongoConnectionSettings {
   /**
    * The longest a silently dead connection of the child queue's change stream (a half-open TCP
    * connection: no FIN, no RST) goes unnoticed, in seconds (agbossjs/agboss#789; default
-   * `DEFAULT_WATCH_LIVENESS_SECONDS`, 10, at least 2): the watch pings the server every half of it
+   * `DEFAULT_WATCH_LIVENESS_SECONDS`, 10, at least 2, at most `MAX_WATCH_LIVENESS_SECONDS`, 3600): the watch pings the server every half of it
    * and gives the answer the other half, then warns, opens the stream on a new client and wakes
    * once.
-   * Another value (0, 1, a negative or a fractional number) is a `MongoSettingsError` at construction
+   * Another value (0, 1, a negative or a fractional number, or one above 3600) is a `MongoSettingsError` at construction
    * (agbossjs/agboss#1029), as in the environment.
    */
   readonly watchLivenessSeconds?: number;
@@ -90,6 +101,10 @@ const MongoEnvironment = z.object({
     .number({ message: "mongodbWatchLivenessSeconds must be a number" })
     .int("mongodbWatchLivenessSeconds must be a whole number")
     .min(2, "mongodbWatchLivenessSeconds must be at least 2")
+    .max(
+      MAX_WATCH_LIVENESS_SECONDS,
+      `mongodbWatchLivenessSeconds must be at most ${String(MAX_WATCH_LIVENESS_SECONDS)}`,
+    )
     .optional(),
   mongodbSchemaSetup: z
     .enum(SchemaSetup, { message: "mongodbSchemaSetup must be check or migrate-on-start" })
