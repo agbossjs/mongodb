@@ -10,8 +10,9 @@
 // Format: see changes/README.md. A fragment with an unknown section, a file name that disagrees with
 // its `issue`, or an entry that does not mention its issue fails the run and changes nothing.
 // Idempotent: with no fragments left only an unreleased heading is dated (nothing else is touched). The file is
-// replaced atomically, read back and verified, and only then are the fragments deleted, so a crash in between
-// is repaired by a rerun. A CRLF CHANGELOG.md keeps its line endings; one that mixes CRLF and LF fails untouched.
+// written to a temp file, read back and verified, renamed over CHANGELOG.md, and only then are the fragments deleted, so a
+// crash in between is repaired by a rerun and a failed run changes nothing. A CRLF, lone-CR or BOM-prefixed CHANGELOG.md
+// keeps its form; one that mixes line endings fails untouched.
 // `changes/config.json` names the form an entry must mention its issue in (`#981`, or
 // `agbossjs/agboss#981` in a repository other than the core).
 import {
@@ -91,13 +92,17 @@ export function readFragments(dir) {
   return files.map((name) => parseFragment(name, readFileSync(join(dir, name), "utf8"), prefix));
 }
 
-/** Write `text` to a temp file beside `path`, then rename it over: a crash never leaves a torn file. */
-function replaceFile(path, text) {
+/**
+ * Write `text` to a temp file beside `path`, let `verify` read the written bytes back, then rename it over:
+ * a crash or a failed check never leaves a torn or wrong file, the original stays byte-identical (#1118).
+ */
+function replaceFile(path, text, verify) {
   const exists = existsSync(path);
   if (exists) accessSync(path, constants.W_OK);
   const temp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
   try {
     writeFileSync(temp, text);
+    verify(readFileSync(temp, "utf8"));
     if (exists) chmodSync(temp, statSync(path).mode);
     renameSync(temp, path);
   } finally {
@@ -134,9 +139,13 @@ function main(args) {
   const path = option(args, "--changelog", "CHANGELOG.md");
   const before = existsSync(path) ? readFileSync(path, "utf8") : "";
   const after = foldFragments(before, version, date, fragments);
-  if (after !== before) replaceFile(path, after);
-  // write first, verify what is on disk, only then delete the fragments (#1087)
-  if (fragments.length > 0) verifyFolded(readFileSync(path, "utf8"), version, fragments);
+  // write to a temp file, verify what is on disk there, rename over CHANGELOG.md, only then delete the
+  // fragments (#1087, #1118): a failed run changes nothing
+  const verify = (written) => {
+    if (fragments.length > 0) verifyFolded(written, version, fragments);
+  };
+  if (after !== before) replaceFile(path, after, verify);
+  else verify(before);
   if (fragments.length === 0) {
     const dated = after === before ? "nothing to assemble" : `${version} dated ${date}`;
     console.log(`no fragments in ${dir}/: ${dated}`);

@@ -3,6 +3,7 @@
 // (`## [0.1.1] — unreleased`, or the older `## [Unreleased] — 0.1.1 (…)`: the fragments go under its
 // `### <Section>` subheadings and the heading gets the date), or released (nothing may be added).
 // A fragment whose bullet is already in the section was folded by an earlier, interrupted run.
+// A BOM, CRLF and lone-CR files are parsed as LF and written back in their own form (#1118).
 
 /** Section name in a fragment → its heading in CHANGELOG.md, in the order they are written. */
 export const SECTIONS = new Map([
@@ -17,6 +18,14 @@ export const SECTIONS = new Map([
 const HEADINGS = [...SECTIONS.values()];
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const blank = (line) => line.trim() === "";
+
+/** Whether the lines hold the fragment's bullet; trailing whitespace of a line does not matter (#1118). */
+function hasBullet(lines, fragment) {
+  const trimmed = (text) => text.split("\n").map((line) => line.trimEnd());
+  return `\n${trimmed(lines.join("\n")).join("\n")}\n`.includes(
+    `\n${trimmed(bulletOf(fragment.entry)).join("\n")}\n`,
+  );
+}
 
 /** The `- ` bullet of one entry: continuation lines indent by two spaces, blank lines stay blank. */
 export function bulletOf(entry) {
@@ -109,19 +118,34 @@ function addTo(blocks, heading, bullets) {
 }
 
 /**
- * CHANGELOG.md with the fragments folded into the section of `version`.
- * Throws when the version is already released and a fragment is not in it yet, or when the file mixes
- * CRLF and LF line endings. A CRLF file is folded as LF and written back in CRLF (#1087).
+ * CHANGELOG.md as the parser sees it (#1118): the text with LF line endings, and how to write it back. A UTF-8
+ * BOM is stripped and remembered; the line endings are CRLF, lone CR or LF, and a file mixing them (a doubled
+ * CR included) throws, so nothing is guessed. `render` puts the BOM and the file's own endings back.
  */
-export function foldFragments(changelog, version, date, fragments) {
-  if (!changelog.includes("\r\n")) return foldLf(changelog, version, date, fragments);
-  if (/(^|[^\r])\n/.test(changelog)) {
+export function parseChangelog(raw) {
+  const bom = raw.startsWith("\uFEFF") ? "\uFEFF" : "";
+  const body = raw.slice(bom.length);
+  const crlf = body.includes("\r\n");
+  const rest = body.replaceAll("\r\n", "");
+  const kinds = [crlf, rest.includes("\n"), rest.includes("\r")].filter(Boolean).length;
+  if (kinds > 1) {
     throw new Error(
-      "CHANGELOG.md mixes CRLF and LF line endings: make them one style first, nothing was changed",
+      "CHANGELOG.md mixes CRLF, LF and CR line endings: make them one style first, nothing was changed",
     );
   }
-  const folded = foldLf(changelog.replace(/\r\n/g, "\n"), version, date, fragments);
-  return folded.replace(/\n/g, "\r\n");
+  const eol = crlf ? "\r\n" : rest.includes("\r") ? "\r" : "\n";
+  return { text: body.split(eol).join("\n"), render: (lf) => bom + lf.split("\n").join(eol) };
+}
+
+/**
+ * CHANGELOG.md with the fragments folded into the section of `version`.
+ * Throws when the version is already released and a fragment is not in it yet, or when the file mixes
+ * line endings. A CRLF, CR-only or BOM-prefixed file is folded as LF and written back in its own form (#1087, #1118).
+ */
+export function foldFragments(changelog, version, date, fragments) {
+  const { text, render } = parseChangelog(changelog);
+  const folded = foldLf(text, version, date, fragments);
+  return folded === text ? changelog : render(folded);
 }
 
 function foldLf(changelog, version, date, fragments) {
@@ -133,7 +157,7 @@ function foldLf(changelog, version, date, fragments) {
       ? changelog
       : withNewSection(text, lines, version, date, fragments);
   const own = lines.slice(found.start + 1, found.end);
-  const has = (fragment) => `\n${own.join("\n")}\n`.includes(`\n${bulletOf(fragment.entry)}\n`);
+  const has = (fragment) => hasBullet(own, fragment);
   const fresh = fragments.filter((fragment) => !has(fragment));
   if (found.released) {
     if (fresh.length) throw new Error(`CHANGELOG.md already has a section for ${version}`);
@@ -167,19 +191,24 @@ function withNewSection(text, lines, version, date, fragments) {
  * fragment's bullet in it: the check that lets the caller delete the fragments (#1087).
  */
 export function verifyFolded(changelog, version, fragments) {
-  const lines = changelog.split(/\r?\n/);
+  const fail = (why) => {
+    throw new Error(`CHANGELOG.md was not folded correctly (${why}): the fragments are kept`);
+  };
+  let text;
+  try {
+    ({ text } = parseChangelog(changelog));
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+  const lines = text.split("\n");
   const v = escape(version);
   const own = lines.filter((line) =>
     new RegExp(`^## \\[${v}\\]|^## \\[Unreleased\\] — ${v}(?![\\w.-])`).test(line),
   );
-  const fail = (why) => {
-    throw new Error(`CHANGELOG.md was not folded correctly (${why}): the fragments are kept`);
-  };
   if (own.length !== 1) fail(`${own.length} sections for ${version}`);
   if (/^## \[[^\]]+\] — unreleased\s*$|^## \[Unreleased\] — /i.test(own[0]))
     fail(`the heading is "${own[0]}"`);
-  const text = `\n${lines.join("\n")}\n`;
   for (const fragment of fragments) {
-    if (!text.includes(`\n${bulletOf(fragment.entry)}\n`)) fail(`${fragment.file} is missing`);
+    if (!hasBullet(lines, fragment)) fail(`${fragment.file} is missing`);
   }
 }
