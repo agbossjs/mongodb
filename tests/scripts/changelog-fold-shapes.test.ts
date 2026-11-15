@@ -292,3 +292,147 @@ describe("#1087: the fragments are deleted only after the written file is verifi
     }).toThrow(/not folded/);
   });
 });
+
+/**
+ * #1118: a UTF-8 BOM before the heading and CR-only line endings are parsed like LF (and written back
+ * in the file's own form); the written file is verified before it replaces CHANGELOG.md, so a failed run
+ * leaves the file byte-identical and the fragments in place; a bullet is found whatever trails it.
+ */
+describe("#1118: BOM, lone CR, atomic write, trailing spaces", () => {
+  const BOM = "﻿";
+  const forms: [string, (lf: string) => string][] = [
+    ["LF", (lf) => lf],
+    ["BOM + LF", (lf) => BOM + lf],
+    ["BOM + CRLF", (lf) => BOM + lf.replace(/\n/g, "\r\n")],
+    ["CR only", (lf) => lf.replace(/\n/g, "\r")],
+    ["BOM + CR only", (lf) => BOM + lf.replace(/\n/g, "\r")],
+    // the version's heading is the first line of the file, right behind the BOM (the #1118 repro)
+    ["BOM, no title, LF", (lf) => BOM + lf.replace("# Changelog\n\n", "")],
+    ["BOM, no title, CRLF", (lf) => BOM + lf.replace("# Changelog\n\n", "").replace(/\n/g, "\r\n")],
+    ["no title, CR only", (lf) => lf.replace("# Changelog\n\n", "").replace(/\n/g, "\r")],
+  ];
+  const unreleased =
+    at("# Changelog\n\n## [0.1.1] — unreleased\n\n### Fixed\n\n- **A** (#3)\n\n") + OLD;
+  const sections = (): number =>
+    text()
+      .split(/\r\n|\r|\n/)
+      .filter((l) => l.replace(BOM, "").startsWith("## [0.1.1]")).length;
+  const kept = (name: string): boolean => fs.existsSync(join(dir, "changes", name));
+
+  it.each(forms)(
+    "AC1: %s: folds into the one unreleased section, in its own form",
+    async (_n, form) => {
+      fs.writeFileSync(changelog, form(unreleased));
+      frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+      const result = await run("0.1.1", "--date", "2026-11-14");
+      expect(result.status, result.stderr).toBe(0);
+      const expected = form(
+        at(
+          "# Changelog\n\n## [0.1.1] — 2026-11-14\n\n### Fixed\n\n- **A** (#3)\n- **B** (#12)\n\n",
+        ) + OLD,
+      );
+      expect(text()).toBe(expected);
+      expect(sections()).toBe(1);
+      expect(kept("12-fix.md")).toBe(false);
+    },
+  );
+
+  it.each(forms)("AC1: %s: an absent version gets one new section", async (_n, form) => {
+    fs.writeFileSync(changelog, form(at(`# Changelog\n\n${OLD}`)));
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    const result = await run("0.1.1", "--date", "2026-11-14");
+    expect(result.status, result.stderr).toBe(0);
+    expect(sections()).toBe(1);
+    expect(text().startsWith(BOM)).toBe(form("x").startsWith(BOM));
+    const lines = text()
+      .replace(BOM, "")
+      .split(/\r\n|\r|\n/);
+    expect(lines).toContain("## [0.1.1] — 2026-11-14");
+    expect(lines.indexOf("## [0.1.1] — 2026-11-14")).toBeLessThan(
+      lines.indexOf("## [0.1.0] — 2026-10-26"),
+    );
+    expect(kept("12-fix.md")).toBe(false);
+  });
+
+  it.each(forms)(
+    "AC1: %s: a released version refuses, file and fragments untouched",
+    async (_n, form) => {
+      const released = form(
+        at("# Changelog\n\n## [0.1.1] — 2026-11-01\n\n### Fixed\n\n- **A** (#3)\n\n") + OLD,
+      );
+      fs.writeFileSync(changelog, released);
+      frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+      const result = await run("0.1.1", "--date", "2026-11-14");
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("already has a section");
+      expect(text()).toBe(released);
+      expect(kept("12-fix.md")).toBe(true);
+    },
+  );
+
+  it.each(forms)("AC1: %s: rerun after a fold is a no-op", async (_n, form) => {
+    fs.writeFileSync(changelog, form(unreleased));
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    expect((await run("0.1.1", "--date", "2026-11-14")).status).toBe(0);
+    const once = text();
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    expect((await run("0.1.1", "--date", "2026-11-14")).status).toBe(0);
+    expect(text()).toBe(once);
+  });
+
+  it("AC2: a doubled CR before the LF is a mixed ending: refused up front, file byte-identical, fragments kept", async () => {
+    const odd = unreleased
+      .replace("— unreleased\n", "— unreleased\r\r\n")
+      .replace(/\n(?!$)/g, "\r\n");
+    fs.writeFileSync(changelog, odd);
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    const result = await run("0.1.1", "--date", "2026-11-14");
+    expect(result.status).not.toBe(0);
+    expect(text()).toBe(odd);
+    expect(kept("12-fix.md")).toBe(true);
+  });
+
+  it("AC2: a fold the verification rejects leaves CHANGELOG.md byte-identical and the fragments in place", async () => {
+    // two sections for the version: the fold dates the first, the written file still has two
+    const twice = unreleased.replace(
+      OLD,
+      at("## [0.1.1] — unreleased\n\n- **Dup** (#4)\n\n") + OLD,
+    );
+    fs.writeFileSync(changelog, twice);
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    const result = await run("0.1.1", "--date", "2026-11-14");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("not folded correctly");
+    expect(text()).toBe(twice);
+    expect(kept("12-fix.md")).toBe(true);
+    expect(fs.readdirSync(dir).filter((n) => n.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("AC3: a bullet already in the section with trailing spaces is not written a second time", async () => {
+    const padded =
+      at("# Changelog\n\n## [0.1.1] — unreleased\n\n### Fixed\n\n- **A** (#3)  \t\n  more  \n\n") +
+      OLD;
+    fs.writeFileSync(changelog, padded);
+    frag("3-again.md", "Fixed", "3", "**A** (#3)\nmore");
+    frag("12-fix.md", "Fixed", "12", "**B** (#12)");
+    const result = await run("0.1.1", "--date", "2026-11-14");
+    expect(result.status, result.stderr).toBe(0);
+    expect(text().match(/\*\*A\*\*/g)).toHaveLength(1);
+    expect(text()).toContain("**B**");
+    expect(kept("3-again.md")).toBe(false);
+  });
+
+  it("AC1: verifyFolded re-parses the written file the same way: a BOM or lone-CR duplicate is found", async () => {
+    const { verifyFolded } = (await import(join(repo, "scripts/changelog-fold.mjs"))) as {
+      verifyFolded: (c: string, v: string, f: unknown[]) => void;
+    };
+    const two = at(
+      "# Changelog\n\n## [0.1.1] — 2026-11-14\n\n- x\n\n## [0.1.1] — 2026-11-13\n\n- y\n",
+    );
+    for (const [, form] of forms) {
+      expect(() => {
+        verifyFolded(form(two), "0.1.1", []);
+      }).toThrow(/2 sections/);
+    }
+  });
+});
