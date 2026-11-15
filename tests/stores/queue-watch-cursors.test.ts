@@ -6,13 +6,13 @@
  * carries the stream's `killCursors`, and the client's close shuts it. A watch reopened after the
  * black hole must kill the dropped stream's cursor by id. Real clock. The black hole is on the change stream's connection only; new connections go through.
  * A stream dropped as dead cannot tell the server to drop its cursor (its one connection is the
- * dead one), so the watch kills it by id over the new stream's client; a server that cannot be
+ * dead one), so the watch kills it by id over a short-lived client made for the kill; a server that cannot be
  * reached then keeps the cursor until `cursorTimeoutMillis` (10 min), which no test can check.
  */
 import { seconds } from "@agboss/core/units";
 import { MongoClient } from "mongodb";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { MongoChildExecutionQueueRepository } from "../../src/index.js";
+import { MongoChildExecutionQueueRepository, MongoConnection } from "../../src/index.js";
 import { TestApplicationContext } from "../support/application-context.js";
 import { testDatabase } from "../support/database.js";
 import { RealClock, sleep } from "../support/pause.js";
@@ -217,17 +217,80 @@ describe("agbossjs/agboss#1088: the queue watch leaves no cursor on the server",
   }, 60_000);
 
   it("the command events of the watch's client are no longer heard once the watch is closed", async () => {
+    // read per client: only the watch's own client listens for `commandSucceeded`, and a late close
+    // of an earlier test's client calls `off` on the prototype too
+    const on = vi.spyOn(MongoClient.prototype, "on");
     const off = vi.spyOn(MongoClient.prototype, "off");
+    try {
+      const queue = new MongoChildExecutionQueueRepository(
+        connectionTo(database.url()),
+        new RealClock(),
+        new TestApplicationContext({}, "instance-1"),
+        new RecordingLogger(),
+      );
+      const watch = await watching(queue, cleanups);
+      const index = on.mock.calls.findIndex((call) => call[0] === "commandSucceeded");
+      expect(index).toBeGreaterThanOrEqual(0);
+      const client = on.mock.contexts[index];
+      const listener = on.mock.calls[index]?.[1];
+      const removed = (): boolean =>
+        off.mock.calls.some(
+          (call, at) =>
+            call[0] === "commandSucceeded" &&
+            call[1] === listener &&
+            off.mock.contexts[at] === client,
+        );
+      expect(removed()).toBe(false);
+      await watch.close();
+      expect(removed()).toBe(true);
+    } finally {
+      on.mockRestore();
+      off.mockRestore();
+    }
+  }, 30_000);
+});
+
+/**
+ * agbossjs/agboss#1169: `useBigInt64=true` in the URL makes every cursor id of a reply a `bigint`
+ * (by default a `Long`, or a `number` when it fits in 53 bits). The listener recorded them with
+ * `Long` methods, threw on the command's path, and the stream reopened in a loop and left its
+ * cursors on the server.
+ */
+describe("agbossjs/agboss#1169: a cursor id that is a bigint", () => {
+  it("one stream, no reopen, one wake per queued child, and no cursor left after close()", async () => {
+    const before = await changeStreamCursors(database.name());
+    const url = `${database.url()}${database.url().includes("?") ? "&" : "?"}useBigInt64=true`;
+    const connection = new MongoConnection({ url, watchLivenessSeconds: 2 });
+    cleanups.push(() => connection.onDestroy());
+    const logger = new RecordingLogger();
     const queue = new MongoChildExecutionQueueRepository(
-      connectionTo(database.url()),
+      connection,
       new RealClock(),
       new TestApplicationContext({}, "instance-1"),
-      new RecordingLogger(),
+      logger,
     );
     const watch = await watching(queue, cleanups);
-    expect(off).not.toHaveBeenCalledWith("commandSucceeded", expect.anything());
+    await cursorsAre(before, 1, 15_000);
+
+    // a window long enough for the loop of the bug (a reopen every liveness bound) to show
+    await sleep(5000);
+    await cursorsAre(before, 1, 1000);
+    expect(watch.wakes()).toBe(0);
+
+    await queue.saveIfAbsent(child("b-1"));
+    await vi.waitFor(() => {
+      expect(watch.wakes()).toBe(1);
+    }, CONNECTS);
+    await queue.saveIfAbsent(child("b-2"));
+    await vi.waitFor(() => {
+      expect(watch.wakes()).toBe(2);
+    }, CONNECTS);
+    await sleep(2500);
+    expect(watch.wakes()).toBe(2);
+    expect(logger.entries).toEqual([]);
+    await cursorsAre(before, 1, 1000);
+
     await watch.close();
-    expect(off).toHaveBeenCalledWith("commandSucceeded", expect.anything());
-    off.mockRestore();
-  }, 30_000);
+    await cursorsAre(before, 0, 5000);
+  }, 60_000);
 });

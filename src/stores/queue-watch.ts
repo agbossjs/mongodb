@@ -85,7 +85,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
     const { client, db, livenessSeconds } = watchClientOf(this.connection, {
       monitorCommands: true,
     });
-    const { cursors, unlisten } = listenForCursors(client);
+    const { cursors, unlisten } = listenForCursors(client, this.warn);
     const attempt = new AbortController();
     try {
       const startAtOperationTime = await Promise.race([
