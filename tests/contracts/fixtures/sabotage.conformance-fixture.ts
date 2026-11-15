@@ -24,6 +24,7 @@ import {
   type MongoConnection,
   type MongoTransaction,
 } from "../../../src/index.js";
+import { checkCancel } from "../../../src/stores/cancel-fence.js";
 import { lockKey } from "../../../src/stores/fence.js";
 import {
   replayOf,
@@ -32,11 +33,27 @@ import {
 } from "../../../src/stores/fenced-effects/result-documents.js";
 import {
   DuplicateKeyNoticeOnce,
+  ExtendAfterDeadline,
+  ExtendWithoutCompare,
   MARKERS,
   NoDeadlineGuards,
+  ReassignWithoutGuard,
+  RenewRevivesAndShortens,
+  RetentionIgnoresChain,
   ReversedOrder,
+  ScansIgnoreAfter,
   StringHeadTime,
 } from "../../stores/pause-sabotage.js";
+import {
+  AgePruningCalls,
+  AgePruningEffects,
+  CancelCheckEffects,
+  ReplacingAcquireLeases,
+  SeedIsALeaseLeases,
+  UnmarkedCancelLeases,
+  noCheck,
+  type CancelCheck,
+} from "../../stores/cancel-sabotage.js";
 import { TestApplicationContext } from "../../support/application-context.js";
 import { emptyAll, testDatabase } from "../../support/database.js";
 import { fenceRaceCases } from "../fence-races.js";
@@ -294,6 +311,17 @@ const brokenPauseStores: readonly (readonly [string, PauseStore])[] = [
   ["pause notices written in the wrong order", ReversedOrder],
   ["a pause head time stored as a string", StringHeadTime],
   ["noticeOnce that relies on a duplicate-key error", DuplicateKeyNoticeOnce],
+  // agbossjs/agboss#1064
+  ["an extension decided by the stale read, not its deadline", ExtendWithoutCompare],
+  ["an extension applied after the deadline", ExtendAfterDeadline],
+  ["a notice claim renewed without its token holding", RenewRevivesAndShortens],
+  ["pause scans that ignore their keyset", ScansIgnoreAfter],
+  // agbossjs/agboss#946
+  ["a reassignment whose write has no condition", ReassignWithoutGuard],
+  [
+    "a retention that removes a reassigned pause with its replacement stored",
+    RetentionIgnoresChain,
+  ],
 ];
 
 for (const [name, Store] of brokenPauseStores)
@@ -307,5 +335,68 @@ for (const [name, Store] of brokenPauseStores)
         database,
         (connection, seam) => new Store(connection, seam.clock),
       ),
+    },
+  });
+
+/** A cancel check that is the package's own: the broken set leaves the check to its fence alone. */
+const passes: CancelCheck = (db, session, key) => checkCancel(db, session, key);
+
+/** The lease store of `broken`: its own, or the package's. */
+const leasesOf = (
+  broken: { readonly leases?: Leases },
+  connection: MongoConnection,
+  seam: StoreInstanceContext,
+): MongoExecutionLeaseRepository =>
+  new (broken.leases ?? MongoExecutionLeaseRepository)(
+    connection,
+    seam.storeClock,
+    seam.application,
+  );
+
+// agbossjs/agboss#909, #1117: broken cancel fences, each through the lease, fenced-effect and
+// outbound-call contracts and the explorer (the audit log has no part in a cancel)
+type Leases = typeof MongoExecutionLeaseRepository;
+
+interface BrokenCancel {
+  readonly name: string;
+  readonly leases?: Leases;
+  readonly check?: CancelCheck;
+  readonly agePruning?: true;
+}
+
+const brokenCancels: readonly BrokenCancel[] = [
+  { name: "a cancel that is never written", leases: UnmarkedCancelLeases },
+  { name: "a cancel check that is a no-op", check: noCheck },
+  {
+    name: "an acquire that replaces the lease document, the mark gone",
+    leases: ReplacingAcquireLeases,
+  },
+  { name: "a retention that lifts a mark by its age", agePruning: true },
+  { name: "a seed document that is a lease at token 1", leases: SeedIsALeaseLeases },
+];
+
+for (const broken of brokenCancels)
+  storeConformance<MongoTransaction>({
+    name: broken.name,
+    reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
+    without: ["executionAuditLog"],
+    interleavings: { depth: 4, walks: 20, walkDepth: 16 },
+    stores: {
+      executionLease: mongoStore(database, (connection, seam) =>
+        leasesOf(broken, connection, seam),
+      ),
+      fencedEffect: mongoStore(database, (connection, seam) => {
+        const settings = new FencedEffectSettings();
+        const effects = broken.agePruning
+          ? new AgePruningEffects(connection, seam.storeClock, settings)
+          : new CancelCheckEffects(connection, seam.storeClock, broken.check ?? passes, settings);
+        return fencedEffectsOn(connection, seam, effects, leasesOf(broken, connection, seam));
+      }),
+      outboundCall: mongoStore(database, (connection, seam) => ({
+        calls: broken.agePruning
+          ? new AgePruningCalls(connection, seam.storeClock)
+          : new MongoOutboundCallRepository(connection, seam.storeClock),
+        leases: leasesOf(broken, connection, seam),
+      })),
     },
   });

@@ -1,4 +1,5 @@
 import { PauseStatus, type PauseRecord } from "@agboss/core";
+import type { Milliseconds } from "@agboss/core/units";
 import type {
   PauseNoticeClaim,
   PauseNoticeFacts,
@@ -13,7 +14,12 @@ import { onceNotices } from "../../src/stores/paused/pause-marks.js";
 import type { PlannedNotice } from "../../src/stores/paused/pause-changes.js";
 import { pauseIdOf, pauseOfDocument } from "../../src/stores/paused/pause-documents.js";
 import { PAUSE_GUARDS, inStatus, type PauseGuards } from "../../src/stores/paused/pause-guards.js";
-import { appendNotice, mailboxesOf } from "../../src/stores/paused/pause-mailboxes.js";
+import {
+  appendNotice,
+  mailboxIdOf,
+  mailboxOf,
+  mailboxesOf,
+} from "../../src/stores/paused/pause-mailboxes.js";
 
 /**
  * Broken pause stores (agbossjs/agboss#938): each breaks one rule the contract and the store's own
@@ -116,6 +122,79 @@ export class DuplicateKeyNoticeOnce extends MongoPausedExecutionRepository {
       }
       await this.appendNotices(transaction, pause, planned);
       return true;
+    });
+  }
+}
+
+/**
+ * An extension decided by the stale read alone (#1099): the compare-and-set's filter holds only
+ * "pending, deadline after `at`" — not the deadline the caller read, not a later one. Two racing
+ * extensions both apply, the second one shortening the first's.
+ */
+export class ExtendWithoutCompare extends MongoPausedExecutionRepository {
+  protected override get guards(): PauseGuards {
+    return {
+      ...PAUSE_GUARDS,
+      extendable: (at) => ({ status: PauseStatus.Pending, expiresAt: { $gt: at } }),
+    };
+  }
+}
+
+/** An extension whose filter never looks at the deadline: one written after it is applied (#1148). */
+export class ExtendAfterDeadline extends MongoPausedExecutionRepository {
+  protected override get guards(): PauseGuards {
+    return {
+      ...PAUSE_GUARDS,
+      extendable: (_at, change) => ({
+        status: PauseStatus.Pending,
+        expiresAt: { $eq: change.previous, $lt: change.next },
+      }),
+    };
+  }
+}
+
+/** A notice claim renewed for its token alone: a lapsed claim is revived, and `until` is set, never kept the later (#1131). */
+export class RenewRevivesAndShortens extends MongoPausedExecutionRepository {
+  override async renewNotice(
+    claim: PauseNoticeClaim,
+    at: Date,
+    claimFor: Milliseconds,
+  ): Promise<PauseNoticeClaim | undefined> {
+    const { tenantId, pauseId, recipient } = claim.mailbox;
+    const until = new Date(at.getTime() + claimFor);
+    const after = await mailboxesOf(this.connection.db).findOneAndUpdate(
+      { _id: mailboxIdOf(tenantId, pauseId, recipient), claimToken: claim.token },
+      { $set: { claimedUntil: until } },
+      { returnDocument: "after" },
+    );
+    return after === null ? undefined : { mailbox: mailboxOf(after), token: claim.token, until };
+  }
+}
+
+/** The scans' keyset ignored: every page starts at the first due pause again (#942, #1070). */
+export class ScansIgnoreAfter extends MongoPausedExecutionRepository {
+  override findPendingByExpiresAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]> {
+    return super.findPendingByExpiresAtBefore(at, limit);
+  }
+
+  override findPendingByRemindAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]> {
+    return super.findPendingByRemindAtBefore(at, limit);
+  }
+}
+
+/** A reassignment decided by the stale read alone (#946): the old pause's write has no condition, so two racing reassignments, or one after an answer, both apply. */
+export class ReassignWithoutGuard extends MongoPausedExecutionRepository {
+  protected override get guards(): PauseGuards {
+    return { ...PAUSE_GUARDS, open: () => ({}) };
+  }
+}
+
+/** A retention that removes a reassigned pause with the rest, though its replacement is still stored (#946). */
+export class RetentionIgnoresChain extends MongoPausedExecutionRepository {
+  override async deleteByResolvedAtBefore(cutoff: Date): Promise<void> {
+    await this.pauses.deleteMany({
+      status: { $in: [PauseStatus.Taken, PauseStatus.Cancelled] },
+      resolvedAt: { $lt: cutoff },
     });
   }
 }

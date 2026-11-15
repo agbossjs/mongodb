@@ -96,10 +96,13 @@ describe("agbossjs/agboss#938 AC2: schema version 2 to 3", () => {
 
     expect(first).toEqual({
       database,
-      applied: [{ version: 3, name: "pause-deadlines-and-notices" }],
-      version: 3,
+      applied: [
+        { version: 3, name: "pause-deadlines-and-notices" },
+        { version: 4, name: "execution-cancel-mark" },
+      ],
+      version: 4,
     });
-    expect(second).toEqual({ database, applied: [], version: 3 });
+    expect(second).toEqual({ database, applied: [], version: 4 });
     await onDatabase(database, async (db) => {
       expect(await indexNamesOf(db, Collections.Pauses)).toEqual(
         expect.arrayContaining(["pending_by_expiry", "pending_by_remind", "by_tenant", "open"]),
@@ -138,7 +141,7 @@ describe("agbossjs/agboss#938 AC2: schema version 2 to 3", () => {
       [1, 2].map(() => migrateMongodb({ url: REPLICA_SET_URL, database })),
     );
 
-    expect(reports.every((report) => report.version === 3)).toBe(true);
+    expect(reports.every((report) => report.version === 4)).toBe(true);
     await onDatabase(database, async (db) => {
       expect(
         await db.collection(Collections.Pauses).countDocuments({ channel: { $exists: false } }),

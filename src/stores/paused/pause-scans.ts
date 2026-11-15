@@ -1,8 +1,8 @@
 import { PauseStatus, type PauseRecord } from "@agboss/core";
-import type { PauseFilter, PausePage } from "@agboss/core/stores";
+import type { PauseFilter, PausePage, PauseScanAfter } from "@agboss/core/stores";
 import type { ClientSession, Db, Filter } from "mongodb";
 import { Collections } from "../../connection/collections.js";
-import { pauseOfDocument, type PauseDocument } from "./pause-documents.js";
+import { pauseIdOf, pauseOfDocument, type PauseDocument } from "./pause-documents.js";
 import { mailboxesOf } from "./pause-mailboxes.js";
 
 /**
@@ -66,16 +66,48 @@ export function tenantFilter(tenantId: string, filter: PauseFilter): Filter<Paus
   };
 }
 
-/** The pauses whose deadline field `field` is a date at or before `at`, ascending by it, tenant and id. */
+/**
+ * What lies past `after` in the scan's order `(field, tenantId, pauseId)` (#942, #1070): the keyset,
+ * so pauses nobody can move are passed and never read again within one sweep.
+ */
+function pastKeyset(
+  field: "expiresAt" | "remindAt" | "askedAt",
+  after: PauseScanAfter | undefined,
+): Filter<PauseDocument> {
+  if (after === undefined) return {};
+  const time = new Date(after.at);
+  if (Number.isNaN(time.getTime()))
+    throw new TypeError(
+      `a pause scan's cursor is an ISO 8601 time, not ${JSON.stringify(after.at)}`,
+    );
+  const { tenantId, pauseId } = after;
+  return {
+    $or: [
+      { [field]: { $gt: time } },
+      { [field]: time, tenantId: { $gt: tenantId } },
+      { [field]: time, tenantId, pauseId: { $gt: pauseId } },
+    ],
+  };
+}
+
+/**
+ * The pauses whose deadline field `field` is a date at or before `at`, ascending by it, tenant and
+ * id, past the keyset `after` when given.
+ */
 export async function dueBy(
   db: Db,
   field: "expiresAt" | "remindAt",
   at: Date,
   limit: number,
+  after?: PauseScanAfter,
 ): Promise<PauseRecord[]> {
   const found = await db
     .collection<PauseDocument>(Collections.Pauses)
-    .find({ status: PauseStatus.Pending, [field]: { $lte: at, $type: "date" } })
+    .find({
+      status: PauseStatus.Pending,
+      [field]: { $lte: at, $type: "date" },
+      ...pastKeyset(field, after),
+    })
     .sort({ [field]: 1, tenantId: 1, pauseId: 1 })
     .limit(limit)
     .toArray();
@@ -92,6 +124,7 @@ export async function removableBefore(
   limit: number,
   session?: ClientSession,
   after?: string,
+  removedByThisSweep: ReadonlySet<string> = new Set(),
 ): Promise<PauseDocument[]> {
   const pauses = db.collection<PauseDocument>(Collections.Pauses);
   const removable: PauseDocument[] = [];
@@ -123,6 +156,10 @@ export async function removableBefore(
       )
       .toArray();
     const kept = new Set(live.map((box) => `${box.tenantId}\0${box.pauseId}`));
+    // a reassigned pause is kept while its replacement is stored: the step's interrupt names the
+    // first pause of the chain, and its re-entry finds the chain by the step key (#946)
+    for (const one of await withStoredReplacement(db, batch, session, removedByThisSweep))
+      kept.add(`${one.tenantId}\0${one.pauseId}`);
     removable.push(...batch.filter((one) => !kept.has(`${one.tenantId}\0${one.pauseId}`)));
   }
   return removable.slice(0, limit);
@@ -142,4 +179,51 @@ export async function removablePageBefore(
     pauses: page.map(pauseOfDocument),
     ...(found.length > limit && last !== undefined ? { next: String(last.seq) } : {}),
   };
+}
+
+/**
+ * The replacements a reassignment made that are still pending and unsent, made before `cutoff`, in
+ * the order `(askedAt, tenantId, pauseId)` past the keyset `after` (#946): the partial index
+ * `reassigned_unsent` has that key, so the scan reads it in order.
+ */
+export async function reassignedUnsentBefore(
+  db: Db,
+  cutoff: Date,
+  limit: number,
+  after?: PauseScanAfter,
+): Promise<PauseRecord[]> {
+  const found = await db
+    .collection<PauseDocument>(Collections.Pauses)
+    .find({
+      status: PauseStatus.Pending,
+      isSent: false,
+      reassignedFrom: { $exists: true },
+      askedAt: { $lt: cutoff },
+      ...pastKeyset("askedAt", after),
+    })
+    .sort({ askedAt: 1, tenantId: 1, pauseId: 1 })
+    .limit(limit)
+    .toArray();
+  return found.map(pauseOfDocument);
+}
+
+/** The pauses of `batch` that were reassigned and whose replacement is still stored (#946). */
+async function withStoredReplacement(
+  db: Db,
+  batch: readonly PauseDocument[],
+  session: ClientSession | undefined,
+  removedByThisSweep: ReadonlySet<string>,
+): Promise<PauseDocument[]> {
+  const replaced = batch.filter((one) => typeof one.reassignedTo === "string");
+  if (replaced.length === 0) return [];
+  const stored = await db
+    .collection<PauseDocument>(Collections.Pauses)
+    .find(
+      { _id: { $in: replaced.map((one) => pauseIdOf(one.tenantId, String(one.reassignedTo))) } },
+      { session, projection: { _id: 1 } },
+    )
+    .toArray();
+  // one removed by this sweep still counts: a chain goes oldest first, one link per sweep
+  const ids = new Set([...stored.map((one) => one._id), ...removedByThisSweep]);
+  return replaced.filter((one) => ids.has(pauseIdOf(one.tenantId, String(one.reassignedTo))));
 }

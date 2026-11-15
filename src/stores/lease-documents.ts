@@ -35,6 +35,14 @@ export interface LeaseDocument {
   checkedAt?: Date;
   /** The store's time of the last `yield` (what it answers the time left by). */
   yieldedAt?: Date;
+  /**
+   * The store's time of the tree's first cancel request (agbossjs/agboss#909, #1117): permanent —
+   * every write of the document keeps it, no retention removes it. Set on the tree's own document
+   * (a seed document when the cancel came before the first `acquire`), read by every fenced write.
+   */
+  cancelRequestedAt?: Date;
+  /** How many fenced writes of the tree's children locked this document (a write nothing reads). */
+  fenceChecks?: number;
 }
 
 /** The token as stored: `token`, else a 0.1.0 document's `leaseEpoch` (an aggregation expression). */

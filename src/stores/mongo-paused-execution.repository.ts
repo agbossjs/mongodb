@@ -4,6 +4,7 @@ import type {
   PauseNoticeClaim,
   PauseNoticeCounts,
   PausePage,
+  PauseScanAfter,
   SetAsideMailbox,
 } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
@@ -14,6 +15,7 @@ import {
   claimDue,
   countMailboxes,
   giveUp,
+  renew,
   retry,
   setAsideStale,
 } from "./paused/pause-delivery.js";
@@ -24,6 +26,7 @@ import {
   assertScanLimit,
   dueBy,
   pageOf,
+  reassignedUnsentBefore,
   removableBefore,
   removablePageBefore,
   tenantFilter,
@@ -45,14 +48,31 @@ const RETENTION_BATCH = 500;
  */
 @Injectable({ deps: [MongoConnection, Clock] })
 export class MongoPausedExecutionRepository extends MongoPauseTransitions {
-  async findPendingByExpiresAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]> {
+  async findPendingByExpiresAtBefore(
+    at: Date,
+    limit: number,
+    after?: PauseScanAfter,
+  ): Promise<readonly PauseRecord[]> {
     assertScanLimit(limit);
-    return dueBy(this.connection.db, "expiresAt", at, limit);
+    return dueBy(this.connection.db, "expiresAt", at, limit, after);
   }
 
-  async findPendingByRemindAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]> {
+  async findPendingByRemindAtBefore(
+    at: Date,
+    limit: number,
+    after?: PauseScanAfter,
+  ): Promise<readonly PauseRecord[]> {
     assertScanLimit(limit);
-    return dueBy(this.connection.db, "remindAt", at, limit);
+    return dueBy(this.connection.db, "remindAt", at, limit, after);
+  }
+
+  async findPendingUnsentReassignedBefore(
+    cutoff: Date,
+    limit: number,
+    after?: PauseScanAfter,
+  ): Promise<readonly PauseRecord[]> {
+    assertScanLimit(limit);
+    return reassignedUnsentBefore(this.connection.db, cutoff, limit, after);
   }
 
   async findOpenAfter(after: string | undefined, limit: number): Promise<PausePage> {
@@ -83,19 +103,30 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
 
   /** Removes the closed pauses before `cutoff` with no live mailbox, and their mailboxes, a batch per transaction. */
   async deleteByResolvedAtBefore(cutoff: Date): Promise<void> {
+    // what this sweep removed: a reassigned pause whose replacement went in the same sweep stays for
+    // the next one, so a chain is removed oldest first (#946)
+    const removedByThisSweep = new Set<string>();
     for (;;) {
       const removed = await this.connection.inTransaction(async ({ db, session }) => {
-        const batch = await removableBefore(db, cutoff, RETENTION_BATCH, session);
-        if (batch.length === 0) return 0;
+        const batch = await removableBefore(
+          db,
+          cutoff,
+          RETENTION_BATCH,
+          session,
+          undefined,
+          removedByThisSweep,
+        );
+        if (batch.length === 0) return [];
         const ids = batch.map((one) => one._id);
         await db
           .collection<PauseDocument>(Collections.Pauses)
           .deleteMany({ _id: { $in: ids } }, { session });
         const sites = batch.map(({ tenantId, pauseId }) => ({ tenantId, pauseId }));
         await mailboxesOf(db).deleteMany({ $or: sites }, { session });
-        return batch.length;
+        return ids;
       });
-      if (removed === 0) return;
+      if (removed.length === 0) return;
+      for (const id of removed) removedByThisSweep.add(id);
     }
   }
 
@@ -113,6 +144,14 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
 
   ackNotice(claim: PauseNoticeClaim, at: Date): Promise<PauseNoticeClaim | undefined> {
     return acknowledge(this.connection.db, claim, at);
+  }
+
+  renewNotice(
+    claim: PauseNoticeClaim,
+    at: Date,
+    claimFor: Milliseconds,
+  ): Promise<PauseNoticeClaim | undefined> {
+    return renew(this.connection.db, claim, at, claimFor);
   }
 
   retryNotice(claim: PauseNoticeClaim, nextAttemptAt: Date, problem: string): Promise<boolean> {

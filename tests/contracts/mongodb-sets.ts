@@ -26,11 +26,12 @@ export function fencedEffectsOn(
     seam.storeClock,
     new FencedEffectSettings(),
   ),
+  leases = new MongoExecutionLeaseRepository(connection, seam.storeClock, seam.application),
 ): FencedEffectTarget<MongoTransaction> {
   const rows = connection.db.collection<{ row: string; at: number }>(CONTRACT_ROWS);
   return {
     effects,
-    leases: new MongoExecutionLeaseRepository(connection, seam.storeClock, seam.application),
+    leases,
     rows: {
       insert: async ({ session }, row) => {
         inserted += 1;

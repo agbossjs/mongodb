@@ -90,6 +90,34 @@ export async function acknowledge(
   return { mailbox: mailboxOf(after), token: claim.token, until: claim.until };
 }
 
+/**
+ * Renews the claim while its receiver runs (#1131) — only for the claim's token and while it holds
+ * (`claimedUntil > at`: a lapsed claim is never revived, another look may hold the mailbox by now):
+ * held until `at + claimFor`, never earlier than it was (`$max`). `undefined` when the token was lost.
+ */
+export async function renew(
+  db: Db,
+  claim: PauseNoticeClaim,
+  at: Date,
+  claimFor: number,
+): Promise<PauseNoticeClaim | undefined> {
+  const { tenantId, pauseId, recipient } = claim.mailbox;
+  const until = new Date(at.getTime() + claimFor);
+  const after = await mailboxesOf(db).findOneAndUpdate(
+    {
+      _id: mailboxIdOf(tenantId, pauseId, recipient),
+      claimToken: claim.token,
+      claimedUntil: { $gt: at },
+    },
+    [{ $set: { claimedUntil: { $max: ["$claimedUntil", until] } } }],
+    { returnDocument: "after" },
+  );
+  if (after === null) return undefined;
+  const { claimedUntil } = Claimed.parse(after);
+  if (claimedUntil === null) return undefined;
+  return { mailbox: mailboxOf(after), token: claim.token, until: claimedUntil };
+}
+
 /** A failed attempt for the claim's token: one more, due at `nextAttemptAt`, the claim released. */
 export async function retry(
   db: Db,

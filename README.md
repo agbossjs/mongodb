@@ -127,13 +127,13 @@ then checks the schema. A failed start closes the client; the next `onInit` trie
 ## 3. The schema: versioned, migrated explicitly
 
 The stores' collections (with the **simple collation**), their indexes and the ledger's pruning mark
-are the schema, version 2, recorded in `agboss_schema` (`{ _id: "agboss", version }`,
+are the schema, version 4, recorded in `agboss_schema` (`{ _id: "agboss", version }`,
 agbossjs/agboss#891). It is migrated explicitly, like `@agboss/postgres`'s — a Kubernetes Job before
 the pods roll out:
 
 ```sh
 npx agboss-mongodb migrate [--database <name>]   # with MONGODB_URL set in the environment (a Secret in the Job); the database: --database, else MONGODB_DATABASE, else the URL's, else agboss
-# applied 0001_stores, 0002_checkpoint_latest_by_step (agboss) — a second run: nothing to apply: agboss is at version 2
+# applied 0001_stores … 0004_execution-cancel-mark (agboss) — a second run: nothing to apply: agboss is at version 4
 ```
 
 or `migrateMongodb({ url, database?, signal? })` from a script. `--url <url>` works too, but puts the

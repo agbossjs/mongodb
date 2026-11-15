@@ -1,5 +1,5 @@
 import { PauseStatus, type PauseRecord } from "@agboss/core";
-import type { Db } from "mongodb";
+import type { ClientSession, Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { pauseRecordOf } from "../framework-json.js";
@@ -35,6 +35,11 @@ export interface PauseDocument {
   record: string;
   /** How it closed — `{ status, resolution, resolvedAt, answer?, expiryProblem? }` —, JSON text; `null` while pending. */
   closing: string | null;
+  /** The id of the pause that replaced this one (#946): kept while its replacement is stored. */
+  reassignedTo?: string | null;
+  /** A replacement's (#946): the id of the pause it replaced, and when it was asked — the re-send scan's index. */
+  reassignedFrom?: string;
+  askedAt?: Date;
   /** How many times `noticeOnce…` wrote: a write to the pause that locks it against the retention's delete. */
   noticeWrites?: number;
 }
@@ -43,7 +48,7 @@ export interface PauseDocument {
 export type PauseFields = Pick<
   PauseDocument,
   "status" | "isSent" | "resolvedAt" | "expiresAt" | "remindAt" | "expiryBound" | "closing"
->;
+> & { reassignedTo: string | null };
 
 const Stored = z.object({
   status: z.enum(PauseStatus),
@@ -109,8 +114,12 @@ export const pauseIdOf = (tenantId: string, pauseId: string): string => idOf(ten
 /** How a closed record closed, as the JSON `closing` keeps it; `null` while it is pending. */
 export function closingOf(pause: PauseRecord): string | null {
   if (pause.status === PauseStatus.Pending) return null;
-  const { status, resolution, resolvedAt, answer, expiryProblem, closedFirst } = pause;
-  const fields = { status, resolution, resolvedAt, answer, expiryProblem, closedFirst };
+  const { status, resolution, resolvedAt, answer, expiryProblem, closedFirst, reassignedTo } =
+    pause;
+  const fields = {
+    ...{ status, resolution, resolvedAt, answer, expiryProblem, closedFirst },
+    reassignedTo,
+  };
   return JSON.stringify(fields);
 }
 
@@ -124,7 +133,31 @@ export function fieldsOf(pause: PauseRecord): PauseFields {
     remindAt: dateOrNull(pause.remindAt, "remindAt"),
     expiryBound: pause.expiryBound ?? null,
     closing: closingOf(pause),
+    reassignedTo: pause.reassignedTo ?? null,
   };
+}
+
+/** `pause` inserted as a new document of the pauses (#946: a reassignment's replacement), in `session`. */
+export async function insertPause(
+  db: Db,
+  session: ClientSession,
+  pause: PauseRecord,
+): Promise<void> {
+  const document: PauseDocument = {
+    _id: pauseIdOf(pause.tenantId, pause.pauseId),
+    tenantId: pause.tenantId,
+    rootExecutionId: pause.rootExecutionId,
+    stepKey: pause.stepKey,
+    pauseId: pause.pauseId,
+    seq: await nextSequence(db, Collections.Pauses),
+    channel: pause.channel,
+    record: JSON.stringify(pause),
+    ...fieldsOf(pause),
+    ...(pause.reassignedFrom === undefined
+      ? {}
+      : { reassignedFrom: pause.reassignedFrom, askedAt: dateOf(pause.askedAt, "askedAt") }),
+  };
+  await db.collection<PauseDocument>(Collections.Pauses).insertOne(document, { session });
 }
 
 /** The pause of the step in its tenant's tree when one exists, else `pause` saved — one upsert, then a read. */

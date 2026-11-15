@@ -39,7 +39,11 @@ storeConformance<MongoTransaction>({
   interleavings: { depth: 4, walks: 50, timeLimit: minutes(15) },
   reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
   stores: {
-    checkpointSaver: mongoStore(database, (connection) => new MongoCheckpointSaver(connection)),
+    // agbossjs/agboss#962: `latestByStep` is one indexed read, its ties by code point (#1115)
+    checkpointSaver: {
+      ...mongoStore(database, (connection) => new MongoCheckpointSaver(connection)),
+      capabilities: [StoreCapability.LatestByStep],
+    },
     // agbossjs/agboss#831: the queue has a watch (LISTEN / a change stream / pub/sub): declared
     childExecutionQueue: {
       ...mongoStore(

@@ -78,6 +78,13 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
     index("pending_by_expiry", ascending("status", "expiresAt"), false, pendingWith("expiresAt")),
     index("pending_by_remind", ascending("status", "remindAt"), false, pendingWith("remindAt")),
     index("by_tenant", ascending("tenantId", "status", "channel", "seq")),
+    // #946: the replacements a reassignment made that are still pending and unsent, in the re-send
+    // scan's own order and keyset
+    index("reassigned_unsent", ascending("askedAt", "tenantId", "pauseId"), false, {
+      status: "pending",
+      isSent: false,
+      reassignedFrom: { $exists: true },
+    }),
     index("open", ascending("status", "seq"), false, { status: { $in: ["pending", "resolved"] } }),
   ],
   [Collections.PauseNotices]: [

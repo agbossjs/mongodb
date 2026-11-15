@@ -52,6 +52,7 @@ import { ExecutionLeaseRepository } from '@agboss/core';
 import { ExecutionRecordRepository } from '@agboss/core';
 import { ExecutionRecordStatus } from '@agboss/core';
 import { ExecutionTree } from '@agboss/core';
+import { ExecutionTree as ExecutionTree_2 } from '@agboss/core/stores';
 import { ExecutionTreeRepository } from '@agboss/core';
 import { ExecutionTreeValue } from '@agboss/core';
 import { FencedEffectOutcome } from '@agboss/core';
@@ -87,10 +88,10 @@ import { OutboundCallStatusQuery } from '@agboss/core/stores';
 import { PauseAnswer } from '@agboss/core';
 import { PauseAnswerRecord } from '@agboss/core';
 import { PauseCancellation } from '@agboss/core';
+import type { PauseDeadlineChange } from '@agboss/core/stores';
 import { PausedExecution } from '@agboss/core';
 import { PausedExecutionRepository } from '@agboss/core';
 import type { PauseExpiry } from '@agboss/core/stores';
-import type { PauseExtension } from '@agboss/core/stores';
 import type { PauseFilter } from '@agboss/core/stores';
 import { PauseNotice } from '@agboss/core/stores';
 import type { PauseNoticeClaim } from '@agboss/core/stores';
@@ -100,6 +101,8 @@ import type { PauseNoticeKind } from '@agboss/core/stores';
 import type { PausePage } from '@agboss/core/stores';
 import type { PauseRecipients } from '@agboss/core/stores';
 import { PauseRecord } from '@agboss/core';
+import type { PauseReplacement } from '@agboss/core/stores';
+import type { PauseScanAfter } from '@agboss/core/stores';
 import { PauseStatus } from '@agboss/core';
 import type { PauseUntakenResolution } from '@agboss/core/stores';
 import { PendingWrite } from '@langchain/langgraph-checkpoint';
@@ -407,7 +410,8 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     // (undocumented)
     acquire(tenantId: string, rootExecutionId: string, duration: Milliseconds): Promise<ExecutionLease | undefined>;
     // (undocumented)
-    claimExecutionId(input: ExecutionIdentity): Promise<boolean>;
+    claimExecutionId(identity: ExecutionIdentity): Promise<boolean>;
+    isCancelRequested(tree: ExecutionTree_2): Promise<boolean>;
     // (undocumented)
     ping(): Promise<void>;
     // (undocumented)
@@ -416,6 +420,8 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     release(held: ExecutionLease): Promise<void>;
     // (undocumented)
     renew(held: ExecutionLease, duration: Milliseconds): Promise<Milliseconds | undefined>;
+    // (undocumented)
+    requestCancel(tree: ExecutionTree_2): Promise<void>;
     // (undocumented)
     retire(held: ExecutionLease): Promise<void>;
     static readonly store: StoreDescriptor;
@@ -620,9 +626,13 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     // (undocumented)
     findPageByTenantId(tenantId: string, filter: PauseFilter, limit: number, after?: string): Promise<PausePage>;
     // (undocumented)
-    findPendingByExpiresAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]>;
+    findPendingByExpiresAtBefore(at: Date, limit: number, after?: PauseScanAfter): Promise<readonly PauseRecord[]>;
     // (undocumented)
-    findPendingByRemindAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]>;
+    findPendingByRemindAtBefore(at: Date, limit: number, after?: PauseScanAfter): Promise<readonly PauseRecord[]>;
+    // (undocumented)
+    findPendingUnsentReassignedBefore(cutoff: Date, limit: number, after?: PauseScanAfter): Promise<readonly PauseRecord[]>;
+    // (undocumented)
+    renewNotice(claim: PauseNoticeClaim, at: Date, claimFor: Milliseconds): Promise<PauseNoticeClaim | undefined>;
     // (undocumented)
     retryNotice(claim: PauseNoticeClaim, nextAttemptAt: Date, problem: string): Promise<boolean>;
     // (undocumented)
@@ -641,7 +651,7 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     // (undocumented)
     expireByTenantIdAndPauseId(tenantId: string, pauseId: string, expiry: PauseExpiry, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
     // (undocumented)
-    extendByTenantIdAndPauseId(tenantId: string, pauseId: string, change: PauseExtension, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
+    extendByTenantIdAndPauseId(tenantId: string, pauseId: string, change: PauseDeadlineChange, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
     // (undocumented)
     findAllByTenantIdAndRootExecutionId(tenantId: string, rootExecutionId: string): Promise<readonly PauseRecord[]>;
     // (undocumented)
@@ -654,6 +664,8 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     // (undocumented)
     markTakenByTenantIdAndPauseId(tenantId: string, pauseId: string): Promise<void>;
     noticeOnceByTenantIdAndPauseId(tenantId: string, pauseId: string, kind: PauseNoticeKind, facts: PauseNoticeFacts, at: Date, recipients: PauseRecipients): Promise<boolean>;
+    // (undocumented)
+    reassignByTenantIdAndPauseId(tenantId: string, pauseId: string, replacement: PauseReplacement, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
     // (undocumented)
     remindByTenantIdAndPauseId(tenantId: string, pauseId: string, at: Date, recipients: PauseRecipients): Promise<boolean>;
     // (undocumented)
@@ -776,6 +788,8 @@ export interface PauseChange {
 // @public
 export interface PauseDocument {
     // (undocumented)
+    askedAt?: Date;
+    // (undocumented)
     channel: string;
     closing: string | null;
     // (undocumented)
@@ -789,6 +803,8 @@ export interface PauseDocument {
     noticeWrites?: number;
     // (undocumented)
     pauseId: string;
+    reassignedFrom?: string;
+    reassignedTo?: string | null;
     record: string;
     // (undocumented)
     remindAt: Date | null;
@@ -811,7 +827,10 @@ export interface PauseGuards {
     // (undocumented)
     due(at: Date): Filter<PauseDocument>;
     // (undocumented)
-    extendable(at: Date): Filter<PauseDocument>;
+    extendable(at: Date, change: {
+        readonly previous: Date;
+        readonly next: Date;
+    }): Filter<PauseDocument>;
     // (undocumented)
     inStatus(status: PauseStatus): Filter<PauseDocument>;
     // (undocumented)
@@ -915,6 +934,7 @@ export { SchemaSetup }
 // src/stores/mongo-execution-history.repository.ts - (ae-undocumented) Missing documentation for "findAllByStartedAtBetween".
 // src/stores/mongo-execution-history.repository.ts - (ae-undocumented) Missing documentation for "deleteByEndedAtBefore".
 // src/stores/mongo-execution-lease.repository.ts - (ae-undocumented) Missing documentation for "ping".
+// src/stores/mongo-execution-lease.repository.ts - (ae-undocumented) Missing documentation for "requestCancel".
 // src/stores/mongo-execution-lease.repository.ts - (ae-undocumented) Missing documentation for "claimExecutionId".
 // src/stores/mongo-execution-lease.repository.ts - (ae-undocumented) Missing documentation for "acquire".
 // src/stores/mongo-execution-lease.repository.ts - (ae-undocumented) Missing documentation for "renew".
@@ -972,11 +992,13 @@ export { SchemaSetup }
 // src/stores/mongo-outbound-call.repository.ts - (ae-undocumented) Missing documentation for "leaseStateOf".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "findPendingByExpiresAtBefore".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "findPendingByRemindAtBefore".
+// src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "findPendingUnsentReassignedBefore".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "findOpenAfter".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "findPageByTenantId".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "findClosedByResolvedAtBefore".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "claimNoticesDue".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "ackNotice".
+// src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "renewNotice".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "retryNotice".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "setAsideNotices".
 // src/stores/mongo-paused-execution.repository.ts - (ae-undocumented) Missing documentation for "setAsideStaleNoticesBefore".
@@ -1014,6 +1036,7 @@ export { SchemaSetup }
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "expiresAt".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "remindAt".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "expiryBound".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "askedAt".
 // src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "open".
 // src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "due".
 // src/stores/paused/pause-guards.ts - (ae-undocumented) Missing documentation for "extendable".
@@ -1028,6 +1051,7 @@ export { SchemaSetup }
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "expireByTenantIdAndPauseId".
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "closeUntakenByTenantIdAndPauseId".
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "extendByTenantIdAndPauseId".
+// src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "reassignByTenantIdAndPauseId".
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "remindByTenantIdAndPauseId".
 // src/stores/paused/pause-transitions.repository.ts - (ae-undocumented) Missing documentation for "markTakenByTenantIdAndPauseId".
 

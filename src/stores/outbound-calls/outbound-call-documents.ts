@@ -65,3 +65,19 @@ export const callIdOf = (key: EffectKey): string => idOf(effectKeyIdentityOf(key
 
 /** The record's fields that a move leaves out: its last ending (`result`, `failure`, `endedAt`). */
 export const ENDING_FIELDS = ["record.result", "record.failure", "record.endedAt"] as const;
+
+/** The state the document must still be in: its status and attempt owner, its attempt when given. */
+export interface AsRead {
+  readonly status: OutboundCallStatus;
+  readonly attempt?: number;
+  readonly attemptOwner: string;
+}
+
+/** The change of a compare-and-set: the record's new fields, and its new end. */
+export interface Change {
+  readonly fields: Partial<OutboundCallRecord>;
+  readonly endedAt?: Date;
+}
+
+/** A change as of the store's time the fence decided by. */
+export type ChangeAt = (now: Date) => Change;
