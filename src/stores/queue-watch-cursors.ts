@@ -1,4 +1,5 @@
 import type { Clock } from "@agboss/core";
+import type { Milliseconds } from "@agboss/core/units";
 import type { CommandSucceededEvent, Db, Long, MongoClient } from "mongodb";
 import { closeBounded } from "../connection/close-bounded.js";
 import { Collections } from "../connection/collections.js";
@@ -49,7 +50,7 @@ export function listenForCursors(client: MongoClient): {
 /**
  * `killCursors` for the orphans that belong to the queue collection of `db` and to a stream other
  * than the current one (`current`, a generation), each on its own namespace. Never fatal: a
- * failure, or no answer within the close bound on `clock`, is warned about once, with the error's
+ * failure, or no answer within `grace` (the close bound) on `clock`, is warned about once, with the error's
  * code, and not tried again; the server then drops the cursor once it times out (10 min).
  */
 export async function killDropped(
@@ -58,6 +59,7 @@ export async function killDropped(
   current: number | undefined,
   clock: Clock,
   warn: (message: string) => void,
+  grace?: Milliseconds,
 ): Promise<void> {
   const ns = `${db.databaseName}.${Collections.ChildExecutionQueue}`;
   const cursors = orphans
@@ -73,15 +75,19 @@ export async function killDropped(
       `The child queue's dropped change stream's cursor could not be killed on the server (${why}); the server drops it once it times out`,
     );
   };
-  await closeBounded(async () => {
-    try {
-      await db.command({ killCursors: Collections.ChildExecutionQueue, cursors });
-    } catch (error) {
-      const code = (error as { code?: number | string }).code;
-      report(`error ${code === undefined ? "without a code" : String(code)}`);
-    } finally {
-      state.answered = true;
-    }
-  }, clock);
+  await closeBounded(
+    async () => {
+      try {
+        await db.command({ killCursors: Collections.ChildExecutionQueue, cursors });
+      } catch (error) {
+        const code = (error as { code?: number | string }).code;
+        report(`error ${code === undefined ? "without a code" : String(code)}`);
+      } finally {
+        state.answered = true;
+      }
+    },
+    clock,
+    grace,
+  );
   if (!state.answered) report("no answer within the close bound");
 }

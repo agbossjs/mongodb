@@ -219,10 +219,12 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
    */
   async #reap(): Promise<void> {
     if (this.#orphans.length === 0) return;
-    const { client, db } = watchClientOf(this.connection);
+    const { client, db, livenessSeconds } = watchClientOf(this.connection);
+    // a client made now connects first (it has half the liveness bound for that), then answers
+    const grace = seconds(livenessSeconds / 2 + CLOSE_GRACE / 1000);
     try {
       const orphans = this.#orphans.splice(0);
-      await killDropped(db, orphans, this.#open?.generation, this.clock, this.warn);
+      await killDropped(db, orphans, this.#open?.generation, this.clock, this.warn, grace);
     } finally {
       await closeBounded(() => client.close(), this.clock);
     }
