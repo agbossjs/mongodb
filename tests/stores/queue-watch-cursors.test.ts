@@ -11,19 +11,21 @@
  */
 import { seconds } from "@agboss/core/units";
 import { MongoClient } from "mongodb";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { MongoChildExecutionQueueRepository } from "../../src/index.js";
 import { TestApplicationContext } from "../support/application-context.js";
 import { testDatabase } from "../support/database.js";
 import { RealClock, sleep } from "../support/pause.js";
 import { RecordingLogger } from "../support/recording-logger.js";
 import { REPLICA_SET_URL } from "../support/server.js";
-import { changeStreamCursors } from "../support/server-cursors.js";
+import { changeStreamCursors, closeCursorProbes } from "../support/server-cursors.js";
 import { connectionTo } from "../support/stores.js";
 import { CONNECTS, child, instances, watching } from "../support/silent-watch.js";
 
 const database = testDatabase();
 const cleanups: (() => Promise<void>)[] = [];
+
+afterAll(closeCursorProbes);
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
