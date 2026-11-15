@@ -83,11 +83,11 @@ export async function instances(
 export async function watching(
   queue: MongoChildExecutionQueueRepository,
   cleanups: (() => Promise<void>)[],
-): Promise<{ readonly wakes: () => number }> {
+): Promise<{ readonly wakes: () => number; readonly close: () => Promise<void> }> {
   let wakes = 0;
   const watch: ChildExecutionQueueWatch = await queue.watchQueued(() => {
     wakes += 1;
   });
   cleanups.push(() => watch.close());
-  return { wakes: () => wakes };
+  return { wakes: () => wakes, close: () => watch.close() };
 }

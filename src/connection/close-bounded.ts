@@ -1,5 +1,5 @@
 import type { Clock } from "@agboss/core";
-import { seconds } from "@agboss/core/units";
+import { seconds, type Milliseconds } from "@agboss/core/units";
 
 /**
  * How long an orderly close may take at an instance's stop before it is given up
@@ -9,7 +9,7 @@ import { seconds } from "@agboss/core/units";
 export const CLOSE_GRACE = seconds(1);
 
 /**
- * `close()`, or — when it has not ended within `CLOSE_GRACE` on `clock` — nothing: the close is
+ * `close()`, or — when it has not ended within `grace` (`CLOSE_GRACE`) on `clock` — nothing: the close is
  * left to finish by itself (the driver closes the connections in use first, then waits for the
  * server's cleanup), and its late failure is dropped, so nothing rejects unhandled. The driver
  * cannot destroy the sockets of a client that is closing (`MongoClient.close()` takes no `force`
@@ -18,6 +18,7 @@ export const CLOSE_GRACE = seconds(1);
 export async function closeBounded(
   close: () => Promise<unknown>,
   clock: Clock | undefined,
+  grace: Milliseconds = CLOSE_GRACE,
 ): Promise<void> {
   const orderly = close().then(
     () => undefined,
@@ -29,7 +30,7 @@ export async function closeBounded(
   }
   const waiting = new AbortController();
   try {
-    await Promise.race([orderly, clock.sleep(CLOSE_GRACE, waiting.signal).catch(() => undefined)]);
+    await Promise.race([orderly, clock.sleep(grace, waiting.signal).catch(() => undefined)]);
   } finally {
     waiting.abort();
   }
