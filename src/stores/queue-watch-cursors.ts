@@ -1,6 +1,6 @@
 import type { Clock } from "@agboss/core";
 import type { Milliseconds } from "@agboss/core/units";
-import type { CommandSucceededEvent, Db, Long, MongoClient } from "mongodb";
+import { Long, type CommandSucceededEvent, type Db } from "mongodb";
 import { closeBounded } from "../connection/close-bounded.js";
 import { Collections } from "../connection/collections.js";
 
@@ -10,10 +10,26 @@ import { Collections } from "../connection/collections.js";
  * watch remembers the ids and kills them over a connection that answers.
  */
 
-/** A server-side cursor: its id and the namespace it belongs to, nothing of what it returned. */
+/**
+ * A server-side cursor: its id and the namespace it belongs to, nothing of what it returned. The id
+ * is a `bigint`, whatever the driver delivered (agbossjs/agboss#1169).
+ */
 export interface Cursor {
-  readonly id: Long;
+  readonly id: bigint;
   readonly ns: string;
+}
+
+/**
+ * The id of a cursor as a `bigint`, from what the driver's reply holds: a `Long` (the default for an
+ * id of 54 bits or more), a `number` (`promoteLongs`, the default, turns an id of 53 bits or less
+ * into one: about one id in 500), or a `bigint` (`useBigInt64=true` in the URL). Anything else is
+ * not an id: `undefined`.
+ */
+export function cursorIdOf(value: unknown): bigint | undefined {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") return Number.isSafeInteger(value) ? BigInt(value) : undefined;
+  if (Long.isLong(value)) return BigInt(value.toString());
+  return undefined;
 }
 
 /** A cursor of a stream that was dropped, and the generation of that stream. */
@@ -21,22 +37,50 @@ export interface Orphan extends Cursor {
   readonly generation: number;
 }
 
+/** What the listener needs of a client: its command events. */
+export interface CommandEvents {
+  on(event: "commandSucceeded", listener: (event: CommandSucceededEvent) => void): unknown;
+  off(event: "commandSucceeded", listener: (event: CommandSucceededEvent) => void): unknown;
+}
+
+/** The open cursor an `aggregate` or a `getMore` reply names (not a closed one, id 0), if any. */
+function openedBy(event: CommandSucceededEvent): Cursor | undefined {
+  if (event.commandName !== "aggregate" && event.commandName !== "getMore") return undefined;
+  const cursor = (event.reply as { cursor?: { id?: unknown; ns?: unknown } } | undefined)?.cursor;
+  const id = cursorIdOf(cursor?.id);
+  const ns = cursor?.ns;
+  return id === undefined || id === 0n || typeof ns !== "string" ? undefined : { id, ns };
+}
+
 /**
  * Collects the cursors `client` opens. Only the id and the namespace are read from an `aggregate`
  * or a `getMore` reply — the reply carries documents, and neither it nor the command is kept or
- * logged. `unlisten` ends it (the client's close).
+ * logged. `unlisten` ends it (the client's close). It runs inside the driver's `emit`, on the
+ * command's own path: it never throws, whatever the reply holds; a reply it cannot read is
+ * warned about once (the error's name, nothing of the reply) and the cursor goes unrecorded.
  */
-export function listenForCursors(client: MongoClient): {
+export function listenForCursors(
+  client: CommandEvents,
+  warn: (message: string) => void = () => undefined,
+): {
   readonly cursors: Cursor[];
   readonly unlisten: () => void;
 } {
   const cursors: Cursor[] = [];
+  let warned = false;
   const heard = (event: CommandSucceededEvent): void => {
-    if (event.commandName !== "aggregate" && event.commandName !== "getMore") return;
-    const cursor = (event.reply as { cursor?: { id?: Long; ns?: string } } | undefined)?.cursor;
-    const { id, ns } = cursor ?? {};
-    if (id === undefined || ns === undefined || id.isZero()) return;
-    if (!cursors.some((known) => known.id.equals(id))) cursors.push({ id, ns });
+    try {
+      const cursor = openedBy(event);
+      if (cursor !== undefined && !cursors.some((known) => known.id === cursor.id))
+        cursors.push(cursor);
+    } catch (error) {
+      if (warned) return;
+      warned = true;
+      const name = error instanceof Error ? error.name : typeof error;
+      warn(
+        `The child queue's cursor listener could not read a command reply (${name}); a cursor of its change stream may stay on the server until it times out`,
+      );
+    }
   };
   client.on("commandSucceeded", heard);
   return {
@@ -54,7 +98,7 @@ export function listenForCursors(client: MongoClient): {
  * code, and not tried again; the server then drops the cursor once it times out (10 min).
  */
 export async function killDropped(
-  db: Db,
+  db: Pick<Db, "databaseName" | "command">,
   orphans: readonly Orphan[],
   current: number | undefined,
   clock: Clock,
@@ -64,7 +108,7 @@ export async function killDropped(
   const ns = `${db.databaseName}.${Collections.ChildExecutionQueue}`;
   const cursors = orphans
     .filter((orphan) => orphan.ns === ns && orphan.generation !== current)
-    .map((orphan) => orphan.id);
+    .map((orphan) => Long.fromBigInt(orphan.id));
   if (cursors.length === 0) return;
   const state = { answered: false };
   let reported = false;
