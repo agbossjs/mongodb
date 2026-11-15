@@ -110,9 +110,21 @@ function addTo(blocks, heading, bullets) {
 
 /**
  * CHANGELOG.md with the fragments folded into the section of `version`.
- * Throws when the version is already released and a fragment is not in it yet.
+ * Throws when the version is already released and a fragment is not in it yet, or when the file mixes
+ * CRLF and LF line endings. A CRLF file is folded as LF and written back in CRLF (#1087).
  */
 export function foldFragments(changelog, version, date, fragments) {
+  if (!changelog.includes("\r\n")) return foldLf(changelog, version, date, fragments);
+  if (/(^|[^\r])\n/.test(changelog)) {
+    throw new Error(
+      "CHANGELOG.md mixes CRLF and LF line endings: make them one style first, nothing was changed",
+    );
+  }
+  const folded = foldLf(changelog.replace(/\r\n/g, "\n"), version, date, fragments);
+  return folded.replace(/\n/g, "\r\n");
+}
+
+function foldLf(changelog, version, date, fragments) {
   const text = changelog === "" ? "# Changelog\n" : changelog;
   const lines = text.replace(/\n$/, "").split("\n");
   const found = findSection(lines, version);
@@ -148,4 +160,26 @@ function withNewSection(text, lines, version, date, fragments) {
   const section = sectionOf(version, date, fragments);
   if (first === -1) return `${text.trimEnd()}\n\n${section}`;
   return `${lines.slice(0, first).join("\n")}\n${section}\n${lines.slice(first).join("\n")}\n`;
+}
+
+/**
+ * Throws unless `changelog` (as written) has exactly one `## [version]` heading, no longer unreleased, and every
+ * fragment's bullet in it: the check that lets the caller delete the fragments (#1087).
+ */
+export function verifyFolded(changelog, version, fragments) {
+  const lines = changelog.split(/\r?\n/);
+  const v = escape(version);
+  const own = lines.filter((line) =>
+    new RegExp(`^## \\[${v}\\]|^## \\[Unreleased\\] — ${v}(?![\\w.-])`).test(line),
+  );
+  const fail = (why) => {
+    throw new Error(`CHANGELOG.md was not folded correctly (${why}): the fragments are kept`);
+  };
+  if (own.length !== 1) fail(`${own.length} sections for ${version}`);
+  if (/^## \[[^\]]+\] — unreleased\s*$|^## \[Unreleased\] — /i.test(own[0]))
+    fail(`the heading is "${own[0]}"`);
+  const text = `\n${lines.join("\n")}\n`;
+  for (const fragment of fragments) {
+    if (!text.includes(`\n${bulletOf(fragment.entry)}\n`)) fail(`${fragment.file} is missing`);
+  }
 }
