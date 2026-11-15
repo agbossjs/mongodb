@@ -18,13 +18,14 @@ import {
   setAsideStale,
 } from "./paused/pause-delivery.js";
 import { mailboxesOf } from "./paused/pause-mailboxes.js";
-import { pauseOfDocument, type PauseDocument } from "./paused/pause-documents.js";
+import type { PauseDocument } from "./paused/pause-documents.js";
 import {
   assertPauseFilter,
   assertScanLimit,
   dueBy,
   pageOf,
   removableBefore,
+  removablePageBefore,
   tenantFilter,
 } from "./paused/pause-scans.js";
 import { MongoPauseTransitions } from "./paused/pause-transitions.repository.js";
@@ -71,10 +72,13 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     return pageOf(this.connection.db, tenantFilter(tenantId, filter), limit, after);
   }
 
-  async findClosedByResolvedAtBefore(cutoff: Date, limit: number): Promise<readonly PauseRecord[]> {
+  async findClosedByResolvedAtBefore(
+    cutoff: Date,
+    limit: number,
+    after?: string,
+  ): Promise<PausePage> {
     assertScanLimit(limit);
-    const removable = await removableBefore(this.connection.db, cutoff, limit);
-    return removable.map(pauseOfDocument);
+    return removablePageBefore(this.connection.db, cutoff, limit, after);
   }
 
   /** Removes the closed pauses before `cutoff` with no live mailbox, and their mailboxes, a batch per transaction. */

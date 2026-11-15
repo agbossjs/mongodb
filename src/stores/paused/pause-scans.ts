@@ -82,16 +82,20 @@ export async function dueBy(
   return found.map(pauseOfDocument);
 }
 
-/** The closed pauses resolved before `cutoff` with no live mailbox, in insertion order, `limit` of them. */
+/**
+ * The closed pauses resolved before `cutoff` with no live mailbox, in insertion order after the
+ * cursor `after` (its sequence, as the other scans'), `limit` of them.
+ */
 export async function removableBefore(
   db: Db,
   cutoff: Date,
   limit: number,
   session?: ClientSession,
+  after?: string,
 ): Promise<PauseDocument[]> {
   const pauses = db.collection<PauseDocument>(Collections.Pauses);
   const removable: PauseDocument[] = [];
-  let seq = 0;
+  let seq = seqOfCursor(after);
   while (removable.length < limit) {
     const batch = await pauses
       .find(
@@ -122,4 +126,20 @@ export async function removableBefore(
     removable.push(...batch.filter((one) => !kept.has(`${one.tenantId}\0${one.pauseId}`)));
   }
   return removable.slice(0, limit);
+}
+
+/** A page of what the delete would remove (#939): `limit` of them after `after`, `next` when more follow. */
+export async function removablePageBefore(
+  db: Db,
+  cutoff: Date,
+  limit: number,
+  after: string | undefined,
+): Promise<PausePage> {
+  const found = await removableBefore(db, cutoff, limit + 1, undefined, after);
+  const page = found.slice(0, limit);
+  const last = page.at(-1);
+  return {
+    pauses: page.map(pauseOfDocument),
+    ...(found.length > limit && last !== undefined ? { next: String(last.seq) } : {}),
+  };
 }
