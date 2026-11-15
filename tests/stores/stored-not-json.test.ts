@@ -1,9 +1,12 @@
 /**
- * agbossjs/agboss#906 D4, one rule for every stored JSON text: a text that is not JSON (cut off, empty,
- * damaged) is refused by the ids of its row — never the text, never the parser's message (it quotes the
- * text), never a tenant, and no `cause`. A paused run, a pause, an answer-log entry and a history record alike.
+ * agbossjs/agboss#906 D4 and #1121, one rule for every stored JSON text: a text that is not JSON (cut off,
+ * empty, damaged) is refused as a record that fails its schema is — `StoredNamesUnreadableError`, `code:
+ * "stored.unreadable"`, the ids of its row — never the text, never the parser's message (it quotes the
+ * text), never a tenant; its `cause` is a `SyntaxError` that keeps no text. A paused run, a pause, an
+ * answer-log entry and a history record alike.
  */
 import { inspect } from "node:util";
+import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { VirtualClock } from "@agboss/core/testing";
 import { describe, expect, it } from "vitest";
 import {
@@ -38,16 +41,16 @@ async function refusal(read: () => Promise<unknown>, ids: readonly string[]): Pr
     (thrown: unknown) => thrown,
   );
   if (!(error instanceof Error)) throw new TypeError("it was read, or nothing Error-like thrown");
-  expect(error).not.toBeInstanceOf(SyntaxError);
+  expect(error).toBeInstanceOf(StoredNamesUnreadableError);
+  expect(error).toMatchObject({ code: "stored.unreadable", fields: "(the text)" });
   expect(error.message).toContain("is not readable");
-  expect(error.message).toContain("the text is not valid JSON");
   for (const id of ids) expect(error.message).toContain(id);
   expect(error.message).not.toContain("tenantId");
-  expect(error.cause).toBeUndefined();
+  expect(error.cause).toBeInstanceOf(SyntaxError);
   const shown = inspect(error, { depth: 12 });
   expect(shown).not.toContain(SECRET);
   expect(shown).not.toContain("startInput");
-  expect(shown).not.toMatch(/JSON\.parse|Unexpected|position \d|in JSON/);
+  expect(shown).not.toMatch(/JSON\.parse|Unexpected|in JSON/);
 }
 
 describe.each(DAMAGED)("%s", (_name, text) => {
