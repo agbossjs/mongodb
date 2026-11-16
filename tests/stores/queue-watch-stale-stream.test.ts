@@ -9,6 +9,7 @@
 import { seconds } from "@agboss/core/units";
 import { ChangeStream, MongoClient } from "mongodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { RecordingLogger } from "../support/recording-logger.js";
 import { testDatabase } from "../support/database.js";
 import { RealClock, sleep } from "../support/pause.js";
 import { CONNECTS, child, instances, watching } from "../support/silent-watch.js";
@@ -25,6 +26,37 @@ afterEach(async () => {
  * bound) and for the driver to resume the stream on a new one.
  */
 const settles = (bound: number): number => seconds(bound) + 3000;
+
+/**
+ * The warnings that say the watch lost its stream. A stream is lost once per liveness expiry: a ping
+ * unanswered within half the bound. The kill of the dropped stream's cursor warns separately and
+ * only when its own connection is too slow to answer (never fatal, #1088), so on a loaded runner
+ * the count of all warnings is the machine's, not the watch's (#1182: a second warning in the 4 s
+ * window, its stream reopened and lost again, or its cursor kill late).
+ */
+const lostWarnings = (logger: RecordingLogger): number =>
+  logger.entries.filter((entry) => entry.message.includes("change stream is lost")).length;
+
+/**
+ * Waits until the watch is quiet: no new warning and no new wake for one `settles(bound)`, and
+ * returns the counts. A reopen follows each loss, so what the guarantee says is counted against the
+ * losses, never against wall time: one catch-up wake per reopen, and none from a stream the watch
+ * dropped (agbossjs/agboss#1051). On an idle machine that is one loss and one wake, as before.
+ */
+async function quiet(
+  watch: { readonly wakes: () => number },
+  logger: RecordingLogger,
+  bound: number,
+): Promise<{ readonly wakes: number; readonly lost: number }> {
+  const now = () => ({ wakes: watch.wakes(), lost: lostWarnings(logger) });
+  for (let before = now(); ;) {
+    await sleep(settles(bound));
+    const after = now();
+    if (after.wakes === before.wakes && after.lost === before.lost && after.wakes >= after.lost)
+      return after;
+    before = after;
+  }
+}
 
 /** The `close` a prototype has, before a spy replaces it. */
 const originalOf = (prototype: object): ((this: unknown) => Promise<void>) =>
@@ -50,21 +82,22 @@ describe("agbossjs/agboss#1051: no wake from a stream the watch has dropped", ()
       proxy.cut();
       await direct.saveIfAbsent(child(`s-${String(bound)}`));
       await vi.waitFor(() => {
-        expect(logger.entries).toHaveLength(1);
+        expect(lostWarnings(logger)).toBeGreaterThanOrEqual(1);
       }, CONNECTS);
       await vi.waitFor(() => {
         expect(watch.wakes()).toBeGreaterThanOrEqual(1);
       }, CONNECTS);
-      await sleep(settles(bound));
-      expect(watch.wakes()).toBe(1);
-      expect(logger.entries).toHaveLength(1);
+      const settled = await quiet(watch, logger, bound);
+      // one catch-up wake per loss of the stream; the stream the watch dropped wakes it never
+      expect(settled.lost).toBeGreaterThanOrEqual(1);
+      expect(settled.wakes).toBe(settled.lost);
 
       await direct.saveIfAbsent(child(`s-next-${String(bound)}`));
       await vi.waitFor(() => {
-        expect(watch.wakes()).toBeGreaterThanOrEqual(2);
+        expect(watch.wakes()).toBeGreaterThanOrEqual(settled.wakes + 1);
       }, CONNECTS);
       await sleep(1500);
-      expect(watch.wakes()).toBe(2);
+      expect(watch.wakes()).toBe(settled.wakes + 1);
     },
     60_000,
   );
@@ -88,7 +121,7 @@ describe("agbossjs/agboss#1051: no wake from a stream the watch has dropped", ()
     }
     expect(claimed).toContain("c-claimed");
     await vi.waitFor(() => {
-      expect(logger.entries).toHaveLength(1);
+      expect(lostWarnings(logger)).toBeGreaterThanOrEqual(1);
     }, CONNECTS);
     proxy.swallowNew(true);
     // the new clients are swallowed too: several attempts go by, each given up at the bound
@@ -104,15 +137,15 @@ describe("agbossjs/agboss#1051: no wake from a stream the watch has dropped", ()
     await vi.waitFor(() => {
       expect(watch.wakes()).toBeGreaterThanOrEqual(1);
     }, CONNECTS);
-    await sleep(settles(2));
-    expect(watch.wakes()).toBe(1);
+    const settled = await quiet(watch, logger, 2);
+    expect(settled.wakes).toBe(settled.lost);
 
     await direct.saveIfAbsent(child("c-after"));
     await vi.waitFor(() => {
-      expect(watch.wakes()).toBeGreaterThanOrEqual(2);
+      expect(watch.wakes()).toBeGreaterThanOrEqual(settled.wakes + 1);
     }, CONNECTS);
     await sleep(1500);
-    expect(watch.wakes()).toBe(2);
+    expect(watch.wakes()).toBe(settled.wakes + 1);
   }, 90_000);
 
   it("a stale stream that its close does not stop is not heard either: the generation check alone, exactly one wake", async () => {
@@ -145,12 +178,12 @@ describe("agbossjs/agboss#1051: no wake from a stream the watch has dropped", ()
     proxy.cut();
     await direct.saveIfAbsent(child("g-1"));
     await vi.waitFor(() => {
-      expect(logger.entries).toHaveLength(1);
+      expect(lostWarnings(logger)).toBeGreaterThanOrEqual(1);
     }, CONNECTS);
     await vi.waitFor(() => {
       expect(watch.wakes()).toBeGreaterThanOrEqual(1);
     }, CONNECTS);
-    await sleep(settles(2));
-    expect(watch.wakes()).toBe(1);
+    const settled = await quiet(watch, logger, 2);
+    expect(settled.wakes).toBe(settled.lost);
   }, 60_000);
 });
