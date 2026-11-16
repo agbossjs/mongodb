@@ -39,6 +39,10 @@ export const faultStores: FaultStoreSet<MongoTransaction> = {
   // agbossjs/agboss#799: the leases expire by the server's $$NOW, at the real rate — the fault suite
   // reads the history on it, whatever the pods' timeScale
   storeTime: FaultStoreTime.Database,
+  // agbossjs/agboss#1017: `commitTransaction` is idempotent per transaction and the driver retries it
+  // once: one reset after the COMMIT is answered by the retry (scenario 23: the charge lands once, no
+  // hand-over); the retry's answer lost too is unknown (23b), read by `MongoConnection.inTransaction`
+  resolvesCommitByRetry: true,
   providers: [
     MongoConnection,
     MongoA2ADirectMessageRepository,

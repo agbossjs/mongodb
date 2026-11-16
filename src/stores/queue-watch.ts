@@ -1,4 +1,4 @@
-import { CLOSE_GRACE, closeBounded } from "../connection/close-bounded.js";
+import { CLOSE_GRACE, closeBounded, closeClientBounded } from "../connection/close-bounded.js";
 import { watchLiveness } from "../connection/heartbeat.js";
 import type { MongoConnection } from "../connection/mongodb-connection.js";
 import { watchClientOf } from "../connection/watch-client.js";
@@ -127,7 +127,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
       void this.#heartbeat(open, livenessSeconds);
     } catch (error) {
       unlisten();
-      void closeBounded(() => client.close(), this.clock);
+      void closeClientBounded(client, this.clock);
       throw error;
     } finally {
       attempt.abort();
@@ -174,7 +174,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
       seconds((CLOSE_GRACE + open.holdsFor) / 1000),
     );
     open.unlisten();
-    await closeBounded(() => open.client.close(), this.clock);
+    await closeClientBounded(open.client, this.clock);
   }
 
   /** The stream failed, closed or went silent: open another, unless the watch is closed or it was replaced. */
@@ -226,7 +226,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
       const orphans = this.#orphans.splice(0);
       await killDropped(db, orphans, this.#open?.generation, this.clock, this.warn, grace);
     } finally {
-      await closeBounded(() => client.close(), this.clock);
+      await closeClientBounded(client, this.clock);
     }
   }
 

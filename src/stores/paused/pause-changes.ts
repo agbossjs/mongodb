@@ -14,7 +14,7 @@ import {
   PauseNoticeKind,
   recipientKeysOf,
   type PauseExpiry,
-  type PauseExtension,
+  type PauseDeadlineChange,
   type PauseNotice,
   type PauseNoticeFacts,
   type PauseRecipients,
@@ -68,7 +68,7 @@ export function closedNotices(
 }
 
 /** What closing a pending pause does: its notice is written only when the pause was sent. */
-function closing(
+export function closing(
   before: PauseRecord,
   after: PauseRecord,
   at: Date,
@@ -78,7 +78,7 @@ function closing(
 }
 
 /** `after` of a closed pause: its status, how and when it closed. */
-const closed = (
+export const closed = (
   pause: PauseRecord,
   fields: Pick<PauseRecord, "status" | "resolution"> & Partial<PauseRecord>,
   at: Date,
@@ -180,10 +180,13 @@ export function closeUntakenChange(
   return { pause: after, notices: before.isSent ? untakenNotices(resolution, at, recipients) : [] };
 }
 
-/** A pending pause's deadline moved (the guard: pending, its deadline set and after `at`); never to a past time. */
+/**
+ * A pending pause's deadline moved to a later one, never to a past time (the guard decides the
+ * rest: pending, the deadline the caller read still stored, after `at`, earlier than the new one).
+ */
 export function extendChange(
   before: PauseRecord,
-  extension: PauseExtension,
+  extension: PauseDeadlineChange,
   at: Date,
   recipients: PauseRecipients,
 ): PauseChange | undefined {

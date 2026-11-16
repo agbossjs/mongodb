@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { createServer } from "node:net";
+import { createServer, Socket } from "node:net";
 import { Clock } from "@agboss/core";
 import type { Milliseconds } from "@agboss/core/units";
 
 /**
  * A server of the stop tests' own (agbossjs/agboss#923): a container started for the test file,
- * capped (`--cpus 1`, a memory limit), paused with `docker pause` (the server stops answering, its
+ * capped (`--cpus 0.5`, a memory limit), paused with `docker pause` (the server stops answering, its
  * sockets stay open — a hung network, a frozen server) and removed after. Without Docker the
  * tests are skipped. Nothing else shares it, so pausing it disturbs no other test.
  */
@@ -87,11 +87,38 @@ export async function startMongo(): Promise<PausableServer> {
   const name = `agboss-923-mongo-${String(process.pid)}`;
   const port = await freePort();
   const host = `127.0.0.1:${String(port)}`;
-  docker(
-    ...["run", "-d", "--name", name, "--cpus", "1", "--memory", "512m"],
+  const run = [
+    ...["run", "-d", "--name", name, "--cpus", "0.5", "--memory", "640m"],
     ...["-p", `${host}:${String(port)}`, "mongo:7"],
     ...["mongod", "--replSet", "rs0", "--port", String(port), "--bind_ip_all"],
-  );
+    ...[
+      "--wiredTigerCacheSizeGB",
+      "0.25",
+      "--setParameter",
+      "maxIndexBuildMemoryUsageMegabytes=50",
+    ],
+  ];
+  const budget = process.env.AGBOSS_DOCKER_BUDGET_DIR; // a shared machine checks its room first
+  if (budget === undefined) docker(...run);
+  else {
+    // no room yet on the shared machine: asks again for up to ten minutes
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        execFileSync("lockf", [
+          `${budget}/docker-budget.lock`,
+          "sh",
+          "-c",
+          'sh "$0/docker-cpu-budget.sh" 0.5 640 && docker "$@"',
+          budget,
+          ...run,
+        ]);
+        break;
+      } catch (error) {
+        if (attempt >= 40) throw error;
+        await sleep(15_000);
+      }
+    }
+  }
   const shell = (script: string): string =>
     docker("exec", name, "mongosh", "--port", String(port), "--quiet", "--eval", script);
   await untilReady(() => shell("db.runCommand({ ping: 1 }).ok"));
@@ -154,4 +181,37 @@ export class RealClock extends Clock {
       );
     });
   }
+}
+
+/**
+ * The sockets this process opens to `port` from now on (patching `net.Socket.prototype.connect`):
+ * how many are still open, counted by the socket's `destroyed` — not by a client's own `isOpen`,
+ * which is false while a client is closing, its socket still up (agbossjs/agboss#954).
+ */
+export function trackSockets(port: number): {
+  open(): number;
+  /** Open sockets that have heard from the server (a finished handshake, a pooled connection). */
+  established(): number;
+  stop(): void;
+} {
+  const sockets: Socket[] = [];
+  const original: unknown = Reflect.get(Socket.prototype, "connect");
+  if (typeof original !== "function") throw new Error("net.Socket has no connect");
+  const patched = function (this: Socket, ...args: unknown[]): Socket {
+    // a client passes the port itself or its options, alone or in an array
+    const first: unknown = Array.isArray(args[0]) ? (args[0] as unknown[])[0] : args[0];
+    const target =
+      typeof first === "object" && first !== null ? (first as { port?: number }).port : first;
+    if (target === port) sockets.push(this);
+    Reflect.apply(original, this, args);
+    return this;
+  };
+  Reflect.set(Socket.prototype, "connect", patched);
+  return {
+    open: () => sockets.filter((socket) => !socket.destroyed).length,
+    established: () => sockets.filter((socket) => !socket.destroyed && socket.bytesRead > 0).length,
+    stop: () => {
+      Reflect.set(Socket.prototype, "connect", original);
+    },
+  };
 }

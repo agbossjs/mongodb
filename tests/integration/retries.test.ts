@@ -12,6 +12,7 @@ import {
   StoreTimeSource,
   type EffectKey,
 } from "@agboss/core";
+import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
 import { minutes } from "@agboss/core/units";
 import { MongoClient, type Document } from "mongodb";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -41,6 +42,20 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
+  // a commit whose connection was cut leaves its transaction open on the server until its lifetime
+  // limit, and the database's drop waits for it (agbossjs/agboss#985): ended here
+  const open = await admin
+    .db("admin")
+    .aggregate([
+      { $currentOp: { allUsers: true, idleSessions: true } },
+      { $match: { appName: APP, transaction: { $exists: true } } },
+      { $project: { lsid: 1 } },
+    ])
+    .toArray();
+  if (open.length > 0)
+    await admin
+      .db("admin")
+      .command({ killSessions: open.map((operation) => operation.lsid as Document) });
 });
 
 afterAll(async () => {
@@ -158,6 +173,97 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
 
     expect(again).toMatchObject({ status: FencedEffectStatus.Replayed, result: { receipt: "r1" } });
     expect(await chargesOf("unknown-2")).toBe(1);
+  });
+});
+
+describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unknown", () => {
+  it("a commit whose retry fails too is StoreOutcomeUnknownError (Transport), the work run once; the next call replays the charge", async () => {
+    const lease = await leasesOf("instance-1").acquire("default", "unknown-3", minutes(1));
+    const key = keyOf("unknown-3", lease?.token ?? 0);
+    const effects = new MongoFencedEffectRepository(
+      connection,
+      serverClock(),
+      new FencedEffectSettings(),
+    );
+    // applied both times (the commit and its retry), answered with a retryable error both times
+    await failNext(
+      ["commitTransaction"],
+      { writeConcernError: { code: 91, errmsg: "Replication is being shut down" } },
+      2,
+    );
+    let runs = 0;
+    const charge = async ({
+      db,
+      session,
+    }: Parameters<Parameters<typeof effects.runOnce>[1]>[0]): Promise<{
+      receipt: string;
+    }> => {
+      runs += 1;
+      await db.collection("retry_charges").insertOne({ root: "unknown-3" }, { session });
+      return { receipt: "r1" };
+    };
+
+    const failure: unknown = await effects.runOnce(key, charge).catch((error: unknown) => error);
+    const again = await effects.runOnce(key, charge);
+
+    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(failure).toMatchObject({
+      code: "store.outcome-unknown",
+      source: StoreOutcomeSource.Transport,
+    });
+    expect(runs).toBe(1);
+    expect(again).toMatchObject({ status: FencedEffectStatus.Replayed, result: { receipt: "r1" } });
+    expect(await chargesOf("unknown-3")).toBe(1);
+  });
+
+  it("a commit whose connection is cut twice (no answer at all) is StoreOutcomeUnknownError too", async () => {
+    const lease = await leasesOf("instance-1").acquire("default", "unknown-4", minutes(1));
+    const effects = new MongoFencedEffectRepository(
+      connection,
+      serverClock(),
+      new FencedEffectSettings(),
+    );
+    await failNext(["commitTransaction"], { closeConnection: true }, 2);
+
+    const failure: unknown = await effects
+      .runOnce(keyOf("unknown-4", lease?.token ?? 0), async ({ db, session }) => {
+        await db.collection("retry_charges").insertOne({ root: "unknown-4" }, { session });
+        return { receipt: "r1" };
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+  });
+
+  it("an error the work throws, or a write conflict, is no unknown outcome: it is rethrown as it is, or the work runs again", async () => {
+    const lease = await leasesOf("instance-1").acquire("default", "known-1", minutes(1));
+    const effects = new MongoFencedEffectRepository(
+      connection,
+      serverClock(),
+      new FencedEffectSettings(),
+    );
+
+    const failure: unknown = await effects
+      .runOnce(keyOf("known-1", lease?.token ?? 0), () => Promise.reject(new TypeError("no")))
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(TypeError);
+  });
+
+  it("a single-command write whose retry fails too is StoreOutcomeUnknownError: acquire, release, a cancel", async () => {
+    const leases = leasesOf("instance-1");
+    await failNext(["findAndModify"], { closeConnection: true }, 2);
+
+    const acquired: unknown = await leases
+      .acquire("default", "unknown-5", minutes(1))
+      .catch((error: unknown) => error);
+    await failNext(["update"], { closeConnection: true }, 2);
+    const cancelled: unknown = await leases
+      .requestCancel({ tenantId: "default", rootExecutionId: "unknown-6" })
+      .catch((error: unknown) => error);
+
+    expect(acquired).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(cancelled).toBeInstanceOf(StoreOutcomeUnknownError);
   });
 });
 

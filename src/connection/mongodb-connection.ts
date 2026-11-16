@@ -7,7 +7,7 @@ import {
   type OnInit,
 } from "@agboss/core";
 import { SchemaSetup } from "@agboss/core/stores";
-import { closeBounded } from "./close-bounded.js";
+import { closeClientBounded } from "./close-bounded.js";
 import {
   MongoClient,
   type ClientSession,
@@ -25,6 +25,8 @@ import {
   MongoTransactionReadConcern,
 } from "./concerns.js";
 import { supportedTopologyOf, topologyOf, type MongoTopology } from "./deployment.js";
+import { StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { commitErrorOf } from "./outcome.js";
 import { checkSchema, migrateSchema } from "./schema-version.js";
 import {
   checkedWatchLivenessOf,
@@ -151,10 +153,12 @@ export class MongoConnection implements OnInit, OnDestroy {
    *   primary stepping down before the commit) aborts the attempt — none of its writes is ever
    *   seen — and runs `work` again from its start, in a new transaction, until 120 s have passed;
    *   so `work` may run more than once per call and must do nothing outside `transaction.session`;
-   * - a commit whose outcome is unknown (`UnknownTransactionCommitResult`: the reply lost, a write
-   *   concern error) is committed again — the same transaction, which the server commits once —,
-   *   never run again; past the 120 s the call rejects and the transaction may have committed, so
-   *   a caller treats that rejection as "outcome unknown" and reads before it writes again;
+   * - a commit whose reply was lost is sent once more by the driver — the same transaction, which
+   *   the server commits once —: after one reset the retry learns the real outcome (agbossjs/agboss#1017);
+   *   a commit that is still unknown after it (`UnknownTransactionCommitResult`, or a transport
+   *   error: the retry's reply lost too) rejects at once with `StoreOutcomeUnknownError` (source
+   *   `Transport`, `outcome.ts`): the transaction may have committed, the holder hands the tree
+   *   over and the next one reads what was left; the work is never run again for it;
    * - any other error (the work's own, a fence's refusal) aborts and is rethrown as it is.
    *
    * Each operation of `work` passes `{ session: transaction.session }`.
@@ -164,8 +168,24 @@ export class MongoConnection implements OnInit, OnDestroy {
   ): Promise<TResult> {
     const session: ClientSession = this.client.startSession();
     const transaction: MongoTransaction = { session, db: this.db };
+    // what a commit the driver could not resolve is read as: the driver, told to abort a transaction
+    // it just failed to commit, throws its own error over ours — which this call then restores
+    let lostCommit: unknown;
     try {
-      return await session.withTransaction(() => work(transaction), this.#transactionOptions);
+      // the commit is made here, so that what the driver could not resolve is read as unknown at
+      // once, not committed again until the 120 s are over; `withTransaction` returns when the
+      // callback has committed, and still runs the work again on a `TransientTransactionError`
+      return await session.withTransaction(async () => {
+        const result = await work(transaction);
+        await session.commitTransaction().catch((error: unknown) => {
+          const read = commitErrorOf(error);
+          if (read instanceof StoreOutcomeUnknownError) lostCommit = read;
+          throw read;
+        });
+        return result;
+      }, this.#transactionOptions);
+    } catch (error) {
+      throw lostCommit ?? error;
     } finally {
       await session.endSession();
     }
@@ -200,6 +220,6 @@ export class MongoConnection implements OnInit, OnDestroy {
 
   /** Closes the client when the instance stops (its stores are destroyed first: they depend on it). */
   async onDestroy(): Promise<void> {
-    await closeBounded(() => this.client.close(), this.clock);
+    await closeClientBounded(this.client, this.clock);
   }
 }

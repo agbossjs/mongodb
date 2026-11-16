@@ -7,7 +7,7 @@ import {
   type ExecutionLease,
   type StoreDescriptor,
 } from "@agboss/core";
-import { remainingOf } from "@agboss/core/stores";
+import { remainingOf, type ExecutionTree } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
 import type { Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
@@ -25,6 +25,8 @@ import {
   Yielded,
   type LeaseDocument,
 } from "./lease-documents.js";
+import { markCancel } from "./cancel-fence.js";
+import { settled } from "../connection/outcome.js";
 import { storeNowOf } from "./store-time.js";
 
 /** One kept execution id (agbossjs/agboss#591): unique by `_id`, never removed. */
@@ -78,7 +80,28 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     return this.connection.ping();
   }
 
-  async claimExecutionId({ executionId, tenantId }: ExecutionIdentity): Promise<boolean> {
+  requestCancel(tree: ExecutionTree): Promise<void> {
+    return settled("requestCancel", () => markCancel(this.connection.db, tree, this.clock));
+  }
+
+  /**
+   * Whether the tree's cancel mark is set (#1152): `cancelRequestedAt` on the lease document of
+   * `(tenantId, rootExecutionId)` — tenant-scoped by the document's key, a seed document counts —,
+   * one majority read, changing nothing.
+   */
+  async isCancelRequested(tree: ExecutionTree): Promise<boolean> {
+    const found = await this.#leases.findOne(
+      { _id: treeIdOf(tree.tenantId, tree.rootExecutionId) },
+      { projection: { cancelRequestedAt: 1 } },
+    );
+    return found?.cancelRequestedAt !== undefined;
+  }
+
+  claimExecutionId(identity: ExecutionIdentity): Promise<boolean> {
+    return settled("claimExecutionId", () => this.#claimExecutionId(identity));
+  }
+
+  async #claimExecutionId({ executionId, tenantId }: ExecutionIdentity): Promise<boolean> {
     try {
       await this.connection.db
         .collection<ExecutionIdDocument>(Collections.ExecutionIds)
@@ -90,7 +113,7 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     }
   }
 
-  async acquire(
+  async #acquire(
     tenantId: string,
     rootExecutionId: string,
     duration: Milliseconds,
@@ -118,13 +141,17 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
       });
       return first === null ? undefined : leaseOf(first, duration, key);
     } catch (error) {
-      // the tree has a lease that is held by another, or finished: refused
-      if (hasCode(error, DUPLICATE_KEY)) return undefined;
-      throw error;
+      if (!hasCode(error, DUPLICATE_KEY)) throw error;
+      // a document is there: a seed a cancel made since the take (#1117) — takeable, token 1 —,
+      // or a lease held by another, or finished: the take is run once more, else refused
+      const seeded = await this.#leases.findOneAndUpdate(takeable(id, now), take, {
+        returnDocument: "after",
+      });
+      return seeded === null ? undefined : leaseOf(seeded, duration, key);
     }
   }
 
-  async renew(held: ExecutionLease, duration: Milliseconds): Promise<Milliseconds | undefined> {
+  async #renew(held: ExecutionLease, duration: Milliseconds): Promise<Milliseconds | undefined> {
     const now = storeNowOf(this.clock);
     const renewed = await this.#leases.updateOne(liveHeldBy(held, now), [
       { $set: { token: STORED_TOKEN, expiresAt: { $add: [now, duration] } } },
@@ -133,7 +160,7 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     return renewed.matchedCount === 1 ? duration : undefined;
   }
 
-  async release(held: ExecutionLease): Promise<void> {
+  async #release(held: ExecutionLease): Promise<void> {
     // a lease closed by a check stays `superseded`, a finished one `finished`: not written here
     await this.#leases.updateOne(heldBy(held), [
       { $set: { token: STORED_TOKEN, released: true } },
@@ -141,14 +168,14 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     ]);
   }
 
-  async retire(held: ExecutionLease): Promise<void> {
+  async #retire(held: ExecutionLease): Promise<void> {
     await this.#leases.updateOne(heldBy(held), [
       { $set: { token: STORED_TOKEN, released: true, finished: true, yielded: false } },
       DROP_OLD_NAMES,
     ]);
   }
 
-  async yield(held: ExecutionLease): Promise<Milliseconds | undefined> {
+  async #yield(held: ExecutionLease): Promise<Milliseconds | undefined> {
     const now = storeNowOf(this.clock);
     // the time left by the one command's time (`yieldedAt`), not extended: a yield is no renewal
     const yielded = await this.#leases.findOneAndUpdate(
@@ -161,7 +188,10 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
     return remainingOf(expiresAt, yieldedAt);
   }
 
-  async reclaim(held: ExecutionLease, duration: Milliseconds): Promise<ExecutionLease | undefined> {
+  async #reclaim(
+    held: ExecutionLease,
+    duration: Milliseconds,
+  ): Promise<ExecutionLease | undefined> {
     const now = storeNowOf(this.clock);
     const reclaimed = await this.#leases.findOneAndUpdate(
       liveHeldBy(held, now),
@@ -180,5 +210,35 @@ export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
       { returnDocument: "after" },
     );
     return reclaimed === null ? undefined : leaseOf(reclaimed, duration, held);
+  }
+
+  // every write below is one command the driver retries once; what its retry could not resolve is
+  // an error of unknown outcome (agbossjs/agboss#1017, `outcome.ts`)
+  acquire(
+    tenantId: string,
+    rootExecutionId: string,
+    duration: Milliseconds,
+  ): Promise<ExecutionLease | undefined> {
+    return settled("acquire", () => this.#acquire(tenantId, rootExecutionId, duration));
+  }
+
+  renew(held: ExecutionLease, duration: Milliseconds): Promise<Milliseconds | undefined> {
+    return settled("renew", () => this.#renew(held, duration));
+  }
+
+  release(held: ExecutionLease): Promise<void> {
+    return settled("release", () => this.#release(held));
+  }
+
+  retire(held: ExecutionLease): Promise<void> {
+    return settled("retire", () => this.#retire(held));
+  }
+
+  yield(held: ExecutionLease): Promise<Milliseconds | undefined> {
+    return settled("yield", () => this.#yield(held));
+  }
+
+  reclaim(held: ExecutionLease, duration: Milliseconds): Promise<ExecutionLease | undefined> {
+    return settled("reclaim", () => this.#reclaim(held, duration));
   }
 }

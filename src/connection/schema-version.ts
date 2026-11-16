@@ -24,12 +24,17 @@ export interface MongoMigration {
  * The package's migrations, in order. Version 1: every collection, index and the ledger's mark.
  * Version 2 (agbossjs/agboss#962): the checkpoints' `latest_by_step` index; a checkpoint written
  * before has no `step` until the first read of its thread gives it one. Version 3 (#938): the
- * pauses' deadline indexes, the notices' collection, the pauses' `channel`.
+ * pauses' deadline indexes, the notices' collection, the pauses' `channel`. Version 4
+ * (agbossjs/agboss#909, #1117): a tree's cancel mark is the field `cancelRequestedAt` of its lease
+ * document (a seed document, token 0, when the cancel comes first), and the pauses' partial index
+ * `reassigned_unsent` (#946); no collection — an
+ * older build must not run on it, as it would not read the mark.
  */
 export const MIGRATIONS: readonly MongoMigration[] = [
   { version: 1, name: "stores" },
   { version: 2, name: "checkpoint_latest_by_step" },
   { version: 3, name: "pause-deadlines-and-notices" },
+  { version: 4, name: "execution-cancel-mark" },
 ];
 
 /** The schema version this package needs: its newest migration's. */

@@ -109,4 +109,86 @@ describe("agbossjs/agboss#527: the contract suites bite on MongoDB", () => {
       expect.arrayContaining([expect.stringMatching(/noticeOnce/u)]),
     );
   });
+
+  it("agbossjs/agboss#1064: the pause contract bites on a stale extension, one after the deadline, a revived claim and a scan without its keyset", () => {
+    const failed = (name: string): string[] =>
+      failedIn(`paused execution contract (${name})`).map((one) => nameOf(one));
+
+    expect(failed("an extension decided by the stale read, not its deadline")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/previousExpiresAt|longer|shorter|later/iu)]),
+    );
+    expect(failed("an extension applied after the deadline")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/#1148/u)]),
+    );
+    expect(failed("a notice claim renewed without its token holding")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/renew/iu)]),
+    );
+    expect(failed("pause scans that ignore their keyset")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/keyset|after/iu)]),
+    );
+  });
+
+  it("agbossjs/agboss#909, #1117: the cancel's fence bites on each broken cancel — never written, no check, a replaced document, an age-lifting retention, a seed that is a lease", () => {
+    const failed = (kind: string, name: string): string[] =>
+      failedIn(`${kind} (${name})`).map((one) => nameOf(one));
+
+    expect(failed("fenced effect contract", "a cancel that is never written")).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/#909 AC1: a write after its tree's durable cancel/u),
+      ]),
+    );
+    expect(failed("outbound call contract", "a cancel that is never written")).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/saveIfAbsent after its tree's durable cancel/u),
+      ]),
+    );
+    expect(failedIn("interleavings (a cancel that is never written)").length).toBeGreaterThan(0);
+    expect(failed("fenced effect contract", "a cancel check that is a no-op")).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/#909 AC1: a write after its tree's durable cancel/u),
+      ]),
+    );
+    expect(failedIn("interleavings (a cancel check that is a no-op)").length).toBeGreaterThan(0);
+    // a check that only reads the mark, or reads it outside the transaction, is not caught by the
+    // contracts or the explorer (a cancel is never between its read and the commit there): the
+    // deterministic race of tests/stores/cancel-fence.test.ts is its proof
+    // the lease contract's own read of the mark (#1152): a cancel never written reads false
+    expect(failed("lease contract", "a cancel that is never written")).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/#1152: isCancelRequested is false for a tree/u),
+      ]),
+    );
+    const permanent = /#1117: a cancel's mark is never lifted/u;
+    expect(failed("fenced effect contract", "a retention that lifts a mark by its age")).toEqual(
+      expect.arrayContaining([expect.stringMatching(permanent)]),
+    );
+    expect(failed("outbound call contract", "a retention that lifts a mark by its age")).toEqual(
+      expect.arrayContaining([expect.stringMatching(permanent)]),
+    );
+    expect(
+      failed(
+        "fenced effect contract",
+        "an acquire that replaces the lease document, the mark gone",
+      ),
+    ).toEqual(
+      expect.arrayContaining([expect.stringMatching(/#1117: the mark survives every release/u)]),
+    );
+    expect(failed("lease contract", "a seed document that is a lease at token 1")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/first acquire is token 1/u)]),
+    );
+  });
+
+  it("agbossjs/agboss#946: the pause contract bites on a reassignment with no condition and a retention that ignores the chain", () => {
+    const failed = (name: string): string[] =>
+      failedIn(`paused execution contract (${name})`).map((one) => nameOf(one));
+
+    expect(failed("a reassignment whose write has no condition")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/reassign/iu)]),
+    );
+    expect(
+      failed("a retention that removes a reassigned pause with its replacement stored"),
+    ).toEqual(
+      expect.arrayContaining([expect.stringMatching(/retention keeps a reassigned pause/u)]),
+    );
+  });
 });

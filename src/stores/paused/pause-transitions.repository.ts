@@ -7,10 +7,11 @@ import {
 } from "@agboss/core";
 import type {
   PauseExpiry,
-  PauseExtension,
+  PauseDeadlineChange,
   PauseNoticeFacts,
   PauseNoticeKind,
   PauseRecipients,
+  PauseReplacement,
   PauseUntakenResolution,
 } from "@agboss/core/stores";
 import { MongoPauseBase } from "./pause-base.js";
@@ -23,8 +24,9 @@ import {
   resolveChange,
 } from "./pause-changes.js";
 import { findOrCreatePause, pauseIdOf, pauseOfDocument, fieldsOf } from "./pause-documents.js";
-import { markSentChange, onceNotices } from "./pause-marks.js";
-import { mailboxesOf } from "./pause-mailboxes.js";
+import { markSentChange } from "./pause-marks.js";
+import { noticeOnceIn } from "./pause-once.js";
+import { reassignIn, type PauseParts } from "./pause-reassign.js";
 
 /**
  * The second layer (#938): the pause records and every transition of one pause. Each is one
@@ -157,13 +159,37 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
   extendByTenantIdAndPauseId(
     tenantId: string,
     pauseId: string,
-    change: PauseExtension,
+    change: PauseDeadlineChange,
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
-    return this.change(tenantId, pauseId, this.guards.extendable(at), (before) =>
+    const dates = {
+      previous: new Date(change.previousExpiresAt),
+      next: new Date(change.expiresAt),
+    };
+    return this.change(tenantId, pauseId, this.guards.extendable(at, dates), (before) =>
       extendChange(before, change, at, recipients),
     );
+  }
+
+  reassignByTenantIdAndPauseId(
+    tenantId: string,
+    pauseId: string,
+    replacement: PauseReplacement,
+    at: Date,
+    recipients: PauseRecipients,
+  ): Promise<PauseRecord | undefined> {
+    return reassignIn(this.#parts(), { tenantId, pauseId }, replacement, at, recipients);
+  }
+
+  /** What the transactions that live in their own files need of this store. */
+  #parts(): PauseParts {
+    return {
+      connection: this.connection,
+      pauses: this.pauses,
+      guards: this.guards,
+      appendNotices: (...args) => this.appendNotices(...args),
+    };
   }
 
   async remindByTenantIdAndPauseId(
@@ -193,22 +219,7 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     at: Date,
     recipients: PauseRecipients,
   ): Promise<boolean> {
-    return this.connection.inTransaction(async (transaction) => {
-      const { db, session } = transaction;
-      const found = await this.pauses.findOne({ _id: pauseIdOf(tenantId, pauseId) }, { session });
-      if (found === null) return false;
-      const pause = pauseOfDocument(found);
-      const planned = onceNotices(pause, kind, facts, at, recipients);
-      if (planned.length === 0) return false;
-      const written = await mailboxesOf(db).findOne(
-        { tenantId, pauseId, "notices.kind": kind },
-        { session },
-      );
-      if (written !== null) return false;
-      await this.pauses.updateOne({ _id: found._id }, { $inc: { noticeWrites: 1 } }, { session });
-      await this.appendNotices(transaction, pause, planned);
-      return true;
-    });
+    return noticeOnceIn(this.#parts(), { tenantId, pauseId }, { kind, facts }, at, recipients);
   }
 
   async markTakenByTenantIdAndPauseId(tenantId: string, pauseId: string): Promise<void> {

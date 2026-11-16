@@ -20,6 +20,7 @@ import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import type { MongoTransaction } from "../connection/transaction.js";
+import { checkCancel } from "./cancel-fence.js";
 import { checkFence } from "./fence.js";
 import { fencedOrderKeysOf, inLocalOrder } from "./local-order.js";
 import { leaseStateIn } from "./outbound-calls/lease-state.js";
@@ -27,24 +28,14 @@ import {
   callIdOf,
   callRecordOf,
   ENDING_FIELDS,
+  type AsRead,
+  type Change,
+  type ChangeAt,
   type OutboundCallDocument,
 } from "./outbound-calls/outbound-call-documents.js";
 import { nextSequence } from "./sequence.js";
 import { pageLimitOf, seqOfCursor } from "./outbound-call-pages.js";
 import { assertKeyAtEntry } from "./key-entry.js";
-
-/** The state the document must still be in: its status and attempt owner, its attempt when given. */
-interface AsRead {
-  readonly status: OutboundCallStatus;
-  readonly attempt?: number;
-  readonly attemptOwner: string;
-}
-
-/** The change of a compare-and-set: the record's new fields, and its new end. */
-interface Change {
-  readonly fields: Partial<OutboundCallRecord>;
-  readonly endedAt?: Date;
-}
 
 /** A page's last document's place in the record order (agbossjs/agboss#825), checked: documents are never trusted. */
 const SeqOf = z.object({ seq: z.number().int().positive() });
@@ -83,7 +74,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
   }
 
   findByKey(key: EffectKey): Promise<OutboundCallRecord | undefined> {
-    return this.#fenced(key, async ({ session }, now) => {
+    return this.#fenced(key, false, async ({ session }, now) => {
       const found = await this.#calls.findOne({ _id: callIdOf(key) }, { session });
       // read at the store's time the fence decided by (agbossjs/agboss#658), never stored
       return found === null ? undefined : { ...callRecordOf(found), readAt: now.toISOString() };
@@ -94,7 +85,8 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     // the key's name, business key and fingerprint decision (agbossjs/agboss#508, #538, #825)
     assertKeyAtEntry(key);
     const seq = await nextSequence(this.connection.db, Collections.OutboundCalls);
-    return this.#fenced(key, async ({ session }, now) => {
+    // a new intent is a new send (agbossjs/agboss#909): refused after the tree's cancel
+    return this.#fenced(key, true, async ({ session }, now) => {
       // its first attempt starts at the store's time (agbossjs/agboss#658: the server's own)
       const startedAt = now.toISOString();
       const record = {
@@ -123,9 +115,11 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     claim: OutboundCallClaim,
   ): Promise<boolean> {
     // the next attempt starts at the store's time (agbossjs/agboss#658); the first's start is kept
-    return this.#moved(key, expected, (now) => ({
-      fields: { status: OutboundCallStatus.Pending, ...claim, attemptStartedAt: now.toISOString() },
-    }));
+    const status = OutboundCallStatus.Pending;
+    const claimed = (now: Date): Change => ({
+      fields: { status, ...claim, attemptStartedAt: now.toISOString() },
+    });
+    return this.#moved(key, expected, claimed, true);
   }
 
   markCompleted(key: EffectKey, attemptOwner: string, result: string): Promise<boolean> {
@@ -201,8 +195,8 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
    * fence decided by — written under the key's lease and token only while it is still `from`; one
    * `updateOne`, `true` when it matched.
    */
-  #moved(key: EffectKey, from: AsRead, changeAt: (now: Date) => Change): Promise<boolean> {
-    return this.#fenced(key, async ({ session }, now) => {
+  #moved(key: EffectKey, from: AsRead, changeAt: ChangeAt, isSend = false): Promise<boolean> {
+    return this.#fenced(key, isSend, async ({ session }, now) => {
       const change = changeAt(now);
       const fields = { ...change.fields, token: key.token, leaseExecutionId: key.leaseExecutionId };
       const set = Object.fromEntries(
@@ -234,9 +228,13 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     });
   }
 
-  /** `work` after the fencing checks (the lease locked, the mark raised), in one transaction. */
+  /**
+   * `work` after the fencing checks (the lease locked, the mark raised) and, for a method that
+   * starts a send (`isSend`), the tree's cancel (agbossjs/agboss#909), in one transaction.
+   */
   async #fenced<TValue>(
     key: EffectKey,
+    isSend: boolean,
     work: (transaction: MongoTransaction, now: Date) => Promise<TValue>,
   ): Promise<TValue> {
     // the key's name, business key and fingerprint decision (agbossjs/agboss#508, #538, #825)
@@ -244,7 +242,9 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     // this instance's calls on one lease or business key commit in the order they were made
     return inLocalOrder(this, fencedOrderKeysOf(key, callIdOf(key)), () =>
       this.connection.inTransaction(async (transaction) => {
-        const now = await checkFence(transaction.db, transaction.session, key, this.clock);
+        const { db, session } = transaction;
+        const now = await checkFence(db, session, key, this.clock);
+        if (isSend) await checkCancel(db, session, key);
         return work(transaction, now);
       }),
     );

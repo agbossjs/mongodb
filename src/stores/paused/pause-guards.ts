@@ -20,10 +20,17 @@ export const dueAt = (at: Date): Filter<PauseDocument> => ({
   expiresAt: { $lte: at },
 });
 
-/** A pending pause with a deadline after `at`: what an extension moves. */
-export const extendableAt = (at: Date): Filter<PauseDocument> => ({
+/**
+ * What an extension moves (#1099, #1148): a pending pause whose stored deadline is still the one the
+ * caller read (`previous`), after `at` (a write after the deadline is refused, the store's filter
+ * deciding, never the caller's read), and earlier than the new one (a deadline never shortens).
+ */
+export const extendableAt = (
+  at: Date,
+  change: { readonly previous: Date; readonly next: Date },
+): Filter<PauseDocument> => ({
   status: PauseStatus.Pending,
-  expiresAt: { $gt: at },
+  $and: [{ expiresAt: { $eq: change.previous } }, { expiresAt: { $gt: at, $lt: change.next } }],
 });
 
 /** A pending pause whose reminder is due and whose deadline is after `at`: the reminder, once. */
@@ -40,7 +47,10 @@ export const inStatus = (status: PauseStatus): Filter<PauseDocument> => ({ statu
 export interface PauseGuards {
   open(at: Date): Filter<PauseDocument>;
   due(at: Date): Filter<PauseDocument>;
-  extendable(at: Date): Filter<PauseDocument>;
+  extendable(
+    at: Date,
+    change: { readonly previous: Date; readonly next: Date },
+  ): Filter<PauseDocument>;
   remindable(at: Date): Filter<PauseDocument>;
   inStatus(status: PauseStatus): Filter<PauseDocument>;
 }

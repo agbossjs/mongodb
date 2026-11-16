@@ -14,6 +14,7 @@ import type { Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import type { MongoTransaction } from "../connection/transaction.js";
+import { checkCancel } from "./cancel-fence.js";
 import { checkFence, lockKey } from "./fence.js";
 import { idOf } from "./keys.js";
 import { fencedOrderKeysOf, inLocalOrder } from "./local-order.js";
@@ -101,6 +102,8 @@ export class MongoFencedEffectRepository extends FencedEffectRepository<MongoTra
     if (key.businessKey !== undefined) await lockKey(db, session, id, now);
     const stored = await this.#results.findOne({ _id: id }, { session });
     if (stored !== null) return replayOf(key, stored);
+    // agbossjs/agboss#909, #1117: no stored result — a new effect after a durable cancel is refused
+    await checkCancel(db, session, key);
     const text = this.storedResultOf(key, await work(transaction));
     await this.#results.insertOne(resultDocumentOf(key, text, now), { session });
     return {
