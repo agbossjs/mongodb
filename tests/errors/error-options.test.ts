@@ -11,6 +11,7 @@ const FIXTURES: Readonly<Record<string, object>> = {
   MongoCollationNotSimpleError: { collections: ["agboss_threads"] },
   MongoDeploymentError: {},
   MongoDurabilityError: { problems: ["w: 1 is not majority"] },
+  MongoLiveLeasesError: { count: 7, holders: ["pod-a", "pod-b"] },
   MongoLedgerMarkMissingError: { malformed: true, recreatedAt: new Date(0) },
   MongoSchemaMissingError: { applied: 1, expected: 4, collections: ["agboss_threads"] },
   MongoSchemaTooNewError: { applied: 5, expected: 4 },

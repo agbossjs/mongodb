@@ -198,3 +198,35 @@ export class RetentionIgnoresChain extends MongoPausedExecutionRepository {
     });
   }
 }
+
+/**
+ * `noticeOnce` that writes nothing to the pause (#1103): the notice's mailbox is appended, but a
+ * retention's delete of the closed pause — which has no mailbox yet in its snapshot — finds nothing
+ * to conflict with and removes the pause beside the notice it never saw.
+ */
+export class NoPauseWriteNoticeOnce extends MongoPausedExecutionRepository {
+  override noticeOnceByTenantIdAndPauseId(
+    tenantId: string,
+    pauseId: string,
+    kind: PauseNoticeKind,
+    facts: PauseNoticeFacts,
+    at: Date,
+    recipients: PauseRecipients,
+  ): Promise<boolean> {
+    return this.connection.inTransaction(async (transaction) => {
+      const { db, session } = transaction;
+      const found = await this.pauses.findOne({ _id: pauseIdOf(tenantId, pauseId) }, { session });
+      if (found === null) return false;
+      const pause = pauseOfDocument(found);
+      const planned = onceNotices(pause, kind, facts, at, recipients);
+      if (planned.length === 0) return false;
+      const written = await mailboxesOf(db).findOne(
+        { tenantId, pauseId, "notices.kind": kind },
+        { session },
+      );
+      if (written !== null) return false;
+      await this.appendNotices(transaction, pause, planned);
+      return true;
+    });
+  }
+}

@@ -198,6 +198,45 @@ export class MongoSchemaTooNewError extends AGBossError {
   }
 }
 
+/** What `MongoLiveLeasesError` found: how many leases are live, and some of their holders. */
+export interface MongoLiveLeasesErrorOptions {
+  /** How many execution leases are live on the server's clock. */
+  readonly count: number;
+  /** Up to 5 distinct holder instance ids of them, sorted. */
+  readonly holders: readonly string[];
+  readonly cause?: unknown;
+}
+
+/**
+ * `migrate` would apply a migration while an execution lease is live (not released, finished or
+ * superseded, its expiry after the server's clock): an instance of the previous version is still
+ * running work. A schema upgrade is stop every old instance, then migrate, then deploy
+ * (agbossjs/agboss#1104, ADR-0034): a running old instance writes documents the new schema's
+ * guarantees do not cover — a cancel it never reads, a pause without `channel`. Nothing was
+ * applied. Stop the old instances (let their leases lapse) and run again; `allowLiveLeases: true` /
+ * `--allow-live-leases` migrates anyway. An idle old instance holds no lease: this check does not
+ * see it.
+ */
+export class MongoLiveLeasesError extends AGBossError {
+  static override readonly code = "mongodb.live-leases" as const;
+  declare readonly code: typeof MongoLiveLeasesError.code;
+  override name = "MongoLiveLeasesError";
+  /** How many execution leases are live on the server's clock. */
+  readonly count: number;
+  /** Up to 5 distinct holder instance ids of them, sorted. */
+  readonly holders: readonly string[];
+
+  constructor(options: MongoLiveLeasesErrorOptions) {
+    const others = options.count > options.holders.length ? " and others" : "";
+    super(
+      `${String(options.count)} live execution lease(s) held by ${options.holders.join(", ")}${others}: an instance of the previous version is still running — stop every old instance, run the migration, then deploy the new version (ADR-0034); to migrate anyway pass allowLiveLeases: true (agboss-mongodb migrate --allow-live-leases)`,
+      { cause: options.cause },
+    );
+    this.count = options.count;
+    this.holders = options.holders;
+  }
+}
+
 /** What a missing ledger mark knows: what was found instead (#906: its keys are the error's fields). */
 export interface MongoLedgerMarkMissingErrorOptions {
   /** The mark's document is there but has no date in `prunedBefore`. */

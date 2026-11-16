@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as migrate from "../../src/connection/migrate.js";
 import { ExitCode, runCommand, USAGE, type CommandIo } from "../../src/cli.js";
-import { MIGRATE_COMMAND } from "../../src/errors.js";
+import { MIGRATE_COMMAND, MongoLiveLeasesError } from "../../src/errors.js";
 
 /** A command's io: the environment given, its lines kept. */
 function ioOf(
@@ -85,6 +85,54 @@ describe("agbossjs/agboss#891: agboss-mongodb's command line", () => {
     expect(await used(["migrate", "--database=flag"], { MONGODB_DATABASE: "env" })).toBe("flag");
     expect(await used(["migrate"], { MONGODB_DATABASE: "env" })).toBe("env");
     expect(await used(["migrate"], {})).toBeUndefined(); // the URL's database, else agboss: migrateMongodb's
+  });
+
+  it("agbossjs/agboss#1104: --allow-live-leases is the override, a flag without a value; without it the option is absent", async () => {
+    const url = "mongodb://127.0.0.1:1/urldb?serverSelectionTimeoutMS=200";
+    const optionsOf = async (args: string[]): Promise<Record<string, unknown>> => {
+      const calls: unknown[] = [];
+      vi.spyOn(migrate, "migrateMongodb").mockImplementation((options) => {
+        calls.push(options);
+        return Promise.reject(new Error("stop"));
+      });
+      await runCommand(args, ioOf({ MONGODB_URL: url }));
+      vi.restoreAllMocks();
+      return calls[0] as Record<string, unknown>;
+    };
+
+    expect(await optionsOf(["migrate", "--allow-live-leases"])).toMatchObject({
+      allowLiveLeases: true,
+    });
+    expect(await optionsOf(["migrate", "--database", "d", "--allow-live-leases"])).toMatchObject({
+      allowLiveLeases: true,
+      database: "d",
+    });
+    expect(await optionsOf(["migrate"])).not.toHaveProperty("allowLiveLeases");
+    expect(USAGE).toContain("--allow-live-leases");
+  });
+
+  it.each([
+    [["migrate", "--allow-live-leases", "--allow-live-leases"]],
+    [["migrate", "--allow-live-leases=true"]],
+    [["migrate", "--allow-live-leases", "yes"]],
+  ])("%j is a usage error", async (args) => {
+    const io = ioOf({ MONGODB_URL: "mongodb://127.0.0.1:1/x" });
+
+    expect(await runCommand(args, io)).toBe(ExitCode.Usage);
+    expect(io.errors[0]).toContain("unexpected arguments");
+  });
+
+  it("agbossjs/agboss#1104: a refusal on live leases exits 1 and names what to do, no URL", async () => {
+    vi.spyOn(migrate, "migrateMongodb").mockRejectedValue(
+      new MongoLiveLeasesError({ count: 2, holders: ["instance-1"] }),
+    );
+    const io = ioOf({ MONGODB_URL: "mongodb://app:s3cr3t-pw@h/x" });
+
+    expect(await runCommand(["migrate"], io)).toBe(ExitCode.Failed);
+    vi.restoreAllMocks();
+    expect(io.errors[0]).toContain("2 live execution lease(s) held by instance-1 and others");
+    expect(io.errors[0]).toContain("--allow-live-leases");
+    expect(io.errors.join("\n")).not.toContain("s3cr3t-pw");
   });
 
   it("the remedy an error names reads the URL from the environment, never from the command line", () => {

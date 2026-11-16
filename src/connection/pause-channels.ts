@@ -13,11 +13,28 @@ const Channel = z.object({ channel: z.string() });
  * stops it between documents; the version is raised only after it, so a stopped run is run again.
  */
 export async function fillPauseChannels(db: Db, signal?: AbortSignal): Promise<void> {
+  await fillMissingChannels(db, {}, signal);
+}
+
+/**
+ * The pauses of `scope` that lack `channel` get it from their record. The migration runs it over
+ * every pause; a channel-filtered page runs it over its tenant's before it reads (agbossjs/agboss#1104,
+ * as `latestByStep` gives a checkpoint its `step`): an instance of the previous version that is
+ * still running after the migration writes pauses with no `channel`, and no later migration would
+ * fix them. Idempotent: two runs at once write the same value.
+ */
+export async function fillMissingChannels(
+  db: Db,
+  scope: { readonly tenantId?: string },
+  signal?: AbortSignal,
+): Promise<void> {
   const pauses = db.collection(Collections.Pauses);
-  const cursor = pauses.find({ channel: { $exists: false } }, { projection: { record: 1 } });
+  // `null` matches a document without the field, and the tenant's prefix of `by_tenant` serves it
+  const lacking = { ...scope, channel: null };
+  const cursor = pauses.find(lacking, { projection: { record: 1 } });
   for await (const found of cursor) {
     signal?.throwIfAborted();
     const { channel } = Channel.parse(parsedOrUnreadable("pause", Record.parse(found).record, {}));
-    await pauses.updateOne({ _id: found._id, channel: { $exists: false } }, { $set: { channel } });
+    await pauses.updateOne({ _id: found._id, channel: null }, { $set: { channel } });
   }
 }

@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import { z } from "zod";
 import { MongoSchemaMissingError, MongoSchemaTooNewError } from "../errors.js";
 import { Collections } from "./collections.js";
+import { refuseLiveLeases } from "./live-leases.js";
 import { fillPauseChannels } from "./pause-channels.js";
 import { ensureSchema, existingCollectionsOf, requireSimpleCollation } from "./schema.js";
 
@@ -109,16 +110,33 @@ async function raiseVersion(db: Db): Promise<void> {
   }
 }
 
+/** What a migration run may be told. */
+export interface MigrateSchemaOptions {
+  /** Stops the run before it changes anything and before the version is written. */
+  readonly signal?: AbortSignal;
+  /** Migrates although an execution lease is live (agbossjs/agboss#1104): the caller knows no old instance runs. */
+  readonly allowLiveLeases?: boolean;
+}
+
 /**
- * Migrates the database to this package's schema: refuses a newer one, makes every collection and
+ * Migrates the database to this package's schema: refuses a newer one, refuses an older one while
+ * an execution lease is live on the server's clock (`MongoLiveLeasesError`, #1104: stop every old
+ * instance first; `allowLiveLeases` overrides; a database at this version is a no-op whatever is
+ * live, and one never migrated has no instance to stop), makes every collection and
  * index missing (idempotent — a collection dropped by hand is made again, the ledger's mark
  * failing closed as agbossjs/agboss#832 says), then raises the version. `signal` stops the run
  * before it changes anything and before the version is written.
  */
-export async function migrateSchema(db: Db, signal?: AbortSignal): Promise<SchemaMigration> {
+export async function migrateSchema(
+  db: Db,
+  options: MigrateSchemaOptions = {},
+): Promise<SchemaMigration> {
+  const { signal } = options;
   signal?.throwIfAborted();
   const from = await appliedVersionOf(db);
   refuseNewer(from);
+  if (from !== undefined && from < SCHEMA_VERSION && options.allowLiveLeases !== true)
+    await refuseLiveLeases(db);
   await ensureSchema(db);
   signal?.throwIfAborted();
   if ((from ?? 0) < 3) await fillPauseChannels(db, signal);
