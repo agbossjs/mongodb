@@ -1,14 +1,12 @@
 name: CI
 
 on:
-  # CI OFF until the one pre-0.1.1 run (user, 2026-11-16); restore by uncommenting
-# push:
-#   branches: [main]
-# pull_request:
-# # agbossjs/agboss#484: the fault suite on the real clock, every night
-# schedule:
-#   - cron: "37 3 * * *"
-  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+  # agbossjs/agboss#484: the fault suite on the real clock, every night
+  schedule:
+    - cron: "37 3 * * *"
 
 permissions:
   contents: read
