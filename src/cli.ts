@@ -26,11 +26,15 @@ export enum ExitCode {
   Usage = 2,
 }
 
-export const USAGE = `usage: agboss-mongodb migrate [--database <name>] [--url <mongodb-url>]
+export const USAGE = `usage: agboss-mongodb migrate [--database <name>] [--url <mongodb-url>] [--allow-live-leases]
   Migrates the @agboss/mongodb schema on MONGODB_URL (the database: --database, else
-  MONGODB_DATABASE, else the URL's, else agboss). Prefer MONGODB_URL: --url puts the URL, its credentials too, in the process list.`;
+  MONGODB_DATABASE, else the URL's, else agboss). Prefer MONGODB_URL: --url puts the URL, its credentials too, in the process list.
+  Stop every instance of the old version first: with migrations pending, an execution lease still live
+  on the server's clock refuses the run; --allow-live-leases migrates anyway.`;
 
-const FLAGS = new Set(["--url", "--database"]);
+const VALUE_FLAGS = new Set(["--url", "--database"]);
+const ALLOW_LIVE_LEASES = "--allow-live-leases";
+const FLAGS = new Set([...VALUE_FLAGS, ALLOW_LIVE_LEASES]);
 
 /**
  * The flags of a command line as a usage error names them — allowlisted: a known flag by its name
@@ -60,8 +64,14 @@ function flagAt(
 function flagsOf(rest: readonly string[]): ReadonlyMap<string, string> | string {
   const flags = new Map<string, string>();
   for (let at = 0; at < rest.length;) {
+    if (rest[at] === ALLOW_LIVE_LEASES) {
+      if (flags.has(ALLOW_LIVE_LEASES)) return `unexpected arguments (flags: ${flagNamesOf(rest)})`;
+      flags.set(ALLOW_LIVE_LEASES, "");
+      at += 1;
+      continue;
+    }
     const { flag, value, next } = flagAt(rest, at);
-    if (!FLAGS.has(flag) || flags.has(flag) || value === undefined || value === "")
+    if (!VALUE_FLAGS.has(flag) || flags.has(flag) || value === undefined || value === "")
       return `unexpected arguments (flags: ${flagNamesOf(rest) || "none"})`;
     flags.set(flag, value);
     at = next;
@@ -78,7 +88,12 @@ function optionsOf(args: readonly string[], env: CommandIo["env"]): MigrateMongo
   // as the app's connection reads them: --database, MONGODB_DATABASE, the URL's database, agboss
   const fromEnv = env.MONGODB_DATABASE === "" ? undefined : env.MONGODB_DATABASE;
   const database = flags.get("--database") ?? fromEnv;
-  return database === undefined ? { url } : { url, database };
+  const allowLiveLeases = flags.has(ALLOW_LIVE_LEASES);
+  return {
+    url,
+    ...(database === undefined ? {} : { database }),
+    ...(allowLiveLeases ? { allowLiveLeases } : {}),
+  };
 }
 
 /** The lines a run prints: what it applied, or that nothing was left. */

@@ -214,7 +214,10 @@ export class MongoConnection implements OnInit, OnDestroy {
     // a client a failed start closed connects again (a connected one: nothing to do)
     await this.client.connect();
     await this.requireSupportedTopology();
-    if (this.#schemaSetup === SchemaSetup.MigrateOnStart) await migrateSchema(this.db);
+    // a start that migrates never waits for the other instances' leases: a rolling restart would
+    // deadlock on its own (agbossjs/agboss#1104; the explicit `migrate` is the guarded one)
+    if (this.#schemaSetup === SchemaSetup.MigrateOnStart)
+      await migrateSchema(this.db, { allowLiveLeases: true });
     else await checkSchema(this.db);
   }
 

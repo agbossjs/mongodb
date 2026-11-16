@@ -9,6 +9,12 @@ export interface MigrateMongodbOptions {
   readonly database?: string;
   /** Aborted → the run stops before it changes anything, or before it writes the version. */
   readonly signal?: AbortSignal;
+  /**
+   * Migrates although an execution lease is live on the server's clock (default `false`: with
+   * migrations pending, a live lease is `MongoLiveLeasesError`, agbossjs/agboss#1104). Pass it
+   * only when no instance of the previous version runs — an idle one holds no lease and is not seen.
+   */
+  readonly allowLiveLeases?: boolean;
 }
 
 /** One migration a run applied. */
@@ -33,7 +39,8 @@ export interface MongoMigrationReport {
  * idempotent, so concurrent runs end in one schema and a run after them applies nothing. Refuses a
  * standalone `mongod` (`MongoDeploymentError`), a collection of another collation
  * (`MongoCollationNotSimpleError`) and a database a newer package migrated
- * (`MongoSchemaTooNewError`). The command `agboss-mongodb migrate` runs it.
+ * (`MongoSchemaTooNewError`), and — with migrations pending on a migrated database — a live execution
+ * lease (`MongoLiveLeasesError`: stop every old instance first, `allowLiveLeases` overrides). The command `agboss-mongodb migrate` runs it.
  */
 export async function migrateMongodb(
   options: MigrateMongodbOptions,
@@ -43,7 +50,12 @@ export async function migrateMongodb(
   const connection = new MongoConnection(database === undefined ? { url } : { url, database });
   try {
     await connection.requireSupportedTopology();
-    const { applied } = await migrateSchema(connection.db, options.signal);
+    const { applied } = await migrateSchema(connection.db, {
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.allowLiveLeases === undefined
+        ? {}
+        : { allowLiveLeases: options.allowLiveLeases }),
+    });
     return { database: connection.db.databaseName, applied, version: SCHEMA_VERSION };
   } finally {
     await connection.client.close();

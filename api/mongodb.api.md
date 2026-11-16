@@ -173,6 +173,7 @@ export function migrateMongodb(options: MigrateMongodbOptions): Promise<MongoMig
 
 // @public
 export interface MigrateMongodbOptions {
+    readonly allowLiveLeases?: boolean;
     readonly database?: string;
     readonly signal?: AbortSignal;
     readonly url: string;
@@ -539,6 +540,27 @@ export interface MongoLedgerMarkMissingErrorOptions {
 }
 
 // @public
+export class MongoLiveLeasesError extends AGBossError {
+    constructor(options: MongoLiveLeasesErrorOptions);
+    // (undocumented)
+    static readonly code: "mongodb.live-leases";
+    // (undocumented)
+    readonly code: typeof MongoLiveLeasesError.code;
+    readonly count: number;
+    readonly holders: readonly string[];
+    // (undocumented)
+    name: string;
+}
+
+// @public
+export interface MongoLiveLeasesErrorOptions {
+    // (undocumented)
+    readonly cause?: unknown;
+    readonly count: number;
+    readonly holders: readonly string[];
+}
+
+// @public
 export class MongoMeshRequestRepository extends MeshRequestRepository {
     constructor(connection: MongoConnection);
     // (undocumented)
@@ -858,6 +880,10 @@ export { SchemaSetup }
 // src/connection/transaction.ts - (ae-undocumented) Missing documentation for "session".
 // src/connection/transaction.ts - (ae-undocumented) Missing documentation for "db".
 // src/errors.ts - (ae-undocumented) Missing documentation for "message".
+// src/errors.ts - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts - (ae-undocumented) Missing documentation for "name".
 // src/errors.ts - (ae-undocumented) Missing documentation for "cause".
 // src/errors.ts - (ae-undocumented) Missing documentation for "code".
 // src/errors.ts - (ae-undocumented) Missing documentation for "code".

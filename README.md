@@ -128,24 +128,47 @@ then checks the schema. A failed start closes the client; the next `onInit` trie
 
 The stores' collections (with the **simple collation**), their indexes and the ledger's pruning mark
 are the schema, version 4, recorded in `agboss_schema` (`{ _id: "agboss", version }`,
-agbossjs/agboss#891). It is migrated explicitly, like `@agboss/postgres`'s — a Kubernetes Job before
-the pods roll out:
+agbossjs/agboss#891; version 3 is the pause store of #938, version 4 the cancel mark on the lease
+document of #909). It is migrated explicitly, like `@agboss/postgres`'s.
+
+**An upgrade that changes the schema is: stop every instance of the old version, run `migrate`, start
+the new version** (agbossjs/agboss#1104, ADR-0034). There is no rolling upgrade across a schema
+change in 0.1.x: an old instance that keeps running after the migration writes documents the new
+schema's guarantees do not cover — a lease and a fence that never read the cancel mark of #909, a
+pause with no `channel`, a lease's token under the 0.1.0 name `leaseEpoch` (#847). So a pre-upgrade
+hook that runs the Job while the old pods serve (a Helm `pre-upgrade`, an Argo CD `PreSync`) is right
+only for an upgrade that changes no schema — `migrate` printing `nothing to apply`. Otherwise scale
+the old version to zero, run the Job, then deploy the new version.
 
 ```sh
-npx agboss-mongodb migrate [--database <name>]   # with MONGODB_URL set in the environment (a Secret in the Job); the database: --database, else MONGODB_DATABASE, else the URL's, else agboss
+npx agboss-mongodb migrate [--database <name>] [--allow-live-leases]   # with MONGODB_URL set in the environment (a Secret in the Job); the database: --database, else MONGODB_DATABASE, else the URL's, else agboss
 # applied 0001_stores … 0004_execution-cancel-mark (agboss) — a second run: nothing to apply: agboss is at version 4
 ```
 
-or `migrateMongodb({ url, database?, signal? })` from a script. `--url <url>` works too, but puts the
-URL — its credentials — in the process list and shell history: prefer `MONGODB_URL`. No output or
-error of the command prints the URL. Idempotent: concurrent runs end in
+or `migrateMongodb({ url, database?, allowLiveLeases?, signal? })` from a script. `--url <url>` works
+too, but puts the URL — its credentials — in the process list and shell history: prefer
+`MONGODB_URL`. No output or error of the command prints the URL. Idempotent: concurrent runs end in
 one schema, a run after them applies nothing; exit code 0 when current, 1 when the run failed, 2 for
-a wrong command line. A start (`SchemaSetup.Check`, the default — `SchemaSetup` is the core's, shared
-with `@agboss/postgres`, re-exported here) creates nothing, so the application's pods need no right
-to change the schema: a database never migrated, an older one or one a stores' collection was
-dropped from is `MongoSchemaMissingError` (`applied`, `expected`, `collections`), one a newer
+a wrong command line.
+
+**`migrate` refuses while an execution lease is live.** With migrations pending on an already
+migrated database, a lease that is not released, finished or superseded and expires after the
+**server's** clock (`$$NOW`) means an old instance is still running work: nothing is applied and
+`MongoLiveLeasesError` (`mongodb.live-leases`: `count`, up to 5 sorted `holders`) is thrown, exit
+code 1. Stop the old instances, let their leases lapse and run again — or pass
+`--allow-live-leases` / `allowLiveLeases: true` when you know none runs. A database already at this
+version stays a no-op with exit 0 whatever is live. **The blind spot:** an idle old instance holds no
+lease, so the guard does not see it — stopping every old instance is still on you. As a backstop for
+that blind spot, a channel-filtered page of pauses gives a pause with no `channel` (written by an
+old instance after the migration) its channel from its record before it reads.
+
+A start (`SchemaSetup.Check`, the default — `SchemaSetup` is the core's, shared with
+`@agboss/postgres`, re-exported here) creates nothing, so the application's pods need no right to
+change the schema: a database never migrated, an older one or one a stores' collection was dropped
+from is `MongoSchemaMissingError` (`applied`, `expected`, `collections`), one a newer
 `@agboss/mongodb` migrated `MongoSchemaTooNewError` (deploy that version: migrations are not rolled
-back). `mongodbSchemaSetup: SchemaSetup.MigrateOnStart` makes each start migrate first instead.
+back). `mongodbSchemaSetup: SchemaSetup.MigrateOnStart` makes each start migrate first instead, and
+is **not** guarded: a rolling restart would wait on its own leases.
 
 ## Required database settings
 
