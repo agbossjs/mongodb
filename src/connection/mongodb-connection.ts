@@ -28,7 +28,8 @@ import { supportedTopologyOf, topologyOf, type MongoTopology } from "./deploymen
 import { StoreOutcomeUnknownError } from "@agboss/core/stores";
 import { classifiedDb } from "./classified-db.js";
 import { commitErrorOf } from "./outcome.js";
-import { checkSchema, migrateSchema } from "./schema-version.js";
+import { sleepOn } from "./live-leases.js";
+import { checkSchema, migrateAtStart } from "./schema-version.js";
 import {
   checkedWatchLivenessOf,
   databaseOfUrl,
@@ -80,6 +81,7 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
     mongodbTransactionReadConcern: EnvironmentField.text({ optional: true }),
     mongodbWatchLivenessSeconds: EnvironmentField.integer({ optional: true }),
     mongodbSchemaSetup: EnvironmentField.text({ optional: true }),
+    mongodbAllowLiveLeases: EnvironmentField.flag({ optional: true }),
   },
 })
 export class MongoConnection implements OnInit, OnDestroy {
@@ -94,6 +96,7 @@ export class MongoConnection implements OnInit, OnDestroy {
   readonly #rawDb: Db;
   readonly #transactionOptions: TransactionOptions;
   readonly #schemaSetup: SchemaSetup;
+  readonly #allowLiveLeases: boolean;
 
   /**
    * @param clock bounds the close at the stop (agbossjs/agboss#923); a connection built without
@@ -125,6 +128,7 @@ export class MongoConnection implements OnInit, OnDestroy {
       settings.transactionReadConcern ?? MongoTransactionReadConcern.Snapshot,
     );
     this.#schemaSetup = settings.schemaSetup ?? SchemaSetup.Check;
+    this.#allowLiveLeases = settings.allowLiveLeases === true;
   }
 
   /** The options every store transaction runs with (`inTransaction`). */
@@ -223,10 +227,13 @@ export class MongoConnection implements OnInit, OnDestroy {
     // a client a failed start closed connects again (a connected one: nothing to do)
     await this.client.connect();
     await this.requireSupportedTopology();
-    // a start that migrates never waits for the other instances' leases: a rolling restart would
-    // deadlock on its own (agbossjs/agboss#1104; the explicit `migrate` is the guarded one)
+    // no rolling upgrade across a schema change (agbossjs/agboss#1104, ADR-0034): a start that
+    // migrates a migrated database waits for live leases to lapse and refuses while one is live
     if (this.#schemaSetup === SchemaSetup.MigrateOnStart)
-      await migrateSchema(this.#rawDb, { allowLiveLeases: true });
+      await migrateAtStart(this.#rawDb, {
+        allowLiveLeases: this.#allowLiveLeases,
+        sleep: sleepOn(this.clock),
+      });
     else await checkSchema(this.db);
   }
 

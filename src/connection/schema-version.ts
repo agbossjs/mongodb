@@ -2,7 +2,13 @@ import type { Db } from "mongodb";
 import { z } from "zod";
 import { MongoSchemaMissingError, MongoSchemaTooNewError } from "../errors.js";
 import { Collections } from "./collections.js";
-import { refuseLiveLeases } from "./live-leases.js";
+import {
+  DEFAULT_LEASE_WAIT,
+  refuseLiveLeases,
+  waitForLeasesToLapse,
+  type LeaseWait,
+  type Sleep,
+} from "./live-leases.js";
 import { fillPauseChannels } from "./pause-channels.js";
 import { ensureSchema, existingCollectionsOf, requireSimpleCollation } from "./schema.js";
 
@@ -143,4 +149,34 @@ export async function migrateSchema(
   await raiseVersion(db);
   const applied = MIGRATIONS.filter((migration) => migration.version > (from ?? 0));
   return { from, applied };
+}
+
+/** What a start that migrates may be told. */
+export interface MigrateAtStartOptions {
+  /** Migrates over live leases (the settings' `allowLiveLeases`, agbossjs/agboss#1104). */
+  readonly allowLiveLeases?: boolean | undefined;
+  /** How long to wait for leases to lapse (a test's bound; default `DEFAULT_LEASE_WAIT`). */
+  readonly leaseWait?: LeaseWait | undefined;
+  /** What paces the polls (the connection's `Clock`; none: the start cannot wait and refuses at once). */
+  readonly sleep?: Sleep | undefined;
+}
+
+/**
+ * A start with `SchemaSetup.MigrateOnStart` is held to the rule of `migrate` (agbossjs/agboss#1104,
+ * ADR-0034: no rolling upgrade across a schema change): with migrations pending on an already
+ * migrated database it waits for the live leases to lapse (`waitForLeasesToLapse`: a stopped single
+ * instance's own do) and fails with `MongoLiveLeasesError` while one is live; the migration looks
+ * once more, so a lease taken meanwhile refuses it too. A database at this version, one never
+ * migrated and a newer one are not looked at; `allowLiveLeases` skips the wait and the look.
+ */
+export async function migrateAtStart(
+  db: Db,
+  options: MigrateAtStartOptions = {},
+): Promise<SchemaMigration> {
+  const allowLiveLeases = options.allowLiveLeases === true;
+  const from = await appliedVersionOf(db);
+  refuseNewer(from);
+  if (from !== undefined && from < SCHEMA_VERSION && !allowLiveLeases)
+    await waitForLeasesToLapse(db, options.leaseWait ?? DEFAULT_LEASE_WAIT, options.sleep);
+  return migrateSchema(db, { allowLiveLeases });
 }

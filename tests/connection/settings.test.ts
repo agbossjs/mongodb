@@ -54,6 +54,18 @@ describe("the environment fields of the MongoDB stores", () => {
     expect(settings.schemaSetup).toBe(setup);
   });
 
+  it.each([true, false])(
+    "agbossjs/agboss#1260: mongodbAllowLiveLeases %s is read when set",
+    (value) => {
+      const settings = settingsOfEnvironment({
+        mongodbUrl: revealing(URL),
+        mongodbAllowLiveLeases: value,
+      });
+
+      expect(settings.allowLiveLeases).toBe(value);
+    },
+  );
+
   it("snapshot is the other transaction read concern", () => {
     const settings = settingsOfEnvironment({
       mongodbUrl: revealing(URL),
@@ -99,6 +111,8 @@ describe("the environment fields of the MongoDB stores", () => {
     [{ mongodbWatchLivenessSeconds: "5" }, /mongodbWatchLivenessSeconds must be a number/],
     [{ mongodbSchemaSetup: "ensure" }, /mongodbSchemaSetup must be check or migrate-on-start/],
     [{ mongodbSchemaSetup: true }, /mongodbSchemaSetup must be check or migrate-on-start/],
+    [{ mongodbAllowLiveLeases: "yes" }, /mongodbAllowLiveLeases must be true or false/],
+    [{ mongodbAllowLiveLeases: 1 }, /mongodbAllowLiveLeases must be true or false/],
   ])("a mistyped field fails, naming it: %o", (fields, message) => {
     expect(() => settingsOfEnvironment({ mongodbUrl: revealing(URL), ...fields })).toThrow(message);
   });

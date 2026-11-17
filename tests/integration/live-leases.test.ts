@@ -3,9 +3,11 @@
  * deploy, and `migrate` enforces what it can see: with migrations pending on a migrated database, an
  * execution lease live on the server's clock refuses the run (`MongoLiveLeasesError`, the count and
  * up to 5 holders), nothing applied, unless `allowLiveLeases`. A database at this package's version
- * stays a no-op whatever is live; a start with `SchemaSetup.MigrateOnStart` is never refused.
+ * stays a no-op whatever is live. A start with `SchemaSetup.MigrateOnStart` is held to the same rule
+ * (agbossjs/agboss#1260: it waits for the leases to lapse first; `migrate-on-start-leases.test.ts`).
  */
 import { SchemaSetup } from "@agboss/core/stores";
+import { VirtualClock } from "@agboss/core/testing";
 import { MongoClient, type Db } from "mongodb";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -193,21 +195,26 @@ describe("agbossjs/agboss#1104: migrate refuses while an execution lease is live
     await expect(migrate(database)).rejects.toMatchObject({ count: 1, holders: ["old-pod"] });
   });
 
-  it("a start with SchemaSetup.MigrateOnStart migrates over a live lease: a rolling restart never waits on its own leases", async () => {
+  it("a start with SchemaSetup.MigrateOnStart over a live lease is refused too (#1260), nothing applied", async () => {
     const database = await databaseAt(SCHEMA_VERSION - 1);
     await leased(database, { root: "a" });
-    const connection = new MongoConnection({
-      url: REPLICA_SET_URL,
-      database,
-      schemaSetup: SchemaSetup.MigrateOnStart,
-    });
+    // a clock whose sleeps end at once: the start's wait is over without the minutes
+    const clock = new (class extends VirtualClock {
+      override sleep(): Promise<void> {
+        return Promise.resolve();
+      }
+    })();
+    const connection = new MongoConnection(
+      { url: REPLICA_SET_URL, database, schemaSetup: SchemaSetup.MigrateOnStart },
+      clock,
+    );
 
     try {
-      await connection.onInit();
+      await expect(connection.onInit()).rejects.toThrow(MongoLiveLeasesError);
     } finally {
       await connection.onDestroy();
     }
 
-    expect(await versionOf(database)).toBe(SCHEMA_VERSION);
+    expect(await versionOf(database)).toBe(SCHEMA_VERSION - 1);
   });
 });

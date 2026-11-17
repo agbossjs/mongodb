@@ -70,6 +70,14 @@ export interface MongoConnectionSettings {
    * migrates it first.
    */
   readonly schemaSetup?: SchemaSetup;
+  /**
+   * With `SchemaSetup.MigrateOnStart` and migrations pending, the start waits for the execution
+   * leases of the old instances to lapse (twice the longest lease left, at least a minute, at most
+   * ten) and fails with `MongoLiveLeasesError` while one is live (agbossjs/agboss#1104: no rolling
+   * upgrade across a schema change — stop the old instances first). `true` migrates over live
+   * leases: for an operator who accepts the risk. The environment's `mongodbAllowLiveLeases`.
+   */
+  readonly allowLiveLeases?: boolean;
 }
 
 /** A `Secret` of the environment: only `reveal()` gives its value. */
@@ -109,6 +117,9 @@ const MongoEnvironment = z.object({
   mongodbSchemaSetup: z
     .enum(SchemaSetup, { message: "mongodbSchemaSetup must be check or migrate-on-start" })
     .optional(),
+  mongodbAllowLiveLeases: z
+    .boolean({ message: "mongodbAllowLiveLeases must be true or false" })
+    .optional(),
 });
 
 const MISSING_URL =
@@ -117,7 +128,7 @@ const MISSING_URL =
 /**
  * The connection settings an application's environment gives: `mongodbUrl` (required, a
  * `Secret`), `mongodbDatabase`, `mongodbTransactionReadConcern`, `mongodbWatchLivenessSeconds` and
- * `mongodbSchemaSetup` (optional). A missing or
+ * `mongodbSchemaSetup` and `mongodbAllowLiveLeases` (optional). A missing or
  * mistyped field fails with `MongoSettingsError`, naming it — the URL itself is never printed.
  */
 export function settingsOfEnvironment(environment: unknown): MongoConnectionSettings {
@@ -133,7 +144,7 @@ export function settingsOfEnvironment(environment: unknown): MongoConnectionSett
   }
   const { mongodbUrl, mongodbDatabase, mongodbTransactionReadConcern, mongodbSchemaSetup } =
     parsed.data;
-  const { mongodbWatchLivenessSeconds } = parsed.data;
+  const { mongodbWatchLivenessSeconds, mongodbAllowLiveLeases } = parsed.data;
   const url = mongodbUrl.reveal();
   if (url.length === 0) throw new MongoSettingsError({ message: "mongodbUrl is empty" });
   return {
@@ -142,5 +153,6 @@ export function settingsOfEnvironment(environment: unknown): MongoConnectionSett
     transactionReadConcern: mongodbTransactionReadConcern,
     watchLivenessSeconds: mongodbWatchLivenessSeconds,
     schemaSetup: mongodbSchemaSetup,
+    allowLiveLeases: mongodbAllowLiveLeases,
   };
 }
