@@ -1,0 +1,6 @@
+---
+section: Fixed
+issue: 1017
+---
+
+**Every MongoDB store's single-command write reads an unknown outcome as one, by a whitelist** (agbossjs/mongodb#76, agbossjs/agboss#1017) — a pause, a fenced effect's sweep, an outbound call's sequence, a checkpoint, a record, the child queue, a rate limit, a tree key, a mesh request, the cost ledger, the audit log and the A2A stores. Only the server's error reply that proves nothing was applied (a duplicate key, a document validation failure, a write conflict, a refused form of the command) is known and rethrown as it is; every other error after the send (a transport error or timeout, a write concern error, `NotWritablePrimary`, an unrecognised code, an error with no code) is `StoreOutcomeUnknownError` (source `Transport`), as the lease store's was, so the holder hands the tree over instead of treating the write as "not written". A commit follows the same rule. `MongoConnection.db` gives the stores their collections through one seam (`classified-db.ts`), so a write added later cannot miss it; a write of a transaction is left to its commit, a read is never unknown, a bulk write is known only when every per-operation error is one of those replies and none succeeded.

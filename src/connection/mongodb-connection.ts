@@ -26,6 +26,7 @@ import {
 } from "./concerns.js";
 import { supportedTopologyOf, topologyOf, type MongoTopology } from "./deployment.js";
 import { StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { classifiedDb } from "./classified-db.js";
 import { commitErrorOf } from "./outcome.js";
 import { checkSchema, migrateSchema } from "./schema-version.js";
 import {
@@ -84,8 +85,13 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
 export class MongoConnection implements OnInit, OnDestroy {
   /** The instance's client: every store's operations, every transaction's session. */
   readonly client: MongoClient;
-  /** The database the stores' collections are in (`mongodbDatabase`, else the URL's, else `agboss`). */
+  /**
+   * The database the stores' collections are in (`mongodbDatabase`, else the URL's, else `agboss`):
+   * a write of its collections outside a transaction reads an error of unknown outcome as
+   * `StoreOutcomeUnknownError` (agbossjs/mongodb#76).
+   */
   readonly db: Db;
+  readonly #rawDb: Db;
   readonly #transactionOptions: TransactionOptions;
   readonly #schemaSetup: SchemaSetup;
 
@@ -111,7 +117,10 @@ export class MongoConnection implements OnInit, OnDestroy {
     // a field left `undefined` is left out, never written as `null`: a document reads back as given
     this.client = clientOf(settings.url, { ...ENFORCED_CLIENT_OPTIONS, ignoreUndefined: true });
     requireConcerns(enforcementProblemsOf(this.client));
-    this.db = this.client.db(settings.database ?? databaseOfUrl(settings.url) ?? DEFAULT_DATABASE);
+    this.#rawDb = this.client.db(
+      settings.database ?? databaseOfUrl(settings.url) ?? DEFAULT_DATABASE,
+    );
+    this.db = classifiedDb(this.#rawDb);
     this.#transactionOptions = transactionOptionsOf(
       settings.transactionReadConcern ?? MongoTransactionReadConcern.Snapshot,
     );
@@ -155,8 +164,8 @@ export class MongoConnection implements OnInit, OnDestroy {
    *   so `work` may run more than once per call and must do nothing outside `transaction.session`;
    * - a commit whose reply was lost is sent once more by the driver — the same transaction, which
    *   the server commits once —: after one reset the retry learns the real outcome (agbossjs/agboss#1017);
-   *   a commit that is still unknown after it (`UnknownTransactionCommitResult`, or a transport
-   *   error: the retry's reply lost too) rejects at once with `StoreOutcomeUnknownError` (source
+   *   a commit that fails after it — whatever the error: the driver retries by itself, so the one
+   *   seen may be the retry's after a first attempt that committed — rejects at once with `StoreOutcomeUnknownError` (source
    *   `Transport`, `outcome.ts`): the transaction may have committed, the holder hands the tree
    *   over and the next one reads what was left; the work is never run again for it;
    * - any other error (the work's own, a fence's refusal) aborts and is rethrown as it is.
@@ -217,7 +226,7 @@ export class MongoConnection implements OnInit, OnDestroy {
     // a start that migrates never waits for the other instances' leases: a rolling restart would
     // deadlock on its own (agbossjs/agboss#1104; the explicit `migrate` is the guarded one)
     if (this.#schemaSetup === SchemaSetup.MigrateOnStart)
-      await migrateSchema(this.db, { allowLiveLeases: true });
+      await migrateSchema(this.#rawDb, { allowLiveLeases: true });
     else await checkSchema(this.db);
   }
 
