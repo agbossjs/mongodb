@@ -24,9 +24,11 @@ import {
 } from "../../src/index.js";
 import { TestApplicationContext } from "../support/application-context.js";
 import { openConnection, testDatabase } from "../support/database.js";
+import { holdFailPoints } from "../support/failpoint-lock.js";
 
 const APP = "agboss-retries-test";
 const database = testDatabase();
+holdFailPoints();
 let connection: MongoConnection;
 let admin: MongoClient;
 

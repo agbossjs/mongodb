@@ -54,9 +54,11 @@ import { RecordingLogger } from "../support/recording-logger.js";
 import { emptyAll, openConnection, testDatabase } from "../support/database.js";
 import { CountingIdGenerator } from "../support/stores.js";
 import { pauseOf } from "../support/pauses.js";
+import { holdFailPoints } from "../support/failpoint-lock.js";
 
 const APP = "agboss-write-outcome-test";
 const database = testDatabase();
+holdFailPoints();
 const BEFORE = new Date("2030-01-01T00:00:00.000Z");
 const WRITES = ["insert", "update", "delete", "findAndModify"];
 let connection: MongoConnection;
