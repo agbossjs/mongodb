@@ -207,6 +207,15 @@ database with no counters starts at the epoch, "never pruned".
   clocks synchronized (NTP), well inside the holder's 1 s safety margin.
 - **Transactions** (`transactionLifetimeLimitSeconds`, 60 s by default): a fenced effect's work
   runs inside one; keep it short — store a receipt, not a document.
+- **A fenced work must finish well under the bound** (agbossjs/agboss#1334): a fenced effect's
+  transaction writes the tree's lease document, a child's its root's, so the root's lease renewal
+  (a single-document write) waits for any open fenced transaction of its tree. MongoDB has no
+  command-timeout option of its own (PostgreSQL's is `postgresCommandTimeoutMs`): the renewal is
+  bounded by the core's store-call bound, a transaction by `transactionLifetimeLimitSeconds`. A
+  fenced `work`, the root's or any child's, must finish well under both, in practice within a few
+  seconds. A renewal that waits past its bound fails with `StoreCallTimeoutError`, an unknown
+  outcome: the tree's holder is abandoned and the tree is recovered after the lease's TTL. Safety
+  holds, every fence stands; what is lost is liveness. Do the slow part of a step outside the work.
 - **A pod killed mid-transaction** (`kill -9`, an OOM kill, a lost node; agbossjs/agboss#1103): the
   transaction it had open stays open on the server and keeps the documents it wrote locked, so
   another instance's change of the same pause (or lease, or key) conflicts and is retried until the
@@ -232,6 +241,25 @@ database with no counters starts at the epoch, "never pruned".
   `lookup.attemptStartedAt`, `lookup.keyAge` and a `NotSentTrust.KeyReplay`'s `keyRetention` mean
   the same on every pod and after a takeover. An intent written before has none: its key's age is
   unknown, and a `KeyReplay` refuses its replay.
+- **A write whose outcome is unknown** (agbossjs/agboss#1017, `src/connection/outcome.ts`) is read by
+  whitelist: every single-command write of every store outside a transaction (not only a lease's),
+  and every transaction's commit. A write inside a transaction is left as it is: its commit decides.
+  Only an error that proves the write was not applied is known and rethrown as it is; every other
+  one is `StoreOutcomeUnknownError` (source `Transport`), and under a lease the holder hands the tree
+  over. The client's `socketTimeoutMS` is forced to 300 s.
+  - Known server codes: 2, 9, 14 and 40 (refusals of a command's form), for every write; and 112,
+    121, 11000, 11001 and 12582 (a write conflict, a validation failure, duplicate keys), the
+    replies about one document, for a write of one document.
+  - The per-document replies of `updateMany` and `deleteMany` (112, 121, 11000, 11001, 12582) are
+    unknown: such a write is not atomic outside a transaction, the documents before the failing one
+    stay written. Only 2, 9, 14 and 40 are known for them.
+  - A bulk write is known only when every per-operation error is a known code, none of its
+    operations was applied, and it met no write concern error.
+  - Every commit error is unknown, whatever it says (`NoSuchTransaction`, a transient label, a
+    transport or write concern error): the driver retries a commit itself, so the error seen is the
+    last attempt's and the first may have committed.
+  - Unknown too: a transport error or timeout, a pool or selection error, a write concern error,
+    `NotWritablePrimary` and every other code, an error with no code. A read is never classified.
 - **Retries.** `MongoConnection.inTransaction` is the driver's `withTransaction`:
   - a `TransientTransactionError` (a write conflict, a step-down) aborts the attempt — none of its
     writes is ever seen — and runs it again from the start: a fenced effect's work can run more than
