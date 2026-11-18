@@ -115,6 +115,7 @@ describe("enforcementProblemsOf: what the built client carries", () => {
       readPreference: "primary",
       retryWrites: true,
       retryReads: true,
+      socketTimeoutMS: 300_000,
     });
   });
 });

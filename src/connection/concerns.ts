@@ -25,6 +25,11 @@ export const ENFORCED_CLIENT_OPTIONS: MongoClientOptions = {
   // its outcome by the session's transaction number): a lease is never taken twice by one call
   retryWrites: true,
   retryReads: true,
+  // a write that errors with a duplicate key on its retry is read as "not applied" because the server
+  // still holds the first attempt's receipt (30 minutes, `localLogicalSessionTimeoutMinutes`): a
+  // socket that hangs for longer than that must time out first, so the retry is always inside it
+  // (agbossjs/mongodb#76). Over the longest command the stores send (a transaction's 60 s, an index build).
+  socketTimeoutMS: 300_000,
 };
 
 /** A client's concerns as the driver resolved them (`client.writeConcern`, …). */

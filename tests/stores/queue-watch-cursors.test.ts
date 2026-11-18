@@ -21,8 +21,10 @@ import { REPLICA_SET_URL } from "../support/server.js";
 import { changeStreamCursors, closeCursorProbes } from "../support/server-cursors.js";
 import { connectionTo } from "../support/stores.js";
 import { CONNECTS, child, instances, watching } from "../support/silent-watch.js";
+import { holdFailPoints } from "../support/failpoint-lock.js";
 
 const database = testDatabase();
+holdFailPoints();
 const cleanups: (() => Promise<void>)[] = [];
 
 afterAll(closeCursorProbes);

@@ -207,6 +207,13 @@ database with no counters starts at the epoch, "never pruned".
   clocks synchronized (NTP), well inside the holder's 1 s safety margin.
 - **Transactions** (`transactionLifetimeLimitSeconds`, 60 s by default): a fenced effect's work
   runs inside one; keep it short — store a receipt, not a document.
+- **A pod killed mid-transaction** (`kill -9`, an OOM kill, a lost node; agbossjs/agboss#1103): the
+  transaction it had open stays open on the server and keeps the documents it wrote locked, so
+  another instance's change of the same pause (or lease, or key) conflicts and is retried until the
+  server aborts the orphaned transaction — after `transactionLifetimeLimitSeconds`, 60 s by
+  default. That pause is blocked for about that long; nothing is lost and nothing half-written is
+  ever seen, because the dead pod's transaction never committed. There is nothing to clean up by
+  hand, and no reason to raise the limit to avoid it.
 - **Sharded clusters** are accepted by the start check; the tests and the fault suite run on a
   replica set only.
 
