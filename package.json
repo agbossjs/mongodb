@@ -73,7 +73,7 @@
     "@langchain/langgraph-checkpoint": "^1.2.0"
   },
   "dependencies": {
-    "mongodb": "^7.7.0",
+    "mongodb": "7.9.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@ import {
   type OnInit,
 } from "@agboss/core";
 import { SchemaSetup } from "@agboss/core/stores";
-import { closeClientBounded } from "./close-bounded.js";
+import { assertDriverInternals, closeClientBounded } from "./close-bounded.js";
 import {
   MongoClient,
   type ClientSession,
@@ -226,6 +226,8 @@ export class MongoConnection implements OnInit, OnDestroy {
   async #start(): Promise<void> {
     // a client a failed start closed connects again (a connected one: nothing to do)
     await this.client.connect();
+    // the bounded stop (#954) reaches the driver's internals: a driver without them fails here (#1236)
+    assertDriverInternals(this.client);
     await this.requireSupportedTopology();
     // no rolling upgrade across a schema change (agbossjs/agboss#1104, ADR-0034): a start that
     // migrates a migrated database waits for live leases to lapse and refuses while one is live

@@ -1,6 +1,8 @@
 import type { Clock } from "@agboss/core";
 import { seconds, type Milliseconds } from "@agboss/core/units";
+import { createRequire } from "node:module";
 import type { MongoClient } from "mongodb";
+import { MongoDriverInternalsError } from "../errors.js";
 
 /**
  * How long an orderly close may take at an instance's stop before it is given up
@@ -58,8 +60,9 @@ async function closeBoundedEnded(
  * When calls are in flight (a server that does not answer holds them, and the stop has used its
  * time on them: a hook is given one turn of the loop once the stop's end has passed) the sockets go
  * at once; else after `grace` — an orderly close on a healthy server ends sooner and tells it
- * about its sessions. The driver's `topology` is internal: found by name, a driver that changed it
- * leaves the close to itself.
+ * about its sessions. The driver's `topology` is internal, found by name: `assertDriverInternals`
+ * checks it once when the connection starts, so a driver that changed it fails there, loudly,
+ * never here as a stop that silently leaves the sockets open.
  */
 export async function closeClientBounded(
   client: MongoClient,
@@ -71,25 +74,58 @@ export async function closeClientBounded(
   if (!(await closing)) dropSockets(client);
 }
 
+/** An object's own-or-inherited property, `undefined` when `value` is not an object. */
+function member(value: unknown, name: string): unknown {
+  return typeof value === "object" && value !== null ? Reflect.get(value, name) : undefined;
+}
+
+/** The installed `mongodb` driver's version (its own package.json), `unknown` when it cannot be read. */
+function driverVersion(): string {
+  try {
+    const version = member(createRequire(import.meta.url)("mongodb/package.json"), "version");
+    return typeof version === "string" ? version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * The first internal the bounded stop reaches that `client` (connected) does not have in the
+ * expected shape: `client.topology` an object with a `close` function and `s.servers` a `Map`, each
+ * server's `pool.checkedOut` a `Set`; `undefined` when all are there.
+ */
+export function missingDriverInternal(client: MongoClient): string | undefined {
+  const topology = member(client, "topology");
+  if (typeof topology !== "object" || topology === null) return "client.topology (an object)";
+  if (typeof member(topology, "close") !== "function") return "client.topology.close (a function)";
+  const servers = member(member(topology, "s"), "servers");
+  if (!(servers instanceof Map)) return "client.topology.s.servers (a Map)";
+  for (const server of servers.values())
+    if (!(member(member(server, "pool"), "checkedOut") instanceof Set))
+      return "client.topology.s.servers[].pool.checkedOut (a Set)";
+  return undefined;
+}
+
+/**
+ * Fails with `MongoDriverInternalsError` when the driver's internals the bounded stop reaches are
+ * not what it expects (agbossjs/agboss#1236): called with the connected client when the connection
+ * starts, so a driver release that renamed them is a start that fails, not a stop that quietly
+ * leaves the sockets to a server that went quiet open.
+ */
+export function assertDriverInternals(client: MongoClient): void {
+  const missing = missingDriverInternal(client);
+  if (missing !== undefined)
+    throw new MongoDriverInternalsError({ driverVersion: driverVersion(), missing });
+}
+
 /** Whether any pool of `client` has a connection checked out: a call waits for its answer. */
 function hasCallsInFlight(client: MongoClient): boolean {
-  try {
-    const topology: unknown = Reflect.get(client, "topology");
-    const state: unknown =
-      typeof topology === "object" && topology !== null ? Reflect.get(topology, "s") : undefined;
-    const servers: unknown =
-      typeof state === "object" && state !== null ? Reflect.get(state, "servers") : undefined;
-    if (!(servers instanceof Map)) return false;
-    return [...servers.values()].some((server: unknown) => {
-      const pool: unknown =
-        typeof server === "object" && server !== null ? Reflect.get(server, "pool") : undefined;
-      const checkedOut: unknown =
-        typeof pool === "object" && pool !== null ? Reflect.get(pool, "checkedOut") : undefined;
-      return checkedOut instanceof Set && checkedOut.size > 0;
-    });
-  } catch {
-    return false;
-  }
+  const servers = member(member(member(client, "topology"), "s"), "servers");
+  if (!(servers instanceof Map)) return false; // checked at the start by `assertDriverInternals`
+  return [...servers.values()].some((server: unknown) => {
+    const checkedOut = member(member(server, "pool"), "checkedOut");
+    return checkedOut instanceof Set && checkedOut.size > 0;
+  });
 }
 
 /**
@@ -99,14 +135,11 @@ function hasCallsInFlight(client: MongoClient): boolean {
  */
 function dropSockets(client: MongoClient): void {
   client.close().catch(() => undefined); // the late failure of a close left running is dropped
+  const topology = member(client, "topology");
+  const close = member(topology, "close");
+  if (typeof close !== "function") return; // checked at the start by `assertDriverInternals`
   try {
-    // the driver's own, internal: found by name, a driver that changed it leaves the close to itself
-    const topology: unknown = Reflect.get(client, "topology");
-    const close: unknown =
-      typeof topology === "object" && topology !== null
-        ? Reflect.get(topology, "close")
-        : undefined;
-    if (typeof close === "function") Reflect.apply(close, topology, []);
+    Reflect.apply(close, topology, []);
   } catch {
     // the driver's own close finishes what it can
   }
