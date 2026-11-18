@@ -12,4 +12,4 @@ applied and the run fails with `MongoLiveLeasesError` (`mongodb.live-leases`, `c
 version stays a no-op, exit 0. An idle old instance holds no lease and is not seen; as the
 backstop, a channel-filtered page of pauses now gives a pause with no `channel` (one an old instance
 wrote after the migration) its channel from its record. A start with `SchemaSetup.MigrateOnStart`
-is not guarded. The README says stop, migrate, deploy and where a pre-upgrade hook is still right.
+is held to the same rule (agbossjs/agboss#1260). The README says stop, migrate, deploy and where a pre-upgrade hook is still right.

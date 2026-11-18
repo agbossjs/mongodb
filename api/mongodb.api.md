@@ -305,6 +305,7 @@ export class MongoConnection implements OnInit, OnDestroy {
 
 // @public
 export interface MongoConnectionSettings {
+    readonly allowLiveLeases?: boolean;
     readonly database?: string;
     readonly schemaSetup?: SchemaSetup;
     readonly transactionReadConcern?: MongoTransactionReadConcern;

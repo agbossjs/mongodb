@@ -117,6 +117,7 @@ export class AppEnvironment {
   mongodbTransactionReadConcern?: string; // "snapshot" (default) or "majority"
   mongodbWatchLivenessSeconds?: number; // the longest a silently dead change stream goes unnoticed: 10 (default), 2 to 3600
   mongodbSchemaSetup?: SchemaSetup; // SchemaSetup.Check (default) or SchemaSetup.MigrateOnStart
+  mongodbAllowLiveLeases?: boolean; // MigrateOnStart migrates over live leases: false (default)
 }
 ```
 
@@ -168,7 +169,19 @@ change the schema: a database never migrated, an older one or one a stores' coll
 from is `MongoSchemaMissingError` (`applied`, `expected`, `collections`), one a newer
 `@agboss/mongodb` migrated `MongoSchemaTooNewError` (deploy that version: migrations are not rolled
 back). `mongodbSchemaSetup: SchemaSetup.MigrateOnStart` makes each start migrate first instead, and
-is **not** guarded: a rolling restart would wait on its own leases.
+is held to the same rule as `migrate` (agbossjs/agboss#1104, #1260): with migrations pending on an
+already migrated database the start waits for live leases to lapse (twice the longest lease the
+database shows, so a lease duration longer than the default 30 s is waited for too: at least a
+minute, at most ten, polled each second on the application's `Clock`, a lease being live or not by the **server's**
+clock) — a
+stopped single instance's own leases do — and if one is still live it fails to start with
+`MongoLiveLeasesError`: stop the old pods first. Nothing pending, no look: a normal restart, a
+database at this version and a first start on an empty database are unaffected. A connection built
+without a `Clock` (a script: `new MongoConnection({ url })`) has nothing to wait on and refuses at once, as `migrate` does.
+`allowLiveLeases: true` in the connection's settings
+(`new MongoConnection({ url, schemaSetup: SchemaSetup.MigrateOnStart, allowLiveLeases: true })`), or
+`mongodbAllowLiveLeases: true` in the application's environment, migrates over live leases, for an
+operator who accepts the risk.
 
 ## Required database settings
 
