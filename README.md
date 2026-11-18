@@ -207,15 +207,18 @@ database with no counters starts at the epoch, "never pruned".
   clocks synchronized (NTP), well inside the holder's 1 s safety margin.
 - **Transactions** (`transactionLifetimeLimitSeconds`, 60 s by default): a fenced effect's work
   runs inside one; keep it short — store a receipt, not a document.
-- **A fenced work must finish well under the bound** (agbossjs/agboss#1334): a fenced effect's
-  transaction writes the tree's lease document, a child's its root's, so the root's lease renewal
-  (a single-document write) waits for any open fenced transaction of its tree. MongoDB has no
-  command-timeout option of its own (PostgreSQL's is `postgresCommandTimeoutMs`): the renewal is
-  bounded by the core's store-call bound, a transaction by `transactionLifetimeLimitSeconds`. A
-  fenced `work`, the root's or any child's, must finish well under both, in practice within a few
-  seconds. A renewal that waits past its bound fails with `StoreCallTimeoutError`, an unknown
-  outcome: the tree's holder is abandoned and the tree is recovered after the lease's TTL. Safety
-  holds, every fence stands; what is lost is liveness. Do the slow part of a step outside the work.
+- **A long fenced work can cost the tree its lease** (agbossjs/agboss#1334): a fenced effect's
+  transaction writes the tree's lease document, a child's its root's, so a root lease renewal (a
+  single-document write) sent while a fenced `work` is open waits for it. The core bounds a
+  background or checkpoint renewal at 5 s as an ordinary store error, never a hand-over; the holder
+  survives two failed ticks in a row (a tick every 7.5 s of a 30 s lease, 29 s trusted after the last
+  confirmed renewal). A `work`, the root's or any child's, that blocks the renewals for about three
+  ticks (roughly 20 s or more) costs the tree its lease: the holder stops at its fence and the tree
+  is recovered after the lease lapses. Safety holds, every fence stands; what is lost is liveness. A
+  leased call that waits on the same document (`fence.renewNow()`, a write of the root's own under
+  its lease) hands the tree over at the time the holder still trusts its lease: MongoDB has no
+  command-timeout option. `transactionLifetimeLimitSeconds` aborts a work after 60 s. Do the slow
+  part of a step outside the work.
 - **A pod killed mid-transaction** (`kill -9`, an OOM kill, a lost node; agbossjs/agboss#1103): the
   transaction it had open stays open on the server and keeps the documents it wrote locked, so
   another instance's change of the same pause (or lease, or key) conflicts and is retried until the
