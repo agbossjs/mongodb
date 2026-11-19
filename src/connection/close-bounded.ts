@@ -25,7 +25,7 @@ export async function closeBounded(
 }
 
 /** `closeBounded`, and whether the close ended within the grace (`false`: it is left running). */
-export async function closeBoundedEnded(
+async function closeBoundedEnded(
   close: () => Promise<unknown>,
   clock: Clock | undefined,
   grace: Milliseconds,

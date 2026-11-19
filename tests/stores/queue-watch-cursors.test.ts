@@ -180,8 +180,10 @@ describe("agbossjs/agboss#1088: the queue watch leaves no cursor on the server",
       { timeout: 20_000 },
     );
     expect(await endsWithin(watch.close(), 5000)).toBe(true);
+    // the stop kills the current stream's cursor by id too (agbossjs/agboss#1345), and the server rejects that kill
+    // as well: one more warning, for that cursor, and no kill is tried again
     await sleep(1500);
-    expect(logger.entries.filter((e) => e.message.includes("killed"))).toHaveLength(1);
+    expect(logger.entries.filter((e) => e.message.includes("killed"))).toHaveLength(2);
     expect(unhandled).toEqual([]);
   }, 60_000);
 
@@ -329,7 +331,7 @@ describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", (
     await admin.db("admin").command({
       configureFailPoint: "failCommand",
       mode: "alwaysOn",
-      data: { failCommands: ["getMore"], appName: APP, blockConnection: true, blockTimeMS: 6000 },
+      data: { failCommands: ["getMore"], appName: APP, blockConnection: true, blockTimeMS: 3000 },
     });
     // the stream's next `getMore` (one every 500 ms) is now held: its connection is busy past the bound
     await sleep(1500);
@@ -338,9 +340,45 @@ describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", (
     await cursorsAre(before, 0, 5000);
   }, 60_000);
 
-  it("an aggregate still in flight when the stop lands: close() waits for its reply and kills its cursor", async () => {
+  it("an aggregate still in flight when the stop lands: close() waits for its reply, then kills its cursor", async () => {
     const before = await changeStreamCursors(database.name());
-    const url = `${database.url()}${database.url().includes("?") ? "&" : "?"}appName=${APP}-aggregate`;
+    const app = `${APP}-aggregate`;
+    const url = `${database.url()}${database.url().includes("?") ? "&" : "?"}appName=${app}`;
+    // the server drops an aggregate whose client has gone before it ran, so what tells the wait is when
+    // the client is closed: the stream's aggregate must have been answered by then
+    let answered = false;
+    let answeredAtClose: boolean | undefined;
+    const on = Reflect.get(MongoClient.prototype, "on") as (
+      this: MongoClient,
+      ...args: unknown[]
+    ) => unknown;
+    const close = Object.getOwnPropertyDescriptor(MongoClient.prototype, "close")?.value as (
+      this: MongoClient,
+    ) => Promise<void>;
+    const hooked = new Set<MongoClient>();
+    const spyOn = vi.spyOn(MongoClient.prototype, "on").mockImplementation(function (
+      this: MongoClient,
+      ...args: unknown[]
+    ) {
+      if (args[0] === "commandSucceeded" && this.options.appName === app && !hooked.has(this)) {
+        hooked.add(this);
+        on.call(this, "commandSucceeded", (event: { commandName: string }) => {
+          if (event.commandName === "aggregate") answered = true;
+        });
+      }
+      return on.call(this, ...args) as MongoClient;
+    });
+    const spyClose = vi.spyOn(MongoClient.prototype, "close").mockImplementation(function (
+      this: MongoClient,
+    ) {
+      if (this.options.appName === app) answeredAtClose ??= answered;
+      return close.call(this);
+    });
+    cleanups.push(() => {
+      spyOn.mockRestore();
+      spyClose.mockRestore();
+      return Promise.resolve();
+    });
     const connection = new MongoConnection({ url, watchLivenessSeconds: 2 });
     cleanups.push(() => connection.onDestroy());
     const queue = new MongoChildExecutionQueueRepository(
@@ -354,14 +392,13 @@ describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", (
     cleanups.push(async () => {
       await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
     });
-    // the stream's `aggregate` is held 1.2 s by the server, which still runs it: the cursor is made
-    // after the stop has started, and its id comes only in the reply
+    // the stream's `aggregate` is held 1.2 s by the server (the liveness bound is 2 s)
     await admin.db("admin").command({
       configureFailPoint: "failCommand",
       mode: "alwaysOn",
       data: {
         failCommands: ["aggregate"],
-        appName: `${APP}-aggregate`,
+        appName: app,
         blockConnection: true,
         blockTimeMS: 1200,
       },
@@ -369,6 +406,8 @@ describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", (
     const watch = await watching(queue, cleanups);
 
     expect(await endsWithin(watch.close(), 8000)).toBe(true);
-    await cursorsAre(before, 0, 5000);
+    expect(answeredAtClose).toBe(true);
+    await sleep(2500);
+    await cursorsAre(before, 0, 3000);
   }, 60_000);
 });
