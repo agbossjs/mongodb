@@ -1,0 +1,37 @@
+// Unused files and dependencies fail `npm run check:static` (agbossjs/agboss#205 AC2, as the core's
+// knip.jsonc; agbossjs/agboss#1213). Every ignore says why.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Unused exports are not checked, as in the core: modules export to their tests by design, and
+  // the public surface is guarded by the api-extractor report (check:api).
+  "rules": {
+    "exports": "off",
+    "types": "off",
+    "nsExports": "off",
+    "nsTypes": "off",
+    "duplicates": "off",
+    "enumMembers": "off",
+  },
+  // `diff` is the system tool scripts/api-report.mjs shows a stale report with, not a package
+  "ignoreBinaries": ["diff"],
+  // the exit probe starts its child as `node --import tsx` (tests/support/exit-probe.ts)
+  "ignoreDependencies": ["tsx"],
+  "entry": [
+    "src/index.ts",
+    // the package's CLI (package.json#bin) and its migrations command
+    "bin/*.js",
+    "scripts/*.mjs",
+    "scripts/release/*.mjs",
+    "eslint.tests.js",
+    // the suites the npm scripts name by --config
+    "vitest.*.config.ts",
+    // loaded by path: the child an exit probe starts (tests/support/exit-probe.ts)
+    "tests/support/exit-probe-child.ts",
+    // loaded by path: the environments of `--env <name>` next to their applications
+    "tests/a2a/environments/*.environment.ts",
+    "tests/fixtures/*/environments/*.environment.ts",
+    // loaded by path: the fixtures a nested vitest runs (`storeConformance` sabotage, #693)
+    "tests/contracts/fixtures/*.conformance-fixture.ts",
+  ],
+  "project": ["src/**/*.ts", "bin/**/*.js", "tests/**/*.ts", "scripts/**/*.mjs"],
+}

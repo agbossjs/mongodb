@@ -3,14 +3,12 @@
  * would (golden), is idempotent, and a fragment with an unknown section fails it. The repo's own
  * `changes/` always validates.
  */
-import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runNode } from "../support/process.js";
 
-const runNode = (args: readonly string[]) =>
-  Promise.resolve(spawnSync(process.execPath, [...args], { encoding: "utf8" }));
 const repo = new URL("../../", import.meta.url).pathname;
 const script = join(repo, "scripts/changelog-assemble.mjs");
 const config = readFileSync(join(repo, "changes/config.json"), "utf8");

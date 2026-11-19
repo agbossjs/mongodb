@@ -48,11 +48,15 @@ export async function pageOf(
     .sort({ seq: 1 })
     .limit(limit + 1)
     .toArray();
-  const page = found.slice(0, limit);
-  const last = page.at(-1);
+  return pageFrom(found, limit);
+}
+
+/** The first `limit` of `found` (read with one more), and the cursor after them when the extra one is there. */
+function pageFrom(found: readonly PauseDocument[], limit: number): PausePage {
+  const last = found.length > limit ? found.at(limit - 1) : undefined;
   return {
-    pauses: page.map(pauseOfDocument),
-    ...(found.length > limit && last !== undefined ? { next: String(last.seq) } : {}),
+    pauses: found.slice(0, limit).map(pauseOfDocument),
+    ...(last === undefined ? {} : { next: String(last.seq) }),
   };
 }
 
@@ -172,13 +176,7 @@ export async function removablePageBefore(
   limit: number,
   after: string | undefined,
 ): Promise<PausePage> {
-  const found = await removableBefore(db, cutoff, limit + 1, undefined, after);
-  const page = found.slice(0, limit);
-  const last = page.at(-1);
-  return {
-    pauses: page.map(pauseOfDocument),
-    ...(found.length > limit && last !== undefined ? { next: String(last.seq) } : {}),
-  };
+  return pageFrom(await removableBefore(db, cutoff, limit + 1, undefined, after), limit);
 }
 
 /**
@@ -215,7 +213,6 @@ async function withStoredReplacement(
   removedByThisSweep: ReadonlySet<string>,
 ): Promise<PauseDocument[]> {
   const replaced = batch.filter((one) => typeof one.reassignedTo === "string");
-  if (replaced.length === 0) return [];
   const stored = await db
     .collection<PauseDocument>(Collections.Pauses)
     .find(

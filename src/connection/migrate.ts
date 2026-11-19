@@ -47,14 +47,13 @@ export async function migrateMongodb(
 ): Promise<MongoMigrationReport> {
   options.signal?.throwIfAborted();
   const { url, database } = options;
-  const connection = new MongoConnection(database === undefined ? { url } : { url, database });
+  // an absent database is the URL's, an absent signal or switch none: `undefined` passed is the same
+  const connection = new MongoConnection({ url, database });
   try {
     await connection.requireSupportedTopology();
     const { applied } = await migrateSchema(connection.db, {
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-      ...(options.allowLiveLeases === undefined
-        ? {}
-        : { allowLiveLeases: options.allowLiveLeases }),
+      signal: options.signal,
+      allowLiveLeases: options.allowLiveLeases,
     });
     return { database: connection.db.databaseName, applied, version: SCHEMA_VERSION };
   } finally {

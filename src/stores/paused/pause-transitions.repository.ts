@@ -81,8 +81,10 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
           { $set: fieldsOf(change.pause) },
           { session },
         );
-        if (marked.matchedCount === 1)
-          await this.appendNotices(transaction, change.pause, change.notices);
+        // one snapshot with the read: a miss is the driver's conflict, so this fails closed, unreached
+        // Stryker disable next-line ConditionalExpression,StringLiteral,CallExpression: unreachable in a snapshot transaction
+        if (marked.matchedCount !== 1) throw new Error("the sent mark matched no pause");
+        await this.appendNotices(transaction, change.pause, change.notices);
       }
       return change.pause.status === PauseStatus.Pending;
     });

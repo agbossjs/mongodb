@@ -38,7 +38,7 @@ export async function claimDue(
         ...unclaimedAt(at),
       },
       { $set: { claimToken: token, claimedUntil: until } },
-      { sort: { nextAttemptAt: 1 }, returnDocument: "after" },
+      { sort: { nextAttemptAt: 1 } },
     );
     if (claimed === null) return claims;
     claims.push({ mailbox: mailboxOf(claimed), token, until });
@@ -47,6 +47,8 @@ export async function claimDue(
 }
 
 const Claimed = z.object({ claimedUntil: z.date().nullable() });
+/** A renewed claim holds: its `$max` of a held claim and the new end is never `null`. */
+const Renewed = z.object({ claimedUntil: z.date() });
 
 /**
  * Acknowledges the head — only for the claim's token and while `until > at`: the next notice is the
@@ -113,8 +115,7 @@ export async function renew(
     { returnDocument: "after" },
   );
   if (after === null) return undefined;
-  const { claimedUntil } = Claimed.parse(after);
-  if (claimedUntil === null) return undefined;
+  const { claimedUntil } = Renewed.parse(after);
   return { mailbox: mailboxOf(after), token: claim.token, until: claimedUntil };
 }
 
@@ -161,7 +162,7 @@ export async function setAsideStale(
     const one = await mailboxesOf(db).findOneAndUpdate(
       { isDead: false, headWrittenAt: { $lt: before }, ...UNDELIVERED, ...unclaimedAt(at) },
       { $set: { isDead: true, problem, claimToken: null, claimedUntil: null } },
-      { sort: { headWrittenAt: 1 }, returnDocument: "before" },
+      { sort: { headWrittenAt: 1 } },
     );
     if (one === null) return taken;
     taken.push(SetAside.parse(one));

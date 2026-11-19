@@ -7,7 +7,9 @@
 // `OrEqual`s) against a number literal other than 0 whose `expect(…)` subtracts (`end - start`),
 // reads the real time (`Date.now()`, `performance.now()`, `process.hrtime`) or names a variable a
 // real time read was assigned to — and on one whose expected value adds a number to something
-// (`toBeGreaterThanOrEqual(before.end + 300)`). Scans every `*.test.*` / `*.spec.*` file.
+// (`toBeGreaterThanOrEqual(before.end + 300)`). A name assigned from such a name reads the real time
+// too (`const elapsed = end - start`), and a name bound to a number is that number
+// (`toBeLessThan(LIMIT)`). Scans every `*.test.*` / `*.spec.*` file.
 // `npm run check:real-time`, part of `make check`. Exit 0 clean, 1 with every finding listed.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -22,12 +24,24 @@ const COMPARISON =
 /** `const|let|var <name> = <expression up to the end of the statement>`. */
 const ASSIGNMENT = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*([^;\n]+)/gu;
 
-/** The names a real time read is assigned to in `text`. */
+/** The names a real time read is assigned to in `text` — directly, or through another such name. */
 function realTimeNames(text) {
+  const assignments = [...text.matchAll(ASSIGNMENT)];
   const names = new Set();
-  for (const [, name, expression] of text.matchAll(ASSIGNMENT))
-    if (REAL_TIME.test(expression)) names.add(name);
+  for (let size = -1; size !== names.size;) {
+    size = names.size;
+    for (const [, name, expression] of assignments)
+      if (timeRead(expression, names) !== undefined) names.add(name);
+  }
   return names;
+}
+
+/** `const LIMIT = 300`: the names of `text` bound to a number literal, with their value. */
+function numberNames(text) {
+  const numbers = new Map();
+  for (const [, name, expression] of text.matchAll(ASSIGNMENT))
+    if (NUMBER.test(expression.trim())) numbers.set(name, expression.trim());
+  return numbers;
 }
 
 /** Why the argument of a comparison against a number measures real time, or undefined. */
@@ -47,7 +61,8 @@ function timeRead(expression, names) {
 }
 
 /** Why one comparison is a real-time threshold, or undefined. */
-function thresholdOf(argument, expected, names) {
+function thresholdOf(argument, given, names, numbers) {
+  const expected = numbers.get(given) ?? given;
   const offset = /^(.*[\w$)\]])\s*[+-]\s*\d[\d_]*\s*$/u.exec(expected);
   if (offset !== null) {
     const base = offset[1] ?? "";
@@ -61,10 +76,11 @@ function thresholdOf(argument, expected, names) {
 /** Every real-time threshold assertion of one test file's text: `file:line: …`. */
 export function findingsOf(text, file) {
   const names = realTimeNames(text);
+  const numbers = numberNames(text);
   const findings = [];
   for (const match of text.matchAll(COMPARISON)) {
     const [, argument, matcher, expected] = match;
-    const why = thresholdOf(argument, expected, names);
+    const why = thresholdOf(argument, expected, names, numbers);
     if (why === undefined) continue;
     const line = text.slice(0, match.index).split("\n").length;
     findings.push(

@@ -41,16 +41,68 @@ export async function dropDatabase(database: string): Promise<void> {
   }
 }
 
-/** The file's database, created with the stores' schema before its tests and dropped after them. */
+/**
+ * The Stryker worker this process runs for (Stryker sets it in each of its test runners), else
+ * `undefined`: a plain test run.
+ */
+const STRYKER_WORKER = process.env.STRYKER_MUTATOR_WORKER;
+
+/** How many `testDatabase()`s this file has asked for so far. */
+let databasesOfFile = 0;
+
+/**
+ * Under Stryker, the databases of this test process (agbossjs/agboss#1213): Stryker runs a file
+ * again for every mutant, and a database per file and run — dozens of collections and their
+ * indexes, hundreds of times, or kept, one per file — grew the primary's memory past 1 GB (the
+ * server keeps a handle per collection and index) until it was OOM-killed. A test process (the
+ * runner's `STRYKER_MUTATOR_WORKER`, its fork's `VITEST_POOL_ID`) runs its files one at a time, so
+ * it keeps one database per `testDatabase()` of a file (the first, the second: the module is
+ * loaded again for each file), migrated once, and every file starts from the state a fresh one
+ * has: every store collection's documents removed, the ledger's mark seeded again, any other
+ * collection dropped.
+ */
+async function reusedDatabase(worker: string, index: number): Promise<string> {
+  const name = `t_mutation_${worker}_${process.env.VITEST_POOL_ID ?? "0"}_${String(index)}`;
+  const connection = await openConnection(urlOnDatabase(REPLICA_SET_URL, name));
+  try {
+    const stores = new Set<string>(Object.values(Collections));
+    const all = await connection.db.listCollections({}, { nameOnly: true }).toArray();
+    const emptied = all
+      .map(({ name: collection }) => collection)
+      .filter((collection) => collection !== Collections.SchemaVersion);
+    await Promise.all(
+      emptied.map(async (collection) => {
+        const it = connection.db.collection(collection);
+        if (stores.has(collection)) await it.deleteMany({}, { writeConcern: { w: "majority" } });
+        else await it.drop();
+      }),
+    );
+    await seedLedgerMark(connection.db);
+  } finally {
+    await connection.onDestroy();
+  }
+  return name;
+}
+
+/**
+ * The file's database, created with the stores' schema before its tests and dropped after them
+ * (under Stryker, the worker's own, emptied instead: `reusedDatabase`).
+ */
 export function testDatabase(): TestDatabase {
+  const index = databasesOfFile;
+  databasesOfFile += 1;
   let name: string | undefined;
   beforeAll(async () => {
+    if (STRYKER_WORKER !== undefined) {
+      name = await reusedDatabase(STRYKER_WORKER, index);
+      return;
+    }
     name = freshDatabaseName();
     const connection = await openConnection(urlOnDatabase(REPLICA_SET_URL, name));
     await connection.onDestroy();
   });
   afterAll(async () => {
-    if (name !== undefined) await dropDatabase(name);
+    if (name !== undefined && STRYKER_WORKER === undefined) await dropDatabase(name);
   });
   const current = (): string => {
     if (name === undefined) throw new Error("the test database is created in beforeAll");

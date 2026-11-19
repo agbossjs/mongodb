@@ -3,14 +3,12 @@
  * other"), never into a second plain "Fixed" (the real 0.1.1 section's shape); M4 — with no fragments the
  * heading of an unreleased section is still dated, and nothing else changes.
  */
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runProcess } from "../support/process.js";
 
-const runProcess = (command: string, args: readonly string[]) =>
-  Promise.resolve(spawnSync(command, [...args], { encoding: "utf8" }));
 const repo = new URL("../../", import.meta.url).pathname;
 const script = join(repo, "scripts/changelog-assemble.mjs");
 const config = fs.readFileSync(join(repo, "changes/config.json"), "utf8");

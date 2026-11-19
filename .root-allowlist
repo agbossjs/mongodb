@@ -1,0 +1,42 @@
+# Every tracked top-level entry (scripts/check-root.mjs, agbossjs/agboss#180, #1213). Add one only
+# if it belongs at the root; scripts, logs and notes go elsewhere.
+.agboss-version.json
+.github
+.gitignore
+.npmrc
+.nvmrc
+.prettierignore
+.prettierrc
+.root-allowlist
+AGENTS.md
+api
+bin
+CHANGELOG.md
+changes
+CLAUDE.md
+CONTRIBUTING.md
+eslint.config.js
+eslint.tests.js
+knip.jsonc
+LICENSE
+Makefile
+NOTICE
+package-lock.json
+package.json
+README.md
+scripts
+src
+stryker.config.mjs
+# the expected test counts of each run (scripts/check-test-run.mjs, agbossjs/agboss#630)
+test-run.failover.json
+test-run.faults.json
+test-run.json
+tests
+tsconfig.a2a.json
+tsconfig.base.json
+tsconfig.build.json
+tsconfig.json
+vitest.config.ts
+vitest.failover.config.ts
+vitest.faults.config.ts
+vitest.mutation.config.ts

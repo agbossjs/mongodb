@@ -10,7 +10,8 @@ import {
 
 /** The instant of a record's time text; a record stored before `askedAt` (empty) is the epoch. */
 function instantOf(text: string | undefined): Date {
-  const instant = new Date(text ?? "");
+  // no text is an invalid date, as an unparsable one is: both read as the epoch
+  const instant = new Date(text ?? Number.NaN);
   return Number.isNaN(instant.getTime()) ? new Date(0) : instant;
 }
 

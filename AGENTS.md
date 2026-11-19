@@ -17,7 +17,18 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
 - `npm run pack:framework && npm run install:packed` — `@agboss/core` and `@agboss/cli` at the SHA
   pinned in `.agboss-version.json` (pin the current agboss `main` when a store needs a newer core).
 - `npm run test:faults` — the core's fault suite (CI: three shards, `AGBOSS_FAULT_SHARD=k/n`).
-- `npm run check` — format, suppressions (budget 0), reviewed installs (`check:installs`: a
+- `npm run check` (`make check`) — `npm run check:static`, then the tests with coverage.
+- `npm run check:static` (`make static`; run it before queueing for a gate, agbossjs/agboss#1213) —
+  the root allowlist (`check:root`, `.root-allowlist`), unused files and dependencies
+  (`check:knip`, `knip.jsonc`), the docs (`check:docs`: every README ts block compiles against the
+  build — `file=`, `no-check: <reason>`, `<!-- snippet-context -->` as the core's — and every
+  `npm run …` / `scripts/…` they name exists), and the stages below but the tests.
+- `MUTATION_SHARD=<shard> npm run test:mutation` (`make mutation SHARD=<shard>`) — Stryker on one
+  shard of `scripts/mutation-shards.mjs` (`leases`, `fence`, `effects-and-calls`, `pauses`,
+  `money`, `queue`, `migrations`, `outcome`, `store-bound`) against the servers of `npm run check`; below 100 % killed or justified
+  it fails (agbossjs/agboss#1213). CI runs each shard incrementally, cold when the mutation setup
+  changes, `mutation-nightly.yml` every night cold; run every shard a change touches locally first.
+- What `npm run check` runs: format, suppressions (budget 0), reviewed installs (`check:installs`: a
   workflow installs with `npm ci`, a script resolves ranges only with `--before`, three days back —
   agbossjs/agboss#523), no real-time threshold in a test (`check:real-time`), lint, types, tests
   with coverage, API report.
