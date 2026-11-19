@@ -321,7 +321,7 @@ database with no counters starts at the epoch, "never pruned".
   `close()` and `MongoConnection.onDestroy()` nothing the watch opened keeps the process alive past
   twice the bound (agbossjs/agboss#1027). `close()` returns only after every cursor it knows of is
   killed on the server: it waits, within the bound, for a stream's `aggregate` in flight to be
-  answered, and kills by id what the stream's own close did not (agbossjs/agboss#1345); a cursor
+  answered, and kills the stream's cursors by id, whatever its own close did (agbossjs/agboss#1345); a cursor
   whose `aggregate` gets no answer within the liveness bound is left to the server's cursor timeout,
   10 minutes by default.
 - **Text.** BSON keeps every text as given, U+0000 included. A composite key is the JSON array of
