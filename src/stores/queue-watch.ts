@@ -1,4 +1,4 @@
-import { CLOSE_GRACE, closeBounded, closeClientBounded } from "../connection/close-bounded.js";
+import { CLOSE_GRACE, closeBoundedEnded, closeClientBounded } from "../connection/close-bounded.js";
 import { watchLiveness } from "../connection/heartbeat.js";
 import type { MongoConnection } from "../connection/mongodb-connection.js";
 import { watchClientOf } from "../connection/watch-client.js";
@@ -7,7 +7,13 @@ import { seconds, type Milliseconds } from "@agboss/core/units";
 import type { ChangeStream, Db, MongoClient } from "mongodb";
 import { awaitFor, startAfter, PAUSES, QUEUED_CHANGES } from "./queue-changes.js";
 import { Collections } from "../connection/collections.js";
-import { killDropped, listenForCursors, type Cursor, type Orphan } from "./queue-watch-cursors.js";
+import {
+  awaitAnswer,
+  killDropped,
+  listenForStream,
+  type Cursor,
+  type Orphan,
+} from "./queue-watch-cursors.js";
 
 /**
  * The child queue's watch on MongoDB (agbossjs/agboss#777): a change stream on the queue's
@@ -39,6 +45,8 @@ interface OpenStream {
   readonly cursors: Cursor[];
   /** Ends the client's command events: the id and namespace are all they are read for. */
   readonly unlisten: () => void;
+  /** Settles once the stream's `aggregate` calls are answered (their cursors' ids are then in `cursors`), or the liveness bound has passed. */
+  readonly answered: () => Promise<void>;
   /** How long the stream's server holds a `getMore` (a close's `killCursors` waits for the one in flight). */
   readonly holdsFor: Milliseconds;
   readonly beat: AbortController;
@@ -78,14 +86,14 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
     open?.beat.abort();
     await this.#reopening;
     await this.#reap();
-    if (open !== undefined) await this.#closeStream(open);
+    if (open !== undefined) await this.#closeAndKill(open);
   }
 
   async #start(): Promise<void> {
     const { client, db, livenessSeconds } = watchClientOf(this.connection, {
       monitorCommands: true,
     });
-    const { cursors, unlisten } = listenForCursors(client, this.warn);
+    const { cursors, answered, unlisten } = listenForStream(client, this.warn);
     const attempt = new AbortController();
     try {
       const startAtOperationTime = await Promise.race([
@@ -104,6 +112,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
         stream,
         cursors,
         unlisten,
+        answered: () => awaitAnswer(answered, this.clock, seconds(livenessSeconds)),
         holdsFor: awaitFor(livenessSeconds),
         beat: new AbortController(),
       };
@@ -120,7 +129,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
         this.#lost(open, "its change stream closed");
       });
       if (this.#stopped.signal.aborted) {
-        await this.#closeStream(open);
+        await this.#closeAndKill(open);
         return;
       }
       this.#open = open;
@@ -165,16 +174,36 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
    * server cannot be reached: a black hole), the client is closed all the same, and the cursor is
    * then the server's to reap: nothing in the process can still tell the server to drop it.
    */
-  async #closeStream(open: OpenStream): Promise<void> {
+  async #closeStream(open: OpenStream): Promise<boolean> {
+    // an `aggregate` still in flight tells its cursor's id only in its reply, and the close of the
+    // client below drops the sockets: wait for it, as long as the watch waits for any answer (past
+    // that bound the server is taken as dead, and nothing in the process can learn the id)
+    await open.answered();
     // the stream's connection is busy with a `getMore` the server holds up to `holdsFor`, and the
     // `killCursors` of the close takes its turn behind it
-    await closeBounded(
+    const closed = await closeBoundedEnded(
       () => open.stream.close(),
       this.clock,
       seconds((CLOSE_GRACE + open.holdsFor) / 1000),
     );
     open.unlisten();
     await closeClientBounded(open.client, this.clock);
+    return closed;
+  }
+
+  /**
+   * The stop's close of the current stream (agbossjs/agboss#1345). A stream whose close did not end
+   * within its bound — its `killCursors` still queued behind a slow `getMore` or a loaded server —
+   * lost it when the client's sockets went, and its cursor would stay on the server until
+   * `cursorTimeoutMillis`: the cursors it opened are killed by id over a client made for it, as a
+   * dropped stream's are. A stop thus ends with the server's cursors closed whenever the server answers.
+   */
+  async #closeAndKill(open: OpenStream): Promise<void> {
+    if (await this.#closeStream(open)) return;
+    this.#orphans.push(
+      ...open.cursors.map((cursor) => ({ ...cursor, generation: open.generation })),
+    );
+    await this.#reap();
   }
 
   /** The stream failed, closed or went silent: open another, unless the watch is closed or it was replaced. */

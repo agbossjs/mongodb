@@ -296,3 +296,79 @@ describe("agbossjs/agboss#1169: a cursor id that is a bigint", () => {
     await cursorsAre(before, 0, 5000);
   }, 60_000);
 });
+
+/**
+ * agbossjs/agboss#1345: a stop's `close()` leaves no cursor on the server even when the stream's
+ * own `killCursors` cannot go out inside the close's bound. The stream's one connection is held by
+ * a `getMore` the server delays (a loaded server: here a fail point, on this test's client only,
+ * by its `appName`), the `killCursors` of the stream's close queues behind it, the bound passes and
+ * the client's sockets go: the cursor is then killed by id over a client made for it.
+ */
+describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", () => {
+  const APP = "queue-watch-1345";
+
+  it("the cursor is killed by id, and close() ends within its bounds", async () => {
+    const before = await changeStreamCursors(database.name());
+    const url = `${database.url()}${database.url().includes("?") ? "&" : "?"}appName=${APP}`;
+    const connection = new MongoConnection({ url, watchLivenessSeconds: 2 });
+    cleanups.push(() => connection.onDestroy());
+    const queue = new MongoChildExecutionQueueRepository(
+      connection,
+      new RealClock(),
+      new TestApplicationContext({}, "instance-1"),
+      new RecordingLogger(),
+    );
+    const watch = await watching(queue, cleanups);
+    await cursorsAre(before, 1, 15_000);
+
+    const admin = new MongoClient(REPLICA_SET_URL);
+    cleanups.push(() => admin.close());
+    cleanups.push(async () => {
+      await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
+    });
+    await admin.db("admin").command({
+      configureFailPoint: "failCommand",
+      mode: "alwaysOn",
+      data: { failCommands: ["getMore"], appName: APP, blockConnection: true, blockTimeMS: 6000 },
+    });
+    // the stream's next `getMore` (one every 500 ms) is now held: its connection is busy past the bound
+    await sleep(1500);
+
+    expect(await endsWithin(watch.close(), 8000)).toBe(true);
+    await cursorsAre(before, 0, 5000);
+  }, 60_000);
+
+  it("an aggregate still in flight when the stop lands: close() waits for its reply and kills its cursor", async () => {
+    const before = await changeStreamCursors(database.name());
+    const url = `${database.url()}${database.url().includes("?") ? "&" : "?"}appName=${APP}-aggregate`;
+    const connection = new MongoConnection({ url, watchLivenessSeconds: 2 });
+    cleanups.push(() => connection.onDestroy());
+    const queue = new MongoChildExecutionQueueRepository(
+      connection,
+      new RealClock(),
+      new TestApplicationContext({}, "instance-1"),
+      new RecordingLogger(),
+    );
+    const admin = new MongoClient(REPLICA_SET_URL);
+    cleanups.push(() => admin.close());
+    cleanups.push(async () => {
+      await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
+    });
+    // the stream's `aggregate` is held 1.2 s by the server, which still runs it: the cursor is made
+    // after the stop has started, and its id comes only in the reply
+    await admin.db("admin").command({
+      configureFailPoint: "failCommand",
+      mode: "alwaysOn",
+      data: {
+        failCommands: ["aggregate"],
+        appName: `${APP}-aggregate`,
+        blockConnection: true,
+        blockTimeMS: 1200,
+      },
+    });
+    const watch = await watching(queue, cleanups);
+
+    expect(await endsWithin(watch.close(), 8000)).toBe(true);
+    await cursorsAre(before, 0, 5000);
+  }, 60_000);
+});
