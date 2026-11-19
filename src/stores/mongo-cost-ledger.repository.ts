@@ -46,6 +46,11 @@ const accountIdOf = (account: BudgetAccount): string =>
 const counterIdOf = (counter: CostCounter): string =>
   idOf(counter.budget, scopeOf(counter), counter.key, counter.period);
 
+/** The counters' order: by id, which are distinct. */
+const byId = ([left]: readonly [string, number], [right]: readonly [string, number]): number =>
+  // Stryker disable next-line EqualityOperator: the ids are the keys of a map, distinct: `<` and `<=` order them alike
+  left < right ? -1 : 1;
+
 /** The counters' updates for a save of `cost`, one per counter, in one order. */
 function countersOf(
   counters: readonly CostCounter[],
@@ -57,11 +62,9 @@ function countersOf(
     times.set(id, (times.get(id) ?? 0) + 1);
   }
   // in one order, so two saves of overlapping counters meet on the same first document
-  return [...times.entries()]
-    .sort(([left], [right]) => (left < right ? -1 : 1))
-    .map(([_id, count]) => ({
-      updateOne: { filter: { _id }, update: { $inc: { spentUsd: count * cost } }, upsert: true },
-    }));
+  return [...times.entries()].sort(byId).map(([_id, count]) => ({
+    updateOne: { filter: { _id }, update: { $inc: { spentUsd: count * cost } }, upsert: true },
+  }));
 }
 
 /**

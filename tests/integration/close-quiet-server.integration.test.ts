@@ -25,11 +25,11 @@ let server: PausableServer;
 beforeAll(async () => {
   server = await startMongo();
 }, 120_000);
-afterEach(() => {
-  server.unpause();
+afterEach(async () => {
+  await server.unpause();
 });
-afterAll(() => {
-  server.remove();
+afterAll(async () => {
+  await server.remove();
 });
 
 async function connected(): Promise<MongoConnection> {
@@ -49,11 +49,11 @@ describe.skipIf(!HAS_DOCKER)("#923: onDestroy against a paused MongoDB", () => {
   it("idle: onDestroy returns, no unhandled rejection after the unpause", async () => {
     const unhandled = watchUnhandled();
     const connection = await connected();
-    server.pause();
+    await server.pause();
     await sleep(500);
 
     const outcome = await endsWithin(connection.onDestroy(), MARGIN_MS);
-    server.unpause();
+    await server.unpause();
     await sleep(2000);
     unhandled.stop();
 
@@ -64,7 +64,7 @@ describe.skipIf(!HAS_DOCKER)("#923: onDestroy against a paused MongoDB", () => {
   it("with an operation in flight (a running execution's call): onDestroy returns, the operation rejects", async () => {
     const unhandled = watchUnhandled();
     const connection = await connected();
-    server.pause();
+    await server.pause();
     await sleep(500);
     const failed = connection.ping().then(
       () => "answered",
@@ -72,7 +72,7 @@ describe.skipIf(!HAS_DOCKER)("#923: onDestroy against a paused MongoDB", () => {
     );
 
     const outcome = await endsWithin(connection.onDestroy(), MARGIN_MS);
-    server.unpause();
+    await server.unpause();
     await sleep(2000);
     unhandled.stop();
 

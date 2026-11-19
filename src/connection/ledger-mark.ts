@@ -87,7 +87,12 @@ export async function seedLedgerMark(db: Db): Promise<void> {
 
 /** The mark's value, or the error naming what was found instead (none, made again, not a date). */
 function prunedBeforeIn(found: unknown): Date {
-  if (found === null || found === undefined) throw new MongoLedgerMarkMissingError();
+  if (
+    found === null ||
+    // Stryker disable next-line ConditionalExpression: `findOne` answers null for no document, never undefined: unreachable behind the `null` check, kept for the `unknown` it is given
+    found === undefined
+  )
+    throw new MongoLedgerMarkMissingError();
   const parsed = Mark.safeParse(found);
   if (parsed.success) return parsed.data.prunedBefore;
   const recreated = Recreated.safeParse(found);

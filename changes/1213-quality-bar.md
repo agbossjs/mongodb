@@ -1,0 +1,6 @@
+---
+section: Changed
+issue: 1213
+---
+
+**The package meets the core's quality bar** (agbossjs/agboss#1213): the money-path modules — the lease document, its fence and cancel mark, the fenced effects and outbound calls, the pause store and its notices, the ledger and its pruning mark, rate limits, the child queue, the schema, its migration and its live-lease guard, the store-call bound, and the classification of a write's outcome — are mutation-tested with Stryker at 100 % killed or justified (`MUTATION_SHARD=<shard> npm run test:mutation`; CI runs each shard incrementally, cold when its setup changes, a nightly run cold); `npm run check:static` is the cheap half of the gate (the root allowlist, knip, the README's ts blocks checked, lint, types, the API report); the lint forbids `@agboss/core/internal`, the core's testing entries in `src/`, a faked interrupt and a synchronous child process in a test. The stores behave as before. Two states no transaction can reach now fail closed instead of passing silently: a pause's sent mark that matched no pause, and a renewed notice claim with no end. The lint keeps typescript-eslint 8.73's `no-unsafe-class-instance-assignment` off, as the core's project template does (agbossjs/agboss#1330): the driver types its options as classes.

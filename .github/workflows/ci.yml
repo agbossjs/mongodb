@@ -180,3 +180,82 @@ jobs:
           name: fault-dumps-${{ matrix.shard }}
           path: fault-dumps
           if-no-files-found: ignore
+
+  # agbossjs/agboss#1213 (the core's #533 item 3, #626): mutation testing of the money-path modules,
+  # one job per shard of scripts/mutation-shards.mjs (MUTATION_SHARD), each incremental — its last
+  # run's results cached, keyed by the mutation setup, so a change of the Stryker config or of a
+  # shard's modules or tests runs it cold: every mutant killed or justified where it stands, else
+  # red. mutation-nightly.yml runs every shard cold.
+  mutation:
+    name: mutation ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          [leases, fence, effects-and-calls, pauses, money, queue, migrations, outcome, store-bound]
+    env:
+      MUTATION_SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start MongoDB 7 (replica set rs0 on 27017-27019, standalone on 27020)
+        run: |
+          for port in 27017 27018 27019; do
+            docker run -d --name "mongo-$port" --network host mongo:7 \
+              mongod --replSet rs0 --port "$port" --bind_ip_all --setParameter enableTestCommands=1
+          done
+          docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
+
+      - name: Resolve the pinned framework
+        id: pin
+        run: |
+          echo "sha=$(node -p "require('./.agboss-version.json').frameworkSha")" >> "$GITHUB_OUTPUT"
+          echo "source=$(node -p "require('./.agboss-version.json').source ?? 'commit'")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out agbossjs/agboss at the pinned SHA
+        if: steps.pin.outputs.source != 'registry'
+        uses: actions/checkout@v4
+        with:
+          repository: agbossjs/agboss
+          ref: ${{ steps.pin.outputs.sha }}
+          path: .agboss-source
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Pack @agboss/core as pinned (a commit, or the registry's) and install the tarball
+        env:
+          AGBOSS_REPO_DIR: .agboss-source
+        run: |
+          npm run pack:framework
+          npm run install:packed
+
+      - name: Initiate the replica set
+        run: .github/mongo-replica-set.sh
+
+      # the CLI's tests run bin/, which imports the built package; the flow types for the fixtures
+      - name: Build
+        run: npm run build && npm run check:types
+
+      - name: Restore the shard's last mutation run
+        uses: actions/cache@v4
+        with:
+          path: reports/stryker-incremental-${{ matrix.shard }}.json
+          key: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'vitest.mutation.config.ts') }}-${{ github.sha }}
+          restore-keys: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'vitest.mutation.config.ts') }}-
+
+      - name: Mutation testing of the shard (break below 100 % killed or justified)
+        run: npm run test:mutation
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ matrix.shard }}
+          path: reports/mutation/

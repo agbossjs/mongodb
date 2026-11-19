@@ -94,6 +94,13 @@ describe("#1236: a driver without them fails loudly, naming its version and the 
     expect(missingDriverInternal(client)).toBe("client.topology (an object)");
   });
 
+  it("a null topology is no topology either: named as such, not as its missing close", () => {
+    const client = new MongoClient("mongodb://127.0.0.1:1/?directConnection=true");
+    Object.defineProperty(client, "topology", { value: null, configurable: true });
+
+    expect(missingDriverInternal(client)).toBe("client.topology (an object)");
+  });
+
   it("each internal renamed: named, and thrown as MongoDriverInternalsError with the version", async () => {
     const client = await connected();
     const topology = Reflect.get(client, "topology") as object;

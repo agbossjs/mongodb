@@ -25,7 +25,12 @@ Dependencies: the official `mongodb` driver (7.x), `zod`.
 
 ## 1. List the stores
 
-```ts no-check: needs the package's build
+<!-- snippet-context
+declare class AppEnvironment {}
+declare class DeskWorkflow {}
+-->
+
+```ts
 import { Application } from "@agboss/core";
 import { MONGODB_STORES } from "@agboss/mongodb";
 
@@ -45,7 +50,7 @@ that check the lease in their own transaction (fenced effects, outbound calls): 
 lists beside `@agboss/redis`'s `REDIS_COORDINATION_STORES` — the Redis leases keep their execution
 ids here, `provide(EXECUTION_ID_STORE, MongoExecutionLeaseRepository)`:
 
-```ts no-check: needs the packages' build
+```ts no-check: a fragment of an application's providers, beside @agboss/redis (not a dependency here)
 import { EXECUTION_ID_STORE, provide } from "@agboss/core";
 import { MONGODB_DURABLE_STORES, MongoExecutionLeaseRepository } from "@agboss/mongodb";
 import { REDIS_COORDINATION_STORES } from "@agboss/redis";
@@ -101,7 +106,16 @@ component injects the application's `FencedEffects` (agbossjs/agboss#890), never
 fenced effect's work gets the transaction — `{ session, db }` — and writes its business documents
 **with the session**; a write without it is outside the guarantee:
 
-```ts no-check: a fragment of a component
+<!-- snippet-context
+import { effectKeyOf, type ExecutionContext, type FencedEffects } from "@agboss/core";
+import type { MongoTransaction } from "@agboss/mongodb";
+declare const fencedEffects: FencedEffects;
+declare const executionContext: ExecutionContext;
+declare const orderId: string;
+declare const amount: number;
+-->
+
+```ts
 await fencedEffects.runOnce(effectKeyOf(executionContext, "charge"), async ({ db, session }: MongoTransaction) => {
   await db.collection("charges").insertOne({ orderId, amount }, { session });
   return { receipt: orderId };
@@ -110,7 +124,12 @@ await fencedEffects.runOnce(effectKeyOf(executionContext, "charge"), async ({ db
 
 ## 2. The environment
 
-```ts no-check: a fragment of an environment contract
+<!-- snippet-context
+import type { Secret } from "@agboss/core";
+import type { SchemaSetup } from "@agboss/mongodb";
+-->
+
+```ts
 export class AppEnvironment {
   mongodbUrl!: Secret; // mongodb://h1,h2,h3/<database>?replicaSet=rs0 — secret("MONGODB_URL")
   mongodbDatabase?: string; // default: the URL's database, else "agboss"

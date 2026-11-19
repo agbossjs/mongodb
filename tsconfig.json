@@ -6,6 +6,7 @@
     "vitest.config.ts",
     "vitest.faults.config.ts",
     "vitest.failover.config.ts",
+    "vitest.mutation.config.ts",
     "eslint.config.js"
   ],
   "exclude": ["tests/a2a"]

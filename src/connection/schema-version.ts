@@ -175,7 +175,13 @@ export async function migrateAtStart(
 ): Promise<SchemaMigration> {
   const allowLiveLeases = options.allowLiveLeases === true;
   const from = await appliedVersionOf(db);
+  // kept so a newer schema is refused before the lease look; `migrateSchema` refuses it too, and a
+  // newer schema waits for nothing, so its removal is equivalent
+  // Stryker disable next-line CallExpression: equivalent, see above
   refuseNewer(from);
+  // a database never migrated has no instance to stop: `from !== undefined` says so, kept, though
+  // `undefined < SCHEMA_VERSION` is false too (its `true` replacement is equivalent)
+  // Stryker disable next-line ConditionalExpression: equivalent, see above
   if (from !== undefined && from < SCHEMA_VERSION && !allowLiveLeases)
     await waitForLeasesToLapse(db, options.leaseWait ?? DEFAULT_LEASE_WAIT, options.sleep);
   return migrateSchema(db, { allowLiveLeases });

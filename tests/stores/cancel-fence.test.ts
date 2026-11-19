@@ -239,6 +239,31 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     return answeredInside;
   }
 
+  it("a child's write with no cancel seeds its root's document whole — token 0, released, no holder, expired at the epoch — and the root's first acquire is token 1, no takeover", async () => {
+    const { store } = clockOf();
+    const one = await instance("instance-1", store);
+    const child = leased(await one.leases.acquire(TENANT, "child-s1", LEASE));
+
+    const written = await one.effects.runOnce(keyOf(child, "charge", "root-s"), () => ({ r: 1 }));
+
+    expect(written.status).toBe(FencedEffectStatus.Ran);
+    expect(await documentOf(one.connection, "root-s")).toEqual({
+      tenantId: TENANT,
+      rootExecutionId: "root-s",
+      holderInstanceId: "",
+      token: 0,
+      expiresAt: new Date(0),
+      released: true,
+      yielded: false,
+      superseded: false,
+      finished: false,
+      fenceChecks: 1,
+    });
+    const first = await one.leases.acquire(TENANT, "root-s", LEASE);
+    expect(first).toMatchObject({ token: 1, holderInstanceId: "instance-1" });
+    expect(first?.takenOverFrom).toBeUndefined();
+  });
+
   it("a child whose root has no document yet seeds it in its transaction: the cancel waits for the child's write, then refuses the next", async () => {
     const { store } = clockOf();
     const one = await instance("instance-1", store);

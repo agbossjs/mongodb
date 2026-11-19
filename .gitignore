@@ -11,3 +11,5 @@ temp
 
 # a crashed changelog assemble (#981): the temp file beside CHANGELOG.md
 .CHANGELOG.md.*.tmp
+reports
+.stryker-tmp*

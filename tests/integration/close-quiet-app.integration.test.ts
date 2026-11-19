@@ -27,11 +27,11 @@ beforeAll(async () => {
   process.env.AGBOSS_STOP_DATABASE_URL = `${server.url}&connectTimeoutMS=3000`;
   process.env.AGBOSS_STOP_OPENROUTER_KEY = "placeholder";
 }, 180_000);
-afterEach(() => {
-  if (HAS_DOCKER) server.unpause();
+afterEach(async () => {
+  if (HAS_DOCKER) await server.unpause();
 });
-afterAll(() => {
-  if (HAS_DOCKER) server.remove();
+afterAll(async () => {
+  if (HAS_DOCKER) await server.remove();
 });
 
 /**
@@ -58,20 +58,20 @@ async function closedAgainstPausedServer(running: boolean): Promise<{
       await sleep(2000);
     }
     await sleep(500);
-    server.pause();
+    await server.pause();
     await sleep(1000);
 
     await app.close({ timeout: seconds(5) });
     const established = sockets.established(); // at once: the close left none that heard the server
     for (let waited = 0; sockets.open() > 0 && waited < 6000; waited += 250) await sleep(250);
     const open = sockets.open();
-    server.unpause();
+    await server.unpause();
     await sleep(500);
     return { established, open, unhandled: unhandled.seen, outcome };
   } finally {
     sockets.stop();
     unhandled.stop();
-    server.unpause();
+    await server.unpause();
   }
 }
 

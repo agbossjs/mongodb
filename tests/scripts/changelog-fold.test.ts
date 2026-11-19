@@ -2,14 +2,12 @@
  * agbossjs/agboss#981 (fix-forward): the assemble script folds fragments into an existing unreleased section of its
  * version (D1), in either heading shape, and survives a crash between the write and the deletes (M2).
  */
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runProcess } from "../support/process.js";
 
-const runProcess = (command: string, args: readonly string[]) =>
-  Promise.resolve(spawnSync(command, [...args], { encoding: "utf8" }));
 const repo = new URL("../../", import.meta.url).pathname;
 const script = join(repo, "scripts/changelog-assemble.mjs");
 const config = fs.readFileSync(join(repo, "changes/config.json"), "utf8");

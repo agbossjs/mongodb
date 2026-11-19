@@ -7,3 +7,6 @@ coverage
 temp
 api/*.api.md
 package-lock.json
+# Stryker: its reports and a sandbox left by an interrupted run
+reports
+.stryker-tmp*

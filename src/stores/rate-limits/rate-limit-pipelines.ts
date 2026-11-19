@@ -30,6 +30,7 @@ export function takeSlotPipeline(slot: SlotEntry, maxSlots: number, now: Date): 
       $set: {
         slots: {
           $filter: {
+            // Stryker disable next-line ArrayDeclaration: a stand-in element has no `expiresAt` field, which `$gt` against a date is false for: it is filtered out as the empty array is
             input: { $ifNull: ["$slots", []] },
             as: "slot",
             cond: { $gt: ["$$slot.expiresAt", now] },
@@ -78,6 +79,7 @@ export function addToWindowPipeline(
       $set: {
         buckets: {
           $filter: {
+            // Stryker disable next-line ArrayDeclaration: a stand-in element has no `at` field, which `$gt` against a date is false for: it is filtered out as the empty array is
             input: { $ifNull: ["$buckets", []] },
             as: "bucket",
             cond: { $gt: ["$$bucket.at", since] },

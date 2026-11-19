@@ -3,11 +3,11 @@
  * the entry does not export (`ae-forgotten-export`), and the committed report holds none (AC1).
  * Run on a declaration-only package, so the real report stays as it is.
  */
-import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { runNode } from "../support/process.js";
 
 const repo = new URL("../../", import.meta.url).pathname;
 const made: string[] = [];
@@ -33,10 +33,7 @@ function fixture(entry: string): string {
 }
 
 const check = (dir: string) =>
-  spawnSync("node", [join(repo, "scripts/api-report.mjs"), "--package", dir, "--write"], {
-    cwd: repo,
-    encoding: "utf8",
-  });
+  runNode([join(repo, "scripts/api-report.mjs"), "--package", dir, "--write"], { cwd: repo });
 
 describe("forgotten exports (#895)", () => {
   it("AC1: the committed report holds no ae-forgotten-export", () => {
@@ -45,8 +42,8 @@ describe("forgotten exports (#895)", () => {
     );
   });
 
-  it("AC2: a signature naming a type the entry does not export fails the check", () => {
-    const run = check(
+  it("AC2: a signature naming a type the entry does not export fails the check", async () => {
+    const run = await check(
       fixture(
         "interface Hidden { readonly a: string }\nexport declare function use(h: Hidden): void;\nexport {};\n",
       ),
@@ -56,8 +53,8 @@ describe("forgotten exports (#895)", () => {
     expect(run.stderr).toContain("does not export (#895): Hidden");
   }, 60_000);
 
-  it("a type the entry exports passes", () => {
-    const run = check(
+  it("a type the entry exports passes", async () => {
+    const run = await check(
       fixture(
         "export interface Shown { readonly a: string }\nexport declare function use(h: Shown): void;\n",
       ),

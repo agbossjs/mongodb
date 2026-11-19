@@ -1,25 +1,22 @@
-import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer, Socket } from "node:net";
 import { Clock } from "@agboss/core";
 import type { Milliseconds } from "@agboss/core/units";
+import { outputOf } from "./process.js";
 
 /**
  * A server of the stop tests' own (agbossjs/agboss#923): a container started for the test file,
- * capped (`--cpus 0.5`, a memory limit), paused with `docker pause` (the server stops answering, its
+ * capped (`--cpus 0.5`, or `AGBOSS_PAUSE_CPUS`; a memory limit), paused with `docker pause` (the server stops answering, its
  * sockets stay open — a hung network, a frozen server) and removed after. Without Docker the
  * tests are skipped. Nothing else shares it, so pausing it disturbs no other test.
  */
-const docker = (...args: string[]): string =>
-  execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+const docker = async (...args: string[]): Promise<string> =>
+  (await outputOf("docker", args)).trim();
 
-export const HAS_DOCKER = ((): boolean => {
-  try {
-    docker("info");
-    return true;
-  } catch {
-    return false;
-  }
-})();
+export const HAS_DOCKER = await docker("info").then(
+  () => true,
+  () => false,
+);
 
 /** A free TCP port of the host. */
 export function freePort(): Promise<number> {
@@ -39,10 +36,10 @@ export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Runs `probe` until it passes (a server booting), up to `tries` seconds. */
-export async function untilReady(probe: () => void, tries = 60): Promise<void> {
+export async function untilReady(probe: () => Promise<unknown>, tries = 60): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      probe();
+      await probe();
       return;
     } catch (error) {
       if (attempt >= tries) throw error;
@@ -54,77 +51,75 @@ export async function untilReady(probe: () => void, tries = 60): Promise<void> {
 /** The container a test file pauses. */
 export interface PausableServer {
   readonly url: string;
-  pause(): void;
-  unpause(): void;
-  remove(): void;
+  pause(): Promise<void>;
+  unpause(): Promise<void>;
+  remove(): Promise<void>;
 }
 
 export function serverOf(name: string, url: string): PausableServer {
   return {
     url,
-    pause: () => {
-      docker("pause", name);
+    pause: async () => {
+      await docker("pause", name);
     },
-    unpause: () => {
-      try {
-        docker("unpause", name);
-      } catch {
-        // not paused
-      }
+    unpause: async () => {
+      // not paused: nothing to undo
+      await docker("unpause", name).catch(() => undefined);
     },
-    remove: () => {
-      try {
-        docker("rm", "-f", name);
-      } catch {
-        // already gone
-      }
+    remove: async () => {
+      // already gone: nothing to remove
+      await docker("rm", "-f", name).catch(() => undefined);
     },
   };
 }
 
-/** A single-node replica set in its own container, ready. */
-export async function startMongo(): Promise<PausableServer> {
-  const name = `agboss-923-mongo-${String(process.pid)}`;
-  const port = await freePort();
-  const host = `127.0.0.1:${String(port)}`;
-  const run = [
-    ...["run", "-d", "--name", name, "--cpus", "0.5", "--memory", "640m"],
-    ...["-p", `${host}:${String(port)}`, "mongo:7"],
-    ...["mongod", "--replSet", "rs0", "--port", String(port), "--bind_ip_all"],
-    ...[
-      "--wiredTigerCacheSizeGB",
-      "0.25",
-      "--setParameter",
-      "maxIndexBuildMemoryUsageMegabytes=50",
-    ],
-  ];
-  const budget = process.env.AGBOSS_DOCKER_BUDGET_DIR; // a shared machine checks its room first
-  if (budget === undefined) docker(...run);
-  else {
-    // no room yet on the shared machine: asks again for up to ten minutes
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        execFileSync("lockf", [
-          `${budget}/docker-budget.lock`,
-          "sh",
-          "-c",
-          'sh "$0/docker-cpu-budget.sh" 0.5 640 && docker "$@"',
-          budget,
-          ...run,
-        ]);
-        break;
-      } catch (error) {
-        if (attempt >= 40) throw error;
-        await sleep(15_000);
-      }
+/**
+ * `docker run`, on a shared machine (`AGBOSS_DOCKER_BUDGET_DIR`) only when its Docker budget has
+ * room, checked and started under the budget's lock; no room yet: asked again for ten minutes.
+ */
+async function startContainer(run: readonly string[], cpus: string): Promise<void> {
+  const budget = process.env.AGBOSS_DOCKER_BUDGET_DIR;
+  if (budget === undefined) {
+    await docker(...run);
+    return;
+  }
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await outputOf("lockf", [
+        `${budget}/docker-budget.lock`,
+        ...["sh", "-c", `sh "$0/docker-cpu-budget.sh" ${cpus} 640 && docker "$@"`, budget],
+        ...run,
+      ]);
+      return;
+    } catch (error) {
+      if (attempt >= 40) throw error;
+      await sleep(15_000);
     }
   }
-  const shell = (script: string): string =>
+}
+
+/** A single-node replica set in its own container, ready. */
+export async function startMongo(): Promise<PausableServer> {
+  // unique: Stryker runs every test file in one process
+  const name = `agboss-923-mongo-${randomUUID()}`;
+  const port = await freePort();
+  const host = `127.0.0.1:${String(port)}`;
+  const cpus = process.env.AGBOSS_PAUSE_CPUS ?? "0.5";
+  const run = [
+    ...["run", "-d", "--name", name, "--cpus", cpus, "--memory", "640m"],
+    ...["-p", `${host}:${String(port)}`, "mongo:7"],
+    ...["mongod", "--replSet", "rs0", "--port", String(port), "--bind_ip_all"],
+    // the cache sizes itself to the host, not the container: bounded, the member is not OOM-killed
+    ...["--wiredTigerCacheSizeGB", "0.25"],
+    ...["--setParameter", "maxIndexBuildMemoryUsageMegabytes=50"],
+  ];
+  await startContainer(run, cpus);
+  const shell = (script: string): Promise<string> =>
     docker("exec", name, "mongosh", "--port", String(port), "--quiet", "--eval", script);
   await untilReady(() => shell("db.runCommand({ ping: 1 }).ok"));
-  shell(`rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "${host}" }] })`);
-  await untilReady(() => {
-    if (shell("db.hello().isWritablePrimary") !== "true") throw new Error("no primary yet");
+  await shell(`rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "${host}" }] })`);
+  await untilReady(async () => {
+    if ((await shell("db.hello().isWritablePrimary")) !== "true") throw new Error("no primary yet");
   });
   return serverOf(name, `mongodb://${host}/?replicaSet=rs0`);
 }

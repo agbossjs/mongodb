@@ -106,7 +106,8 @@ export function cancelChange(
   at: Date,
   recipients: PauseRecipients,
 ): PauseChange {
-  const isDue = before.expiresAt !== undefined && before.expiresAt <= at.toISOString();
+  // no deadline is an invalid date, never due
+  const isDue = new Date(before.expiresAt ?? Number.NaN).getTime() <= at.getTime();
   const isExpired = resolution !== PauseResolution.Withdrawn && isDue;
   const after = closed(
     before,

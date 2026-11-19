@@ -3,11 +3,11 @@
  * asserts a real-time duration against a fixed threshold, and this repository has none. The planted
  * assertions are built from parts, so this file itself holds none.
  */
-import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { runNode } from "../support/process.js";
 
 const repo = new URL("../../", import.meta.url).pathname;
 const scratch = mkdtempSync(join(tmpdir(), "agboss-check-real-time-"));
@@ -98,18 +98,16 @@ describe("AC2: what is not a real-time threshold passes", () => {
 
 describe("AC2: the command", () => {
   const checkRealTime = (root: string) =>
-    spawnSync(process.execPath, [join(repo, "scripts/check-real-time.mjs"), root], {
-      encoding: "utf8",
-    });
+    runNode([join(repo, "scripts/check-real-time.mjs"), root]);
 
-  it("AC2: this repository's tests assert no real-time threshold, exit 0", () => {
-    const ran = checkRealTime(repo);
+  it("AC2: this repository's tests assert no real-time threshold, exit 0", async () => {
+    const ran = await checkRealTime(repo);
 
     expect(ran.stderr).toBe("");
     expect(ran.status).toBe(0);
   });
 
-  it("AC2: a planted one fails, exit 1, naming the file and line", () => {
+  it("AC2: a planted one fails, exit 1, naming the file and line", async () => {
     mkdirSync(join(scratch, "tests"), { recursive: true });
     writeFileSync(
       join(scratch, "tests", "slow.test.ts"),
@@ -120,11 +118,45 @@ describe("AC2: the command", () => {
       assertion("Date.now() - s", "toBeLessThan", "9"),
     );
 
-    const ran = checkRealTime(scratch);
+    const ran = await checkRealTime(scratch);
 
     expect(ran.status).toBe(1);
     expect(ran.stderr).toContain("tests/slow.test.ts:2: expect(Date.now() - started)");
     expect(ran.stderr).not.toContain("helper.ts");
     expect(ran.stderr).toContain("check:real-time: 1 real-time threshold assertion(s)");
+  });
+});
+
+describe("AC2 acceptance: a threshold one step removed is found too", () => {
+  it("AC2: a name assigned from a name that read the real time", () => {
+    const [finding] = found(
+      "const end = performance.now();",
+      "const elapsed = end - start;",
+      assertion("elapsed", "toBeLessThan", "500"),
+    );
+
+    expect(finding).toContain("a.test.ts:3: expect(elapsed)");
+    expect(finding).toContain("reads elapsed, a real time read");
+  });
+
+  it("AC2: a threshold named by a constant", () => {
+    const [finding] = found(
+      "const LIMIT = 300;",
+      "const t = Date.now();",
+      assertion("Date.now() - t", "toBeLessThan", "LIMIT"),
+    );
+
+    expect(finding).toContain("a.test.ts:3:");
+  });
+
+  it("AC2: a name bound to a VirtualClock's time is not a real time read", () => {
+    expect(
+      found(
+        "const before = clock.now().getTime();",
+        "const elapsed = clock.now().getTime() - before;",
+        assertion("elapsed", "toBe", "50"),
+        assertion("elapsed", "toBeGreaterThan", "LIMIT"),
+      ),
+    ).toEqual([]);
   });
 });
