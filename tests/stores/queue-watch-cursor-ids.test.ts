@@ -235,7 +235,8 @@ describe("agbossjs/agboss#1169: a watch that fails to start leaves no listener b
         spy.mock.calls
           .map((call, index) => [spy.mock.contexts[index], call[1]])
           .filter((_pair, index) => spy.mock.calls[index]?.[0] === "commandSucceeded");
-      expect(heard(on)).toHaveLength(1);
+      // the cursor listener and the aggregate listener, both removed again
+      expect(heard(on)).toHaveLength(2);
       expect(heard(off)).toEqual(heard(on));
     } finally {
       on.mockRestore();

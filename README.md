@@ -319,7 +319,11 @@ database with no counters starts at the epoch, "never pruned".
   waits at most the bound for a reply, and checks the server every quarter of it, so a client
   dropped as silent ends by itself within about the bound, not the driver's 30 s timeouts. After
   `close()` and `MongoConnection.onDestroy()` nothing the watch opened keeps the process alive past
-  twice the bound (agbossjs/agboss#1027).
+  twice the bound (agbossjs/agboss#1027). `close()` returns only after every cursor it knows of is
+  killed on the server: it waits, within the bound, for a stream's `aggregate` in flight to be
+  answered, and kills the stream's cursors by id, whatever its own close did (agbossjs/agboss#1345); a cursor
+  whose `aggregate` gets no answer within the liveness bound is left to the server's cursor timeout,
+  10 minutes by default.
 - **Text.** BSON keeps every text as given, U+0000 included. A composite key is the JSON array of
   its parts, so a separator inside a tenant id cannot join two keys, and a lone surrogate (which the
   driver would write as U+FFFD) is escaped in it.

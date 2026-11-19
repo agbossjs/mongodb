@@ -1,6 +1,13 @@
 import type { Clock } from "@agboss/core";
 import type { Milliseconds } from "@agboss/core/units";
-import { Long, type CommandSucceededEvent, type Db } from "mongodb";
+import {
+  Long,
+  type CommandFailedEvent,
+  type CommandStartedEvent,
+  type CommandSucceededEvent,
+  type Db,
+  type MongoClient,
+} from "mongodb";
 import { closeBounded } from "../connection/close-bounded.js";
 import { Collections } from "../connection/collections.js";
 
@@ -134,4 +141,88 @@ export async function killDropped(
     grace,
   );
   if (!state.answered) report("no answer within the close bound");
+}
+
+/**
+ * Whether the stream's `aggregate` calls are answered (agbossjs/agboss#1345): the stream's first
+ * one, which the driver sends when it has a connection, and any it sends to resume. The reply of an
+ * `aggregate` that the server runs is the only place its cursor's id is told, and a client whose
+ * sockets go before the reply never learns it: the cursor stays on the server until it times out
+ * (10 min). A stop therefore waits for this, within a bound, before it closes the stream. `unlisten` ends it.
+ */
+export function listenForAggregates(client: Pick<MongoClient, "on" | "off">): {
+  readonly answered: () => Promise<void>;
+  readonly unlisten: () => void;
+} {
+  let first = false;
+  let inFlight = 0;
+  const waiting = new Set<() => void>();
+  const settle = (): void => {
+    if (!first || inFlight > 0) return;
+    for (const wake of waiting) wake();
+    waiting.clear();
+  };
+  const started = (event: CommandStartedEvent): void => {
+    if (event.commandName === "aggregate") inFlight += 1;
+  };
+  const ended = (event: CommandSucceededEvent | CommandFailedEvent): void => {
+    if (event.commandName !== "aggregate") return;
+    first = true;
+    inFlight = Math.max(0, inFlight - 1);
+    settle();
+  };
+  client.on("commandStarted", started);
+  client.on("commandSucceeded", ended);
+  client.on("commandFailed", ended);
+  return {
+    answered: () =>
+      first && inFlight === 0
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            waiting.add(resolve);
+          }),
+    unlisten: () => {
+      client.off("commandStarted", started);
+      client.off("commandSucceeded", ended);
+      client.off("commandFailed", ended);
+      settle();
+      for (const wake of waiting) wake();
+      waiting.clear();
+    },
+  };
+}
+
+/** What a watch's client lets it learn of its cursors: the ids they carry and when their `aggregate`s are answered. */
+export function listenForStream(
+  client: Pick<MongoClient, "on" | "off">,
+  warn: (message: string) => void,
+): {
+  readonly cursors: Cursor[];
+  readonly answered: () => Promise<void>;
+  readonly unlisten: () => void;
+} {
+  const heard = listenForCursors(client, warn);
+  const aggregates = listenForAggregates(client);
+  return {
+    cursors: heard.cursors,
+    answered: aggregates.answered,
+    unlisten: () => {
+      heard.unlisten();
+      aggregates.unlisten();
+    },
+  };
+}
+
+/** Waits until `answered` settles or `bound` passes on `clock`, whichever is first. */
+export async function awaitAnswer(
+  answered: () => Promise<void>,
+  clock: Clock,
+  bound: Milliseconds,
+): Promise<void> {
+  const waiting = new AbortController();
+  try {
+    await Promise.race([answered(), clock.sleep(bound, waiting.signal).catch(() => undefined)]);
+  } finally {
+    waiting.abort();
+  }
 }
