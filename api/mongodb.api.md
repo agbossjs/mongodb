@@ -354,6 +354,27 @@ export interface MongoDeploymentErrorOptions {
 }
 
 // @public
+export class MongoDriverInternalsError extends AGBossError {
+    constructor(options: MongoDriverInternalsErrorOptions);
+    // (undocumented)
+    static readonly code: "mongodb.driver-internals-missing";
+    // (undocumented)
+    readonly code: typeof MongoDriverInternalsError.code;
+    readonly driverVersion: string;
+    readonly missing: string;
+    // (undocumented)
+    name: string;
+}
+
+// @public
+export interface MongoDriverInternalsErrorOptions {
+    // (undocumented)
+    readonly cause?: unknown;
+    readonly driverVersion: string;
+    readonly missing: string;
+}
+
+// @public
 export class MongoDurabilityError extends AGBossError {
     constructor(options: MongoDurabilityErrorOptions);
     // (undocumented)
@@ -881,6 +902,10 @@ export { SchemaSetup }
 // src/connection/transaction.ts - (ae-undocumented) Missing documentation for "session".
 // src/connection/transaction.ts - (ae-undocumented) Missing documentation for "db".
 // src/errors.ts - (ae-undocumented) Missing documentation for "message".
+// src/errors.ts - (ae-undocumented) Missing documentation for "cause".
+// src/errors.ts - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts - (ae-undocumented) Missing documentation for "code".
+// src/errors.ts - (ae-undocumented) Missing documentation for "name".
 // src/errors.ts - (ae-undocumented) Missing documentation for "cause".
 // src/errors.ts - (ae-undocumented) Missing documentation for "code".
 // src/errors.ts - (ae-undocumented) Missing documentation for "code".

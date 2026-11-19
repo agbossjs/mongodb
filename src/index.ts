@@ -26,6 +26,7 @@ export {
 export {
   MongoCollationNotSimpleError,
   MongoDeploymentError,
+  MongoDriverInternalsError,
   MongoDurabilityError,
   MongoLedgerMarkMissingError,
   MongoLiveLeasesError,
@@ -34,6 +35,7 @@ export {
   MongoSettingsError,
   type MongoCollationNotSimpleErrorOptions,
   type MongoDeploymentErrorOptions,
+  type MongoDriverInternalsErrorOptions,
   type MongoDurabilityErrorOptions,
   type MongoLedgerMarkMissingErrorOptions,
   type MongoLiveLeasesErrorOptions,

@@ -89,6 +89,41 @@ export class MongoDeploymentError extends AGBossError {
   }
 }
 
+/** What `MongoDriverInternalsError` found: the driver's version and the internal it did not have. */
+export interface MongoDriverInternalsErrorOptions {
+  /** The `mongodb` driver's version, as the client reports it (`unknown` when it does not). */
+  readonly driverVersion: string;
+  /** The driver internal the stop relies on that is missing or reshaped, e.g. `client.topology`. */
+  readonly missing: string;
+  readonly cause?: unknown;
+}
+
+/**
+ * The installed `mongodb` driver does not have the internal the bounded stop reaches
+ * (agbossjs/agboss#954: its topology, to destroy the sockets of a server that went quiet), so the
+ * stop could not leave no socket open. The connection does not start: run the driver version this
+ * package was tested with (`dependencies.mongodb` of `@agboss/mongodb`, held to one version).
+ */
+export class MongoDriverInternalsError extends AGBossError {
+  static override readonly code = "mongodb.driver-internals-missing" as const;
+  declare readonly code: typeof MongoDriverInternalsError.code;
+  override name = "MongoDriverInternalsError";
+  /** The `mongodb` driver's version, as the client reports it. */
+  readonly driverVersion: string;
+  /** The driver internal that is missing or reshaped. */
+  readonly missing: string;
+
+  constructor(options: MongoDriverInternalsErrorOptions) {
+    const { driverVersion, missing } = options;
+    super(
+      `the mongodb driver ${driverVersion} has no ${missing} (an internal the bounded stop of @agboss/mongodb reaches by name to destroy the sockets of a server that does not answer): install the driver version @agboss/mongodb was tested with — the exact one its package.json names`,
+      { cause: options.cause },
+    );
+    this.driverVersion = driverVersion;
+    this.missing = missing;
+  }
+}
+
 /** What `MongoCollationNotSimpleError` found: the collections of another collation. */
 export interface MongoCollationNotSimpleErrorOptions {
   /** The collections found with another collation. */

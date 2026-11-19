@@ -10,6 +10,7 @@ import * as entry from "../../src/index.js";
 const FIXTURES: Readonly<Record<string, object>> = {
   MongoCollationNotSimpleError: { collections: ["agboss_threads"] },
   MongoDeploymentError: {},
+  MongoDriverInternalsError: { driverVersion: "7.9.0", missing: "client.topology (an object)" },
   MongoDurabilityError: { problems: ["w: 1 is not majority"] },
   MongoLiveLeasesError: { count: 7, holders: ["pod-a", "pod-b"] },
   MongoLedgerMarkMissingError: { malformed: true, recreatedAt: new Date(0) },
