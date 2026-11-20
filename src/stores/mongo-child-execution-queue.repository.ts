@@ -50,6 +50,10 @@ const Stored = z.object({
 /** The queue's depth, as one `$group` gives it (none when no row is queued or running). */
 const Depth = z.object({ queued: z.number(), running: z.number(), oldest: z.date().nullable() });
 
+/** The value of a field named in `$unset`: the server ignores it, whatever it is. */
+// Stryker disable next-line StringLiteral: equivalent, `$unset` ignores the value of each field it names
+const UNSET = "";
+
 const isStatus = (status: ExecutionRecordStatus) => ({ $eq: ["$status", status] });
 
 /**
@@ -127,8 +131,10 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
     try {
       await this.#queue.updateOne(
         { _id: idOf(tenantId, executionId), $or: again },
-        // Stryker disable next-line StringLiteral: `$unset` ignores the value of each field it names
-        { $set: queued, $unset: { instanceId: "", claimedAt: "", endedAt: "", failure: "" } },
+        {
+          $set: queued,
+          $unset: { instanceId: UNSET, claimedAt: UNSET, endedAt: UNSET, failure: UNSET },
+        },
         { upsert: true },
       );
       return true;
@@ -194,8 +200,7 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
         instanceId: this.applicationContext.instanceId,
       },
       end.failure === undefined
-        ? // Stryker disable next-line StringLiteral: `$unset` ignores the value of the field it names
-          { $set: { status: end.status, endedAt: this.clock.now() }, $unset: { failure: "" } }
+        ? { $set: { status: end.status, endedAt: this.clock.now() }, $unset: { failure: UNSET } }
         : { $set: { status: end.status, endedAt: this.clock.now(), failure: end.failure } },
     );
     return completed.matchedCount === 1;

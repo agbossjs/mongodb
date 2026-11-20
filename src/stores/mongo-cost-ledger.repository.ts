@@ -46,10 +46,13 @@ const accountIdOf = (account: BudgetAccount): string =>
 const counterIdOf = (counter: CostCounter): string =>
   idOf(counter.budget, scopeOf(counter), counter.key, counter.period);
 
-/** The counters' order: by id, which are distinct. */
+/** Which of two texts is first: -1, 0 or 1 (the counters' ids, which are distinct). */
+export const compareStrings = (left: string, right: string): -1 | 0 | 1 =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+/** The counters' order: by id. */
 const byId = ([left]: readonly [string, number], [right]: readonly [string, number]): number =>
-  // Stryker disable next-line EqualityOperator: the ids are the keys of a map, distinct: `<` and `<=` order them alike
-  left < right ? -1 : 1;
+  compareStrings(left, right);
 
 /** The counters' updates for a save of `cost`, one per counter, in one order. */
 function countersOf(

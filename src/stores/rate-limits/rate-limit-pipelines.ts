@@ -7,6 +7,14 @@ import { literal } from "../store-time.js";
  * as a literal — never the server's.
  */
 
+/**
+ * What a missing array of a document is read as: empty. The server's `$ifNull` takes it as an
+ * argument that is its own array (one stand-in element would have no `expiresAt` or `at` field,
+ * which `$gt` against a date is false for: it is filtered out as the empty array is).
+ */
+// Stryker disable next-line ArrayDeclaration: equivalent, a stand-in element is filtered out as the empty array is
+const NONE: readonly unknown[] = [];
+
 /** One slot of a key: its id, its holder, its end. */
 export interface SlotEntry {
   slotId: string;
@@ -30,8 +38,7 @@ export function takeSlotPipeline(slot: SlotEntry, maxSlots: number, now: Date): 
       $set: {
         slots: {
           $filter: {
-            // Stryker disable next-line ArrayDeclaration: a stand-in element has no `expiresAt` field, which `$gt` against a date is false for: it is filtered out as the empty array is
-            input: { $ifNull: ["$slots", []] },
+            input: { $ifNull: ["$slots", NONE] },
             as: "slot",
             cond: { $gt: ["$$slot.expiresAt", now] },
           },
@@ -79,8 +86,7 @@ export function addToWindowPipeline(
       $set: {
         buckets: {
           $filter: {
-            // Stryker disable next-line ArrayDeclaration: a stand-in element has no `at` field, which `$gt` against a date is false for: it is filtered out as the empty array is
-            input: { $ifNull: ["$buckets", []] },
+            input: { $ifNull: ["$buckets", NONE] },
             as: "bucket",
             cond: { $gt: ["$$bucket.at", since] },
           },

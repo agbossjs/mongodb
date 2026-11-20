@@ -135,14 +135,10 @@ function hasCallsInFlight(client: MongoClient): boolean {
  */
 function dropSockets(client: MongoClient): void {
   client.close().catch(() => undefined); // the late failure of a close left running is dropped
-  const topology = member(client, "topology");
-  const close = member(topology, "close");
-  // checked at the start by `assertDriverInternals`; kept: a missing close would throw into the catch
-  // below, the same end (its `false` replacement is equivalent)
-  // Stryker disable next-line ConditionalExpression: equivalent, see above
-  if (typeof close !== "function") return;
+  // checked at the start by `assertDriverInternals`; a topology with no close throws into the catch
+  const topology = member(client, "topology") as { close(): unknown };
   try {
-    Reflect.apply(close, topology, []);
+    topology.close();
   } catch {
     // the driver's own close finishes what it can
   }

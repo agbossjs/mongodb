@@ -39,11 +39,8 @@ const REFUSED_BEFORE_RUNNING: ReadonlySet<number> = new Set([2, 9, 14, 40]);
  */
 const REFUSED_PER_DOCUMENT: ReadonlySet<number> = new Set([112, 121, 11000, 11001, 12582]);
 
-const isIn = (codes: ReadonlySet<number>, code: unknown): boolean =>
-  // a defensive check, kept: a code that is no number is in no set of numbers either (its `true`
-  // replacement is equivalent), and the whitelist reads as numbers only
-  // Stryker disable next-line ConditionalExpression: equivalent, see above
-  typeof code === "number" && codes.has(code);
+/** A code that is no number is in no set of numbers: the whitelist reads as numbers only. */
+const isIn = (codes: ReadonlySet<unknown>, code: unknown): boolean => codes.has(code);
 
 /**
  * Whether `error` is the server's reply that proves the write was not applied; `isMulti`: a write
