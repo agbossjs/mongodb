@@ -174,9 +174,9 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
           claimedAt: this.clock.now(),
         },
       },
-      // the index by_claim (status, depth desc, queuedAt) already yields this order; the sort is kept
-      // so that the order never depends on the plan (its `{}` replacement is equivalent here)
-      // Stryker disable next-line ObjectLiteral: equivalent under the index, see above
+      // the index by_claim (status, depth desc, queuedAt) already yields this order; the sort says it,
+      // so that the order never depends on the plan: with no such index the claim is the same
+      // (agbossjs/agboss#81, child-queue-keys.test.ts)
       { sort: { depth: -1, queuedAt: 1 }, returnDocument: "after" },
     );
     return claimed === null ? undefined : childOf(claimed);
