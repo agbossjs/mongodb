@@ -95,6 +95,33 @@ export const SHARDS = {
     mutate: ["src/stores/queue-{changes,watch,watch-cursors}.ts", "src/connection/watch-client.ts"],
     tests: ["tests/stores/queue-watch*.test.ts"],
   },
+  // the order and the numbers of this instance's writes: the commit order of the calls on one
+  // key (agbossjs/agboss#527) and the counter behind every `seq` (#661, #682)
+  ordering: {
+    mutate: ["src/stores/{local-order,sequence}.ts"],
+    tests: ["tests/stores/{local-order,sequence}*.test.ts", "tests/stores/fence-keys.test.ts"],
+  },
+  // the settings read from the environment and from a settings object (agbossjs/agboss#789, #1029,
+  // #1129): the URL's database, the liveness bound, every field named when it is wrong
+  settings: {
+    mutate: ["src/connection/settings.ts"],
+    tests: ["tests/connection/{settings*,environment-fields,watch-liveness-*}.test.ts"],
+  },
+  // the `agboss-mongodb` command (agbossjs/agboss#891): its arguments, its exit codes, and the
+  // passwords it never prints
+  cli: {
+    mutate: ["src/cli.ts"],
+    tests: ["tests/cli/*.test.ts"],
+  },
+  // the connection's assembly (agbossjs/agboss#891, #1017, #1104): its client and its checks, the
+  // transaction and the commit it reads, the start that is retried after a failure, the stop
+  connection: {
+    mutate: ["src/connection/mongodb-connection.ts"],
+    tests: [
+      "tests/connection/{mongodb-connection*,watch-liveness-*,driver-internals}.test.ts",
+      "tests/integration/{mongodb-connection.integration,retries,migrate-on-start-leases}.test.ts",
+    ],
+  },
   // the schema and its migrations: its collections, indexes and validators, its version, the
   // migration to it, and the live-lease guard of a migration (agbossjs/agboss#1104, #1260)
   migrations: {
@@ -106,7 +133,7 @@ export const SHARDS = {
       "src/connection/live-leases.ts",
     ],
     tests: [
-      "tests/integration/{schema,schema-version,live-leases,migrate-on-start-leases}.test.ts",
+      "tests/integration/{schema,schema-edges,schema-version,live-leases,migrate-on-start-leases}.test.ts",
       "tests/connection/schema-*.test.ts",
       "tests/cli/*.test.ts",
     ],

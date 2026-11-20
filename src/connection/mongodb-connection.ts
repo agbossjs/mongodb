@@ -25,7 +25,6 @@ import {
   MongoTransactionReadConcern,
 } from "./concerns.js";
 import { supportedTopologyOf, topologyOf, type MongoTopology } from "./deployment.js";
-import { StoreOutcomeUnknownError } from "@agboss/core/stores";
 import { classifiedDb } from "./classified-db.js";
 import { commitErrorOf } from "./outcome.js";
 import { sleepOn } from "./live-leases.js";
@@ -191,9 +190,8 @@ export class MongoConnection implements OnInit, OnDestroy {
       return await session.withTransaction(async () => {
         const result = await work(transaction);
         await session.commitTransaction().catch((error: unknown) => {
-          const read = commitErrorOf(error);
-          if (read instanceof StoreOutcomeUnknownError) lostCommit = read;
-          throw read;
+          lostCommit = commitErrorOf(error);
+          throw lostCommit;
         });
         return result;
       }, this.#transactionOptions);

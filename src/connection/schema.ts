@@ -145,12 +145,17 @@ export async function collatedCollectionsOf(db: Db): Promise<string[]> {
     .map((info) => info.name);
 }
 
+const SIMPLE_COLLATION = { locale: "simple" };
+
+// Stryker disable next-line ObjectLiteral: equivalent, a collection made with no collation has the simple one
+const SIMPLE_COLLECTION = { collation: SIMPLE_COLLATION };
+
 /** Creates `name` with the simple collation unless it exists — the ledger's with its mark. */
 async function createIfMissing(db: Db, name: string, existing: ReadonlySet<string>): Promise<void> {
   if (existing.has(name)) return;
   if (name === Collections.CostEntries) return createLedgerEntries(db);
   try {
-    await db.createCollection(name, { collation: { locale: "simple" } });
+    await db.createCollection(name, SIMPLE_COLLECTION);
   } catch (error) {
     // another instance created it in between (NamespaceExists): it is there, as wanted
     if (z.object({ code: z.literal(48) }).safeParse(error).success) return;

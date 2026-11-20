@@ -44,51 +44,60 @@ const FLAGS = new Set([...VALUE_FLAGS, ALLOW_LIVE_LEASES]);
 const flagNamesOf = (rest: readonly string[]): string =>
   rest
     .filter((argument) => argument.startsWith("-"))
-    .map((argument) => argument.split("=", 1)[0] ?? "")
+    .map((argument) => argument.replace(/=.*/su, ""))
     .map((name) => (FLAGS.has(name) ? name : "<flag>"))
     .join(" ");
 
-/** One flag and its value: `--flag=value` or `--flag value`; `at` is where the next one starts. */
-function flagAt(
-  rest: readonly string[],
-  at: number,
-): { readonly flag: string; readonly value: string | undefined; readonly next: number } {
-  const argument = rest[at] ?? "";
-  const equals = argument.startsWith("--") ? argument.indexOf("=") : -1;
-  return equals < 0
-    ? { flag: argument, value: rest[at + 1], next: at + 2 }
-    : { flag: argument.slice(0, equals), value: argument.slice(equals + 1), next: at + 1 };
+/** What `migrate`'s arguments hold: each value flag once with its value, `--allow-live-leases` once. */
+interface Flags {
+  readonly values: ReadonlyMap<string, string>;
+  readonly allowLiveLeases: boolean;
 }
 
-/** The flags of `migrate`'s arguments, each once with a value; a string → a usage problem. */
-function flagsOf(rest: readonly string[]): ReadonlyMap<string, string> | string {
-  const flags = new Map<string, string>();
-  for (let at = 0; at < rest.length;) {
-    if (rest[at] === ALLOW_LIVE_LEASES) {
-      if (flags.has(ALLOW_LIVE_LEASES)) return `unexpected arguments (flags: ${flagNamesOf(rest)})`;
-      flags.set(ALLOW_LIVE_LEASES, "");
-      at += 1;
+/** One flag and its value: `--flag=value`, or `--flag` and the value taken from `pending`. */
+function flagAt(
+  argument: string,
+  pending: string[],
+): { readonly flag: string; readonly value: string | undefined } {
+  const equals = argument.indexOf("=");
+  return equals === -1
+    ? { flag: argument, value: pending.shift() }
+    : { flag: argument.slice(0, equals), value: argument.slice(equals + 1) };
+}
+
+/**
+ * The flags of `migrate`'s arguments, each once; a value flag as `--flag=value` or `--flag value`;
+ * a string → a usage problem.
+ */
+function flagsOf(rest: readonly string[]): Flags | string {
+  const unexpected = `unexpected arguments (flags: ${flagNamesOf(rest) || "none"})`;
+  const values = new Map<string, string>();
+  let allowLiveLeases = false;
+  const pending = [...rest];
+  for (let argument = pending.shift(); argument !== undefined; argument = pending.shift()) {
+    if (argument === ALLOW_LIVE_LEASES) {
+      if (allowLiveLeases) return unexpected;
+      allowLiveLeases = true;
       continue;
     }
-    const { flag, value, next } = flagAt(rest, at);
-    if (!VALUE_FLAGS.has(flag) || flags.has(flag) || value === undefined || value === "")
-      return `unexpected arguments (flags: ${flagNamesOf(rest) || "none"})`;
-    flags.set(flag, value);
-    at = next;
+    const { flag, value } = flagAt(argument, pending);
+    if (!VALUE_FLAGS.has(flag) || values.has(flag) || value === undefined || value === "")
+      return unexpected;
+    values.set(flag, value);
   }
-  return flags;
+  return { values, allowLiveLeases };
 }
 
 /** The options of `migrate`'s arguments; a string → a usage problem. */
 function optionsOf(args: readonly string[], env: CommandIo["env"]): MigrateMongodbOptions | string {
   const flags = flagsOf(args.slice(1));
   if (typeof flags === "string") return flags;
-  const url = flags.get("--url") ?? env.MONGODB_URL;
+  const url = flags.values.get("--url") ?? env.MONGODB_URL;
   if (url === undefined || url === "") return "no --url and no MONGODB_URL";
   // as the app's connection reads them: --database, MONGODB_DATABASE, the URL's database, agboss
   const fromEnv = env.MONGODB_DATABASE === "" ? undefined : env.MONGODB_DATABASE;
-  const database = flags.get("--database") ?? fromEnv;
-  const allowLiveLeases = flags.has(ALLOW_LIVE_LEASES);
+  const database = flags.values.get("--database") ?? fromEnv;
+  const { allowLiveLeases } = flags;
   return {
     url,
     ...(database === undefined ? {} : { database }),
