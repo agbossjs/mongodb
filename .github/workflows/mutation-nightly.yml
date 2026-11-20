@@ -44,12 +44,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start MongoDB 7 (replica set rs0 on 27017-27019, standalone on 27020)
-        run: |
-          for port in 27017 27018 27019; do
-            docker run -d --name "mongo-$port" --network host mongo:7 \
-              mongod --replSet rs0 --port "$port" --bind_ip_all --setParameter enableTestCommands=1
-          done
-          docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
+        run: .github/start-mongo.sh
 
       - name: Resolve the pinned framework
         id: pin
@@ -88,6 +83,8 @@ jobs:
         run: npm run build && npm run check:types
 
       - name: Mutation testing of the shard, every mutant (break below 100 % killed or justified)
+        # below the job's 120 minutes, so a runaway shard fails here and its report still uploads
+        timeout-minutes: 100
         run: npm run test:mutation -- --force
 
       - if: always()
