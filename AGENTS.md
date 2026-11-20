@@ -25,7 +25,7 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
   `npm run …` / `scripts/…` they name exists), and the stages below but the tests.
 - `MUTATION_SHARD=<shard> npm run test:mutation` (`make mutation SHARD=<shard>`) — Stryker on one
   shard of `scripts/mutation-shards.mjs` (`leases`, `fence`, `effects-and-calls`, `pauses`,
-  `money`, `queue`, `migrations`, `outcome`, `store-bound`) against the servers of `npm run check`; below 100 % killed or justified
+  `money`, `queue`, `queue-watch`, `migrations`, `outcome`, `store-bound`) against the servers of `npm run check`; below 100 % killed or justified
   it fails (agbossjs/agboss#1213). CI runs each shard incrementally, cold when the mutation setup
   changes, `mutation-nightly.yml` every night cold; run every shard a change touches locally first.
 - What `npm run check` runs: format, suppressions (budget 0), reviewed installs (`check:installs`: a

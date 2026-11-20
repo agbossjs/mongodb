@@ -117,6 +117,7 @@ export async function killDropped(
     .filter((orphan) => orphan.ns === ns && orphan.generation !== current)
     .map((orphan) => Long.fromBigInt(orphan.id));
   if (cursors.length === 0) return;
+  // Stryker disable next-line ObjectLiteral: equivalent, `answered` is only read as a truth value, and an absent one is as false as `false`
   const state = { answered: false };
   let reported = false;
   const report = (why: string): void => {
@@ -160,6 +161,7 @@ export function listenForAggregates(client: Pick<MongoClient, "on" | "off">): {
   const settle = (): void => {
     if (!first || inFlight > 0) return;
     for (const wake of waiting) wake();
+    // Stryker disable next-line CallExpression: equivalent, a waiter woken twice is woken once (a promise settles once); the clear only drops the resolvers
     waiting.clear();
   };
   const started = (event: CommandStartedEvent): void => {
@@ -185,8 +187,8 @@ export function listenForAggregates(client: Pick<MongoClient, "on" | "off">): {
       client.off("commandStarted", started);
       client.off("commandSucceeded", ended);
       client.off("commandFailed", ended);
-      settle();
       for (const wake of waiting) wake();
+      // Stryker disable next-line CallExpression: equivalent, as in `settle`
       waiting.clear();
     },
   };

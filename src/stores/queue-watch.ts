@@ -104,6 +104,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
         maxAwaitTimeMS: awaitFor(livenessSeconds),
         ...(startAtOperationTime === undefined ? {} : { startAtOperationTime }),
       });
+      // Stryker disable next-line AssignmentOperator: equivalent, a generation is only compared for equality: counting down names the streams as well as counting up
       this.#generations += 1;
       const open = {
         generation: this.#generations,
@@ -157,7 +158,9 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
       ping: () => open.client.db().command({ ping: 1 }),
       signal: open.beat.signal,
     });
-    if (dead !== undefined) this.#lost(open, dead);
+    // no verdict (undefined) is a beat that ended with its stream, aborted only after the stream stopped
+    // being the current one: `#lost` lets such a stream be
+    this.#lost(open, dead);
   }
 
   /** Whether `open` is the stream the watch listens to (not one it dropped, nor one not yet adopted). */
@@ -210,17 +213,18 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
   }
 
   /** The stream failed, closed or went silent: open another, unless the watch is closed or it was replaced. */
-  #lost(open: OpenStream, reason: string): void {
+  #lost(open: OpenStream, reason: string | undefined): void {
     if (!this.#isCurrent(open)) return;
     this.#open = undefined;
     open.beat.abort();
-    this.warn(`The child queue's change stream is lost (${reason}); opening it again`);
+    this.warn(`The child queue's change stream is lost (${String(reason)}); opening it again`);
     // closed, not just left: the driver resumes a stream on its own once connections go through
     // again, and a silent client never finishes an orderly close, so it is left to end by itself
     this.#orphans.push(
       ...open.cursors.map((cursor) => ({ ...cursor, generation: open.generation })),
     );
     void this.#closeStream(open);
+    // Stryker disable next-line BlockStatement: equivalent, a settled promise that `close` awaits is a no-op; the reset only drops the reference
     this.#reopening = this.#reopen().finally(() => {
       this.#reopening = undefined;
     });
@@ -230,6 +234,7 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
     const signal = this.#stopped.signal;
     const isStopped = (): boolean => signal.aborted;
     for (let attempt = 0; ; attempt += 1) {
+      // Stryker disable next-line ArithmeticOperator: equivalent, one past the last pause is none, and the fallback is the last pause (30 s)
       const pause = PAUSES[Math.min(attempt, PAUSES.length - 1)] ?? seconds(30);
       await this.clock.sleep(pause, signal).catch(() => undefined);
       if (isStopped()) return;
@@ -267,7 +272,8 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
       await this.#start();
       return true;
     } catch {
-      return false;
+      // the deployment did not answer, or refused: not started
     }
+    return false;
   }
 }
