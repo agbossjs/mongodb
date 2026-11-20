@@ -89,6 +89,12 @@ export const SHARDS = {
     tests: [CONFORMANCE, "tests/stores/{queue-watch,child-queue*}.test.ts"],
     testNamePattern: conformanceOf("child execution queue contract"),
   },
+  // the child queue's watch (agbossjs/agboss#777, #1088, #1345): its change stream, the cursors it
+  // knows of, the close that kills them, and the client it runs on
+  "queue-watch": {
+    mutate: ["src/stores/queue-{changes,watch,watch-cursors}.ts", "src/connection/watch-client.ts"],
+    tests: ["tests/stores/queue-watch*.test.ts"],
+  },
   // the schema and its migrations: its collections, indexes and validators, its version, the
   // migration to it, and the live-lease guard of a migration (agbossjs/agboss#1104, #1260)
   migrations: {

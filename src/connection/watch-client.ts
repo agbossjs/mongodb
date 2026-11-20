@@ -29,6 +29,7 @@ export interface WatchClient {
  */
 export function watchClientOf(
   connection: object,
+  // Stryker disable next-line ObjectLiteral: equivalent, an option that is absent is as false as `false`
   options: { readonly monitorCommands: boolean } = { monitorCommands: false },
 ): WatchClient {
   const settings = SETTINGS.get(connection);

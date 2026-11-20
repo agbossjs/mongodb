@@ -24,7 +24,6 @@ import { CONNECTS, child, instances, watching } from "../support/silent-watch.js
 import { holdFailPoints } from "../support/failpoint-lock.js";
 
 const database = testDatabase();
-holdFailPoints();
 const cleanups: (() => Promise<void>)[] = [];
 
 afterAll(closeCursorProbes);
@@ -136,57 +135,6 @@ describe("agbossjs/agboss#1088: the queue watch leaves no cursor on the server",
     60_000,
   );
 
-  it("a kill the server rejects is warned about once, and close() still ends within its bound", async () => {
-    const before = await changeStreamCursors(database.name());
-    const { proxy, watched, direct, logger } = await instances(database, cleanups, {
-      clock: new RealClock(),
-      livenessSeconds: 2,
-    });
-    const unhandled: unknown[] = [];
-    const onUnhandled = (reason: unknown): void => {
-      unhandled.push(reason);
-    };
-    process.on("unhandledRejection", onUnhandled);
-    cleanups.push(() => {
-      process.off("unhandledRejection", onUnhandled);
-      return Promise.resolve();
-    });
-    const watch = await watching(watched, cleanups);
-    await streaming(proxy);
-    await cursorsAre(before, 1, 15_000);
-
-    const admin = new MongoClient(REPLICA_SET_URL);
-    cleanups.push(() => admin.close());
-    const failPoint = (mode: string): Promise<unknown> =>
-      admin.db("admin").command({
-        configureFailPoint: "failCommand",
-        mode,
-        data: { failCommands: ["killCursors"], errorCode: 2 },
-      });
-    cleanups.push(async () => {
-      await failPoint("off");
-    });
-    await failPoint("alwaysOn");
-
-    proxy.cutStreams();
-    await direct.saveIfAbsent(child("f-1"));
-    await vi.waitFor(() => {
-      expect(watch.wakes()).toBeGreaterThanOrEqual(1);
-    }, CONNECTS);
-    await vi.waitFor(
-      () => {
-        expect(logger.entries.filter((e) => e.message.includes("killed"))).toHaveLength(1);
-      },
-      { timeout: 20_000 },
-    );
-    expect(await endsWithin(watch.close(), 5000)).toBe(true);
-    // the stop kills the current stream's cursor by id too (agbossjs/agboss#1345), and the server rejects that kill
-    // as well: one more warning, for that cursor, and no kill is tried again
-    await sleep(1500);
-    expect(logger.entries.filter((e) => e.message.includes("killed"))).toHaveLength(2);
-    expect(unhandled).toEqual([]);
-  }, 60_000);
-
   it("a kill the server cannot be reached for is warned about, and close() still ends within its bound", async () => {
     const before = await changeStreamCursors(database.name());
     const { proxy, watched, direct, logger } = await instances(database, cleanups, {
@@ -255,6 +203,67 @@ describe("agbossjs/agboss#1088: the queue watch leaves no cursor on the server",
 });
 
 /**
+ * The server has one `failCommand` fail point, so the tests that set one hold the lock of
+ * `holdFailPoints` — and only these: the lock is held for the describe, not for the file, so a
+ * mutant that makes this file slow does not make the other test runs of the shard wait for it
+ * (agbossjs/agboss#91).
+ */
+describe("agbossjs/agboss#1088: a kill the server rejects", () => {
+  holdFailPoints();
+
+  it("a kill the server rejects is warned about once, and close() still ends within its bound", async () => {
+    const before = await changeStreamCursors(database.name());
+    const { proxy, watched, direct, logger } = await instances(database, cleanups, {
+      clock: new RealClock(),
+      livenessSeconds: 2,
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    cleanups.push(() => {
+      process.off("unhandledRejection", onUnhandled);
+      return Promise.resolve();
+    });
+    const watch = await watching(watched, cleanups);
+    await streaming(proxy);
+    await cursorsAre(before, 1, 15_000);
+
+    const admin = new MongoClient(REPLICA_SET_URL);
+    cleanups.push(() => admin.close());
+    const failPoint = (mode: string): Promise<unknown> =>
+      admin.db("admin").command({
+        configureFailPoint: "failCommand",
+        mode,
+        data: { failCommands: ["killCursors"], errorCode: 2 },
+      });
+    cleanups.push(async () => {
+      await failPoint("off");
+    });
+    await failPoint("alwaysOn");
+
+    proxy.cutStreams();
+    await direct.saveIfAbsent(child("f-1"));
+    await vi.waitFor(() => {
+      expect(watch.wakes()).toBeGreaterThanOrEqual(1);
+    }, CONNECTS);
+    await vi.waitFor(
+      () => {
+        expect(logger.entries.filter((e) => e.message.includes("killed"))).toHaveLength(1);
+      },
+      { timeout: 20_000 },
+    );
+    expect(await endsWithin(watch.close(), 5000)).toBe(true);
+    // the stop kills the current stream's cursor by id too (agbossjs/agboss#1345), and the server rejects that kill
+    // as well: one more warning, for that cursor, and no kill is tried again
+    await sleep(1500);
+    expect(logger.entries.filter((e) => e.message.includes("killed"))).toHaveLength(2);
+    expect(unhandled).toEqual([]);
+  }, 60_000);
+});
+
+/**
  * agbossjs/agboss#1169: `useBigInt64=true` in the URL makes every cursor id of a reply a `bigint`
  * (by default a `Long`, or a `number` when it fits in 53 bits). The listener recorded them with
  * `Long` methods, threw on the command's path, and the stream reopened in a loop and left its
@@ -307,6 +316,7 @@ describe("agbossjs/agboss#1169: a cursor id that is a bigint", () => {
  * the client's sockets go: the cursor is then killed by id over a client made for it.
  */
 describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", () => {
+  holdFailPoints();
   const APP = "queue-watch-1345";
 
   it("the cursor is killed by id, and close() ends within its bounds", async () => {

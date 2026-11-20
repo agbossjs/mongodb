@@ -194,7 +194,18 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          [leases, fence, effects-and-calls, pauses, money, queue, migrations, outcome, store-bound]
+          [
+            leases,
+            fence,
+            effects-and-calls,
+            pauses,
+            money,
+            queue,
+            queue-watch,
+            migrations,
+            outcome,
+            store-bound,
+          ]
     env:
       MUTATION_SHARD: ${{ matrix.shard }}
     steps:
