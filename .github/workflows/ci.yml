@@ -55,12 +55,7 @@ jobs:
       # while the install runs; "Initiate the replica set" waits for them. enableTestCommands: the
       # retry and failover tests force errors with the server's own fail points.
       - name: Start MongoDB 7 (replica set rs0 on 27017-27019, standalone on 27020)
-        run: |
-          for port in 27017 27018 27019; do
-            docker run -d --name "mongo-$port" --network host mongo:7 \
-              mongod --replSet rs0 --port "$port" --bind_ip_all --setParameter enableTestCommands=1
-          done
-          docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
+        run: .github/start-mongo.sh
 
       # agbossjs/agboss#691: a commit pin packs the core from agbossjs/agboss; a release pin
       # (`source: "registry"`) downloads the published core, so no checkout is needed
@@ -129,12 +124,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start MongoDB 7 (replica set rs0 on 27017-27019, standalone on 27020)
-        run: |
-          for port in 27017 27018 27019; do
-            docker run -d --name "mongo-$port" --network host mongo:7 \
-              mongod --replSet rs0 --port "$port" --bind_ip_all --setParameter enableTestCommands=1
-          done
-          docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
+        run: .github/start-mongo.sh
 
       # agbossjs/agboss#691: a commit pin packs the core from agbossjs/agboss; a release pin
       # (`source: "registry"`) downloads the published core, so no checkout is needed
@@ -212,12 +202,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start MongoDB 7 (replica set rs0 on 27017-27019, standalone on 27020)
-        run: |
-          for port in 27017 27018 27019; do
-            docker run -d --name "mongo-$port" --network host mongo:7 \
-              mongod --replSet rs0 --port "$port" --bind_ip_all --setParameter enableTestCommands=1
-          done
-          docker run -d --name mongo-standalone --network host mongo:7 mongod --port 27020 --bind_ip_all
+        run: .github/start-mongo.sh
 
       - name: Resolve the pinned framework
         id: pin
@@ -262,7 +247,10 @@ jobs:
           key: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'vitest.mutation.config.ts') }}-${{ github.sha }}
           restore-keys: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'vitest.mutation.config.ts') }}-
 
+      # below the job's 120 minutes (a shard runs 45 to 95 of them), so a runaway one fails here and the
+      # report below still uploads (agbossjs/mongodb#92)
       - name: Mutation testing of the shard (break below 100 % killed or justified)
+        timeout-minutes: 100
         run: npm run test:mutation
 
       - if: always()
