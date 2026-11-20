@@ -81,8 +81,8 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
           { $set: fieldsOf(change.pause) },
           { session },
         );
-        // one snapshot with the read: a miss is the driver's conflict, so this fails closed, unreached
-        // Stryker disable next-line ConditionalExpression,StringLiteral,CallExpression: unreachable in a snapshot transaction
+        // one snapshot with the read: a miss is the driver's conflict, so this fails closed (a test
+        // makes it miss: pause-sent-mark.test.ts)
         if (marked.matchedCount !== 1) throw new Error("the sent mark matched no pause");
         await this.appendNotices(transaction, change.pause, change.notices);
       }

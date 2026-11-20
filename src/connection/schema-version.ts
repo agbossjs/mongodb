@@ -179,10 +179,9 @@ export async function migrateAtStart(
   // newer schema waits for nothing, so its removal is equivalent
   // Stryker disable next-line CallExpression: equivalent, see above
   refuseNewer(from);
-  // a database never migrated has no instance to stop: `from !== undefined` says so, kept, though
-  // `undefined < SCHEMA_VERSION` is false too (its `true` replacement is equivalent)
-  // Stryker disable next-line ConditionalExpression: equivalent, see above
-  if (from !== undefined && from < SCHEMA_VERSION && !allowLiveLeases)
+  // a database never migrated has no instance to stop: with no version it is not behind
+  const isBehind = (from ?? SCHEMA_VERSION) < SCHEMA_VERSION;
+  if (isBehind && !allowLiveLeases)
     await waitForLeasesToLapse(db, options.leaseWait ?? DEFAULT_LEASE_WAIT, options.sleep);
   return migrateSchema(db, { allowLiveLeases });
 }
