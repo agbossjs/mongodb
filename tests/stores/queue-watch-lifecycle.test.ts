@@ -9,7 +9,15 @@
 import { LogLevel } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
 import { seconds, type Milliseconds } from "@agboss/core/units";
-import { Collection, Db, MongoClient, Timestamp, type ChangeStream, type Document } from "mongodb";
+import {
+  Collection,
+  Db,
+  MongoClient,
+  Timestamp,
+  type ChangeStream,
+  type ChangeStreamInsertDocument,
+  type Document,
+} from "mongodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { testDatabase } from "../support/database.js";
 import { CONNECTS, instances, watching } from "../support/silent-watch.js";
@@ -104,6 +112,44 @@ describe("agbossjs/agboss#91: a start", () => {
     expect(waits).toHaveLength(1);
     expect(waits[0]?.signal?.aborted).toBe(true);
   });
+});
+
+/** A change as the driver hands it on: the watch reads none of it, only that one came. */
+const CHANGE = { operationType: "insert" } as ChangeStreamInsertDocument;
+
+describe("agbossjs/agboss#91: what the watch hears", () => {
+  it("a change of the current stream wakes the claimers; one of a stream it dropped does not", async () => {
+    const { clock, watched } = await setup();
+    const streams: ChangeStream[] = [];
+    const watchOf = Object.getOwnPropertyDescriptor(Collection.prototype, "watch")?.value as (
+      this: Collection,
+      ...args: Parameters<Collection["watch"]>
+    ) => ChangeStream;
+    vi.spyOn(Collection.prototype, "watch").mockImplementation(function (
+      this: Collection,
+      ...args
+    ) {
+      const stream = watchOf.call(this, ...args);
+      streams.push(stream);
+      return stream;
+    });
+    const watch = await watching(watched, cleanups);
+    streams[0]?.emit("change", CHANGE);
+    expect(watch.wakes()).toBe(1);
+
+    // the first stream is dropped and the second is the current one: the catch-up wake is the second
+    streams[0]?.emit("error", new Error("the cursor is dead"));
+    await clock.advance(seconds(1));
+    await vi.waitFor(() => {
+      expect(streams).toHaveLength(2);
+      expect(watch.wakes()).toBe(2);
+    }, CONNECTS);
+
+    streams[0]?.emit("change", CHANGE);
+    expect(watch.wakes()).toBe(2);
+    streams[1]?.emit("change", CHANGE);
+    expect(watch.wakes()).toBe(3);
+  }, 60_000);
 });
 
 describe("agbossjs/agboss#91: a stream that closes", () => {
