@@ -28,7 +28,7 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
   `npm run …` / `scripts/…` they name exists), and the stages below but the tests.
 - `MUTATION_SHARD=<shard> npm run test:mutation` (`make mutation SHARD=<shard>`) — Stryker on one
   shard of `scripts/mutation-shards.mjs` (`leases`, `fence`, `effects-and-calls`, `pauses`,
-  `money`, `queue`, `queue-watch`, `migrations`, `outcome`, `store-bound`) against the servers of `npm run check`; below 100 % killed or justified
+  `money`, `queue`, `queue-watch`, `ordering`, `settings`, `cli`, `connection`, `migrations`, `outcome`, `store-bound`) against the servers of `npm run check`; below 100 % killed or justified
   it fails (agbossjs/agboss#1213). CI runs each shard incrementally, cold when the mutation setup
   changes, `mutation-nightly.yml` every night cold; run every shard a change touches locally first.
 - `scripts/stryker-disables.mjs` (run by `check:suppressions`; the core's, agbossjs/agboss#1353): every `Stryker disable` of `src/` is `// Stryker disable next-line <one Mutator>: <reason>` and hides exactly one mutant — rewrite the code (a helper, a constant, an operand on its own line) rather than disable a `true` beside a `false`.

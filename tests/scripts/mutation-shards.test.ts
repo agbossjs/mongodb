@@ -14,12 +14,6 @@ const NON_SHARDED_SRC: Readonly<Record<string, string>> = {
   "src/index.ts": "the exports",
   "src/errors.ts": "the named errors: constructors of codes and messages",
   "src/redaction.ts": "the redaction of the URL in messages, covered by its own tests",
-  "src/cli.ts": "the bin's argument handling; its tests run in the migrations shard",
-  "src/connection/settings.ts": "the settings read from the environment; follow-up shard",
-  "src/connection/mongodb-connection.ts":
-    "the connection's assembly of the shards' modules; follow-up shard",
-  "src/stores/local-order.ts": "this instance's commit order of calls on one key; follow-up shard",
-  "src/stores/sequence.ts": "the counter behind every `seq`; follow-up shard",
   "src/stores/bundles.ts": "the thread's bundles of the record store: not a money path",
   // the stores of no money path (their own contracts and tests; not sharded in agbossjs/agboss#1213)
   ...Object.fromEntries(
