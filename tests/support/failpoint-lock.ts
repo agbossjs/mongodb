@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MongoClient } from "mongodb";
@@ -14,9 +14,6 @@ import { afterAll, beforeAll } from "vitest";
 const WAIT_MS = 20 * 60_000;
 /** A lock older than this was left by a worker that hung (its owner is alive and holds it). */
 const STALE_MS = 15 * 60_000;
-/** The time a taker has to write its pid into the directory it just made. */
-const OWNERLESS_MS = 10_000;
-
 const lockPath = (): string =>
   join(
     tmpdir(),
@@ -37,37 +34,78 @@ function isAlive(pid: number): boolean {
   }
 }
 
+/** What a lock's `owner` file says: who holds it, since when, and a token no other holder has. */
+interface Owner {
+  readonly raw: string;
+  readonly pid: number;
+  readonly since: number;
+}
+
+/** The holder written in the lock `path`; `undefined` when there is no lock, or none that reads. */
+async function ownerOf(path: string): Promise<Owner | undefined> {
+  const raw = await readFile(join(path, "owner"), "utf8").catch(() => undefined);
+  if (raw === undefined) return undefined;
+  const [pid, since] = raw.split(" ").map(Number);
+  return Number.isInteger(pid) && pid !== undefined && pid > 0 && since !== undefined
+    ? { raw, pid, since }
+    : undefined;
+}
+
 /**
  * Whether the lock was left by a worker that is gone (agbossjs/agboss#91): Stryker kills a test
  * runner that has run out its time without running its `afterAll`, and every other runner of the
  * shard then waited out `STALE_MS` behind its lock — a run that looked hung for an hour and read
  * as timeouts. The owner's pid is in the directory: a dead one frees the lock at once.
  */
-async function isStale(path: string): Promise<boolean> {
+const isStale = (owner: Owner): boolean =>
+  !isAlive(owner.pid) || Date.now() - owner.since > STALE_MS;
+
+/**
+ * Removes the lock `path` when it is still the one whose owner file says `raw` (agbossjs/mongodb#101):
+ * the directory is renamed to a name of its own first — one of several that do this wins, the rest
+ * find nothing — and only then read and deleted. A lock that was another holder's by then (the one
+ * judged stale was replaced between the read and the rename) is put back.
+ */
+async function removeIfOwnedBy(path: string, raw: string): Promise<void> {
+  const trash = `${path}.removed-${randomUUID()}`;
   try {
-    const age = Date.now() - (await stat(path)).mtimeMs;
-    const owner = Number(await readFile(join(path, "owner"), "utf8").catch(() => ""));
-    if (Number.isInteger(owner) && owner > 0) return !isAlive(owner) || age > STALE_MS;
-    return age > OWNERLESS_MS;
+    await rename(path, trash);
   } catch {
-    return false;
+    return;
+  }
+  const seen = await readFile(join(trash, "owner"), "utf8").catch(() => undefined);
+  if (seen !== raw) await rename(trash, path).catch(() => undefined);
+  await rm(trash, { recursive: true, force: true });
+}
+
+/**
+ * Takes the lock `path`: a directory made whole — its owner file written — before it is put in
+ * place by one `rename`, which fails while another lock is there (a directory with a file in it is
+ * never replaced). So the lock has no moment without an owner. Returns the owner file's text, the
+ * proof of ownership `releaseLock` asks for.
+ */
+export async function acquireLock(path: string, waitMs = WAIT_MS, pollMs = 250): Promise<string> {
+  const deadline = Date.now() + waitMs;
+  const raw = `${String(process.pid)} ${String(Date.now())} ${randomUUID()}`;
+  for (;;) {
+    const mine = `${path}.new-${randomUUID()}`;
+    await mkdir(mine);
+    await writeFile(join(mine, "owner"), raw);
+    try {
+      await rename(mine, path);
+      return raw;
+    } catch {
+      await rm(mine, { recursive: true, force: true });
+    }
+    const owner = await ownerOf(path);
+    if (owner !== undefined && isStale(owner)) await removeIfOwnedBy(path, owner.raw);
+    else if (Date.now() > deadline) throw new Error("the fail point lock was not released");
+    else await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
 }
 
-async function acquire(path: string): Promise<void> {
-  const deadline = Date.now() + WAIT_MS;
-  for (;;) {
-    try {
-      await mkdir(path);
-      await writeFile(join(path, "owner"), String(process.pid));
-      return;
-    } catch {
-      if (await isStale(path)) await rm(path, { recursive: true, force: true });
-      else if (Date.now() > deadline) throw new Error("the fail point lock was not released");
-      else await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  }
-}
+/** Gives the lock back, when it is still the holder's own: one reaped as stale is another's now. */
+export const releaseLock = (path: string, raw: string): Promise<void> => removeIfOwnedBy(path, raw);
 
 /**
  * Switches the server's fail point off: one set by a worker that was killed (Stryker does, on a
@@ -85,9 +123,12 @@ async function switchOffLeftover(): Promise<void> {
 
 export function holdFailPoints(): void {
   const path = lockPath();
+  let held: string | undefined;
   beforeAll(async () => {
-    await acquire(path);
+    held = await acquireLock(path);
     await switchOffLeftover();
   }, WAIT_MS + 5_000);
-  afterAll(() => rm(path, { recursive: true, force: true }));
+  afterAll(async () => {
+    if (held !== undefined) await releaseLock(path, held);
+  });
 }

@@ -4,7 +4,7 @@
  * module added to `src/` (a helper of a money path pulled out of a shard's file) is a conscious
  * decision of a shard, never a file no mutant reaches.
  */
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, matchesGlob } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SHARDS } from "../../scripts/mutation-shards.mjs";
@@ -81,5 +81,33 @@ describe("agbossjs/agboss#91: the mutation shards cover src/", () => {
     const empty = patterns.filter((pattern) => !sources.some((file) => matchesGlob(file, pattern)));
 
     expect(empty).toEqual([]);
+  });
+});
+
+describe("agbossjs/mongodb#100: a cached result cannot hide a survivor from the nightly run", () => {
+  const nightly = readFileSync(".github/workflows/mutation-nightly.yml", "utf8");
+
+  it("the nightly run is cold: every mutant is tested again", () => {
+    expect(nightly).toContain("npm run test:mutation -- --force");
+  });
+
+  it("and restores no cache of results", () => {
+    expect(nightly).not.toContain("actions/cache");
+    expect(nightly).not.toContain("stryker-incremental");
+  });
+
+  it("every shard of the CI is a shard of the nightly run, and the other way round", () => {
+    const listed = (file: string): string[] => {
+      const matrix =
+        /shard:\s*\[([^\]]*\bleases\b[^\]]*)\]/u.exec(readFileSync(file, "utf8"))?.[1] ?? "";
+      return matrix
+        .split(",")
+        .map((name) => name.trim())
+        .filter((name) => name !== "")
+        .sort();
+    };
+
+    expect(listed(".github/workflows/mutation-nightly.yml")).toEqual(Object.keys(SHARDS).sort());
+    expect(listed(".github/workflows/ci.yml")).toEqual(Object.keys(SHARDS).sort());
   });
 });
