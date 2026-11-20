@@ -141,7 +141,7 @@ export async function migrateSchema(
   signal?.throwIfAborted();
   const from = await appliedVersionOf(db);
   refuseNewer(from);
-  if (from !== undefined && from < SCHEMA_VERSION && options.allowLiveLeases !== true)
+  if ((from ?? SCHEMA_VERSION) < SCHEMA_VERSION && options.allowLiveLeases !== true)
     await refuseLiveLeases(db);
   await ensureSchema(db);
   signal?.throwIfAborted();

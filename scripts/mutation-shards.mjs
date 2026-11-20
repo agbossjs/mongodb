@@ -133,7 +133,7 @@ export const SHARDS = {
       "src/connection/live-leases.ts",
     ],
     tests: [
-      "tests/integration/{schema,schema-version,live-leases,migrate-on-start-leases}.test.ts",
+      "tests/integration/{schema,schema-edges,schema-version,live-leases,migrate-on-start-leases}.test.ts",
       "tests/connection/schema-*.test.ts",
       "tests/cli/*.test.ts",
     ],
