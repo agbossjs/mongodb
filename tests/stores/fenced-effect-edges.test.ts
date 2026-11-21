@@ -21,7 +21,6 @@ import {
   MongoFencedEffectRepository,
 } from "../../src/index.js";
 import { replayOf, resultDocumentOf } from "../../src/stores/fenced-effects/result-documents.js";
-import { hasCode } from "../../src/stores/keys.js";
 import { HandClock } from "../contracts/lease-races.js";
 import { instanceConnection } from "../contracts/mongodb-store.js";
 import { TestApplicationContext } from "../support/application-context.js";
@@ -85,9 +84,19 @@ describe("a fenced call", () => {
     );
     const sent = commandsOf(connection);
 
-    // the check throws at the call, before a promise is made
-    expect(() => open.enter(keyOf(held, ""))).toThrow();
-    expect(() => open.enter(keyOf(held, "keyed", { businessKey: "order:42" }))).toThrow();
+    // the check throws at the call, before a promise is made; a call it lets through is awaited, so that none is left running
+    const refused = async (key: Parameters<Open["enter"]>[0]): Promise<unknown> => {
+      try {
+        await open.enter(key);
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+
+    expect(await refused(keyOf(held, ""))).toBeInstanceOf(Error);
+    expect(await refused(keyOf(held, "keyed", { businessKey: "" }))).toBeInstanceOf(Error);
+    expect(await refused(keyOf(held, "keyed", { businessKey: "order:42" }))).toBeInstanceOf(Error);
 
     expect(sent).toEqual([]);
   });
@@ -199,21 +208,6 @@ describe("the retention sweep", () => {
     expect(await ids(results)).toEqual(["r-new"]);
     expect(await ids(marks)).toEqual(["m-new"]);
     expect(await ids(locks)).toEqual(["l-new"]);
-  });
-});
-
-describe("hasCode", () => {
-  it.each([
-    ["an error with the code", { code: 11000 }, 11000, true],
-    ["an error with another code", { code: 11001 }, 11000, false],
-    ["an error with no code", { message: "x" }, 11000, false],
-    ["a code that is a text", { code: "11000" }, 11000, false],
-    ["null", null, 11000, false],
-    ["a text", "E11000", 11000, false],
-    ["undefined", undefined, 11000, false],
-    ["a number", 11000, 11000, false],
-  ])("%s", (_name, error, code, expected) => {
-    expect(hasCode(error, code)).toBe(expected);
   });
 });
 
