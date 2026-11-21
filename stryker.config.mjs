@@ -11,6 +11,12 @@ import { chosenShard } from "./scripts/mutation-shards.mjs";
  */
 const shard = chosenShard();
 
+/**
+ * The longest whole run of any shard measured (the dry run of `leases` in CI: 3 min 10 s; `queue-watch`: about
+ * 3 min) is under a third of it.
+ */
+const DEFAULT_TIMEOUT_MS = 600_000;
+
 export default {
   testRunner: "vitest",
   vitest: { configFile: "vitest.mutation.config.ts" },
@@ -23,7 +29,10 @@ export default {
   reporters: ["clear-text", "progress", "json"],
   jsonReporter: { fileName: `reports/mutation/${shard.name}.json` },
   thresholds: { high: 100, low: 95, break: 100 },
-  timeoutMS: 20000,
+  // above the shard's whole run (agbossjs/mongodb#103): a mutant no test kills runs its covering tests to the
+  // end, and that is no Timeout; a real hang is ended by vitest's testTimeout and hookTimeout (a kill), what
+  // is left is a Timeout, and scripts/stryker-timeouts.mjs fails the shard on one it does not know
+  timeoutMS: shard.timeoutMS ?? DEFAULT_TIMEOUT_MS,
   // the initial run is the shard's own suite on the real servers (its store contracts only): a
   // few minutes; 10 is the bound past which a dry run is a hang, not a slow machine
   dryRunTimeoutMinutes: 10,
