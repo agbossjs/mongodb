@@ -95,6 +95,24 @@ export const SHARDS = {
     mutate: ["src/stores/queue-{changes,watch,watch-cursors}.ts", "src/connection/watch-client.ts"],
     tests: ["tests/stores/queue-watch*.test.ts"],
   },
+  // the A2A direct-message store (agbossjs/mongodb#104): one accept of a message on two instances, the
+  // once-only reply by its attempt, the takeover of an expired attempt (`retakeIfExpired`: a live attempt
+  // is never retaken, or two pods run one paid message), the retention that never frees an id an attempt holds
+  "a2a-direct": {
+    mutate: [
+      "src/stores/mongo-a2a-direct-message.repository.ts",
+      "src/stores/a2a-direct-messages/*.ts",
+    ],
+    tests: [CONFORMANCE, "tests/stores/a2a-direct-message*.test.ts"],
+    testNamePattern: conformanceOf("A2A direct message contract"),
+  },
+  // the checkpoint saver (agbossjs/mongodb#104, agbossjs/agboss#1165): a thread's checkpoints in the order
+  // of their step, the pending writes kept as first written, `latestByStep` as one indexed read
+  checkpoints: {
+    mutate: ["src/stores/mongo-checkpoint-saver.ts", "src/stores/checkpoints/*.ts"],
+    tests: [CONFORMANCE, "tests/stores/checkpoint-*.test.ts"],
+    testNamePattern: conformanceOf("checkpoint saver contract"),
+  },
   // the order and the numbers of this instance's writes: the commit order of the calls on one
   // key (agbossjs/agboss#527) and the counter behind every `seq` (#661, #682)
   ordering: {
@@ -110,7 +128,7 @@ export const SHARDS = {
   // the `agboss-mongodb` command (agbossjs/agboss#891): its arguments, its exit codes, and the
   // passwords it never prints
   cli: {
-    mutate: ["src/cli.ts"],
+    mutate: ["src/cli.ts", "src/redaction.ts"],
     tests: ["tests/cli/*.test.ts"],
   },
   // the connection's assembly (agbossjs/agboss#891, #1017, #1104): its client and its checks, the
