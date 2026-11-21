@@ -128,6 +128,20 @@ describe("list is newest first", () => {
   });
 });
 
+describe("list, over every thread, is newest first by id whatever order the server holds them in", () => {
+  it("no thread named: a scan of the collection, sorted by the store, never by the order of the writes", async () => {
+    const { saver } = setup();
+    await put(saver, "t1", "0002");
+    await put(saver, "t2", "0001");
+    await put(saver, "t3", "0003");
+
+    const ids: string[] = [];
+    for await (const tuple of saver.list({ configurable: {} })) ids.push(tuple.checkpoint.id);
+
+    expect(ids).toEqual(["0003", "0002", "0001"]);
+  });
+});
+
 describe("putWrites", () => {
   it("no writes: nothing is drawn and nothing is sent", async () => {
     const { connection, saver } = setup();
@@ -178,7 +192,7 @@ describe("the pending writes of a checkpoint", () => {
     ]);
   });
 
-  it("come in the order of their calls, then their places, not the order the server holds them in", async () => {
+  it("come in the order of their calls, then their places, with no index to give that order, nor the order the server holds them in", async () => {
     const { connection, saver } = setup();
     await put(saver, "t", "0001");
     await saver.putWrites(
@@ -196,7 +210,15 @@ describe("the pending writes of a checkpoint", () => {
     await writes.deleteMany({ taskId: "task-1" });
     await writes.insertMany(first.reverse());
 
-    const pending = (await saver.getTuple(named("t", "0001")))?.pendingWrites;
+    // the index of the writes would give the order itself: without it the store's own sort is all there is
+    const index = { threadId: 1, namespace: 1, checkpointId: 1, seq: 1, position: 1 } as const;
+    await writes.dropIndex("by_checkpoint");
+    let pending: unknown;
+    try {
+      pending = (await saver.getTuple(named("t", "0001")))?.pendingWrites;
+    } finally {
+      await writes.createIndexes([{ key: index, name: "by_checkpoint" }]);
+    }
 
     expect(pending).toEqual([
       ["task-1", "a", "first"],
