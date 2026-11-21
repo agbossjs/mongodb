@@ -106,6 +106,21 @@ describe("a call with a key that has no name is refused at the entry, before any
   });
 });
 
+describe("a read of a call", () => {
+  it("is one find inside the fencing transaction, like every other command of the call", async () => {
+    const { connection, calls, keyOf, save } = await instance();
+    await save("a");
+    const sent = commandsOf(connection);
+
+    const found = await calls.findByKey(keyOf("a"));
+
+    expect(found?.step.nodeId).toBe("a");
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.every((one) => one.inTransaction)).toBe(true);
+    expect(sent.filter((one) => one.name === "find" && one.collection === CALLS)).toHaveLength(1);
+  });
+});
+
 describe("a page of a tenant's calls in a status", () => {
   it("asks by tenant, status and a seq after the cursor, in the order of the seq, one more than the limit", async () => {
     const { connection, calls, save } = await instance();

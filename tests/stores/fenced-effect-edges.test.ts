@@ -71,11 +71,22 @@ const keyOf = (lease: ExecutionLease, name: string, extra = {}) =>
   );
 
 describe("a fenced call", () => {
-  it("is refused at its entry for a key with no name, before any command", async () => {
-    const { connection, effects, held } = await instance();
+  it("is refused at the store's own entry for a key with no name, before any command (the core's runOnce checks it first, so the store's is reached by its transaction method)", async () => {
+    const { connection, held } = await instance();
+    class Open extends MongoFencedEffectRepository {
+      enter(key: Parameters<MongoFencedEffectRepository["runOnce"]>[0]) {
+        return this.runInTransaction(key, () => Promise.resolve({ ok: true }));
+      }
+    }
+    const open = new Open(
+      connection,
+      new StoreClock(StoreTimeSource.Test, new HandClock()),
+      new FencedEffectSettings(),
+    );
     const sent = commandsOf(connection);
 
-    await expect(effects.runOnce(keyOf(held, ""), () => ({ ok: true }))).rejects.toThrow();
+    await expect(open.enter(keyOf(held, ""))).rejects.toThrow();
+    await expect(open.enter(keyOf(held, "keyed", { businessKey: "order:42" }))).rejects.toThrow();
 
     expect(sent).toEqual([]);
   });
