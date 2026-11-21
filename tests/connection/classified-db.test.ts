@@ -28,10 +28,13 @@ const WRITES: readonly (readonly [string, number])[] = [
 const MANY: ReadonlySet<string> = new Set(["updateMany", "deleteMany"]);
 const duplicate = (): MongoServerError => new MongoServerError({ message: "dup", code: 11000 });
 const client = new MongoClient("mongodb://127.0.0.1:1");
-const collection = classifiedDb(client.db("app")).collection("orders");
+// made in a test, not at the import (see framework-json.test.ts)
+const collectionOf = (): ReturnType<ReturnType<typeof classifiedDb>["collection"]> =>
+  classifiedDb(client.db("app")).collection("orders");
 
 /** The write of the classified collection, called with `args`. */
 function write(method: string, args: unknown[]): Promise<unknown> {
+  const collection = collectionOf();
   const member: unknown = Reflect.get(collection, method);
   if (typeof member !== "function") throw new TypeError(`${method} is no method`);
   return Reflect.apply(member, collection, args) as Promise<unknown>;
@@ -146,7 +149,7 @@ describe("classifiedDb: what is not a write", () => {
   });
 
   it("the collection keeps its other members", () => {
-    expect(collection.collectionName).toBe("orders");
+    expect(collectionOf().collectionName).toBe("orders");
   });
 
   it("a method of the database that is not `collection` is the driver's own, called on the database", async () => {

@@ -91,6 +91,18 @@ export const PROVEN_HANGS = {
         "the reopen loop's body is emptied: `for (;;) {}` never pauses, never starts and never ends",
     },
   ],
+  // the liveness watch pings every half of the bound until it is stopped or the connection is declared dead
+  "store-bound": [
+    {
+      file: "connection/heartbeat.ts",
+      mutator: "BlockStatement",
+      replacement: "{}",
+      anchor: "for (;;) {",
+      kind: "hit-limit",
+      reason:
+        "the watch's loop has an empty body: `for (;;) {}` never sleeps, never pings and never ends",
+    },
+  ],
   migrations: [
     {
       file: "connection/live-leases.ts",
