@@ -89,6 +89,7 @@ describe("unprovenTimeouts and staleHangs", () => {
   });
 
   it("every proven hang of the repository has a reason and names a shard that exists", () => {
+    expect(Object.keys(PROVEN_HANGS).every((shard) => shard in SHARDS)).toBe(true);
     for (const [shard, hangs] of Object.entries(PROVEN_HANGS)) {
       expect(Object.keys(SHARDS)).toContain(shard);
       for (const hang of hangs) expect(hang.reason.length).toBeGreaterThan(20);

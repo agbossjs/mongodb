@@ -151,7 +151,8 @@ describe("a take that finds the seed of a cancel made since its first look (#111
 
     const lease = await leases.acquire(TENANT, tree.rootExecutionId, LEASE);
 
-    expect(looks.done).toBe(3);
+    // two looks answered (the first take, the last one); the insert between them failed on the seed
+    expect(looks.done).toBe(2);
     expect(lease).toMatchObject({
       tenantId: TENANT,
       rootExecutionId: tree.rootExecutionId,
