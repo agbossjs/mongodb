@@ -159,8 +159,9 @@ export function testDatabase(): TestDatabase {
     if (name !== undefined && STRYKER_WORKER === undefined) await dropDatabase(name);
   });
   const current = (): string => {
+    if (failure instanceof Error) throw failure;
     if (failure !== undefined)
-      throw failure instanceof Error ? failure : new Error(`the test database: ${String(failure)}`);
+      throw new Error("the test database could not be made", { cause: failure });
     if (name === undefined) throw new Error("the test database is created in beforeAll");
     return name;
   };
