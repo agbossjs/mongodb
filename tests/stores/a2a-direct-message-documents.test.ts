@@ -119,7 +119,15 @@ describe("directMessageOf: a document is read back as the record it was written 
     ["an in-flight message with a reply alone", { reply: REPLY }],
     ["an in-flight message with a time alone", { completedAt: LATER }],
   ])("%s: its state and its reply disagree, naming the message", (_name, extra) => {
-    expect(() => directMessageOf(documentOf(extra))).toThrow(
+    let thrown: unknown;
+    try {
+      directMessageOf(documentOf(extra));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe(
       'agboss_a2a_direct_messages "m-1": its state and its reply disagree',
     );
   });
