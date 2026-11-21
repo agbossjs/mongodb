@@ -42,7 +42,7 @@ const matches = (hang, found) =>
   found.mutant.mutatorName === hang.mutator &&
   found.mutant.replacement === hang.replacement &&
   found.anchor === hang.anchor &&
-  kindOf(found.mutant) === hang.kind;
+  (hang.kind === "any" || kindOf(found.mutant) === hang.kind);
 
 const describe = (found) =>
   `${found.file}:${String(found.line)} ${found.mutant.mutatorName} -> ${found.mutant.replacement} [${kindOf(found.mutant)}] ${JSON.stringify(found.anchor)}`;
@@ -68,7 +68,9 @@ export function erroredMutants(report) {
 /** The entries of `proven` that no Timeout of `report` matches: a stale reason. */
 export function staleHangs(report, shard, proven = PROVEN_HANGS) {
   const timeouts = [...mutantsOf(report)].filter((found) => found.mutant.status === "Timeout");
-  return (proven[shard] ?? []).filter((hang) => !timeouts.some((found) => matches(hang, found)));
+  return (proven[shard] ?? [])
+    .filter((hang) => hang.kind !== "any")
+    .filter((hang) => !timeouts.some((found) => matches(hang, found)));
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {

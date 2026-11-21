@@ -15,9 +15,7 @@ export default defineConfig({
     expect: { requireAssertions: true },
     globalSetup: ["./tests/support/global-setup.ts"],
     testTimeout: 20_000,
-    // 100 s: a mutant that hangs inside a transaction leaves it open on the server for its lifetime (60 s), and the next mutant's
-    // reset of the same database waits for it (agbossjs/mongodb#103: it was a RuntimeError, which Stryker leaves out of the score)
-    hookTimeout: 100_000,
+    hookTimeout: 30_000,
     // a mutant that allocates without end fails at 1 GB in seconds, not at the machine's memory
     // (agbossjs/mongodb#103: it would be a RuntimeError, which Stryker leaves out of the score)
     poolOptions: { forks: { execArgv: ["--max-old-space-size=1024"] } },

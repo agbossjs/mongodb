@@ -145,6 +145,20 @@ describe("staleHangs and erroredMutants", () => {
     expect(staleHangs(reportOf(mutant("Timeout", 2)), "leases", proven)).toEqual([]);
   });
 
+  it("a hang of kind `any` matches a Timeout of either kind, and is never stale (a loop ends as Killed or as Timeout, by the run)", () => {
+    const either = { ...proven, leases: [{ ...HANG, kind: "any" as const }] };
+
+    expect(unprovenTimeouts(reportOf(mutant("Timeout", 2)), "leases", either)).toEqual([]);
+    expect(
+      unprovenTimeouts(
+        reportOf(mutant("Timeout", 2, { statusReason: "Hit limit reached (5/4)" })),
+        "leases",
+        either,
+      ),
+    ).toEqual([]);
+    expect(staleHangs(reportOf(mutant("Killed", 2)), "leases", either)).toEqual([]);
+  });
+
   it("the errored ones are the RuntimeErrors and the CompileErrors", () => {
     expect(erroredMutants(reportOf(mutant("Killed", 2), mutant("RuntimeError", 3)))).toHaveLength(
       1,
@@ -156,7 +170,7 @@ describe("staleHangs and erroredMutants", () => {
     for (const hangs of Object.values(PROVEN_HANGS))
       for (const hang of hangs) {
         expect(hang.reason.length).toBeGreaterThan(20);
-        expect(["hit-limit", "wall-clock"]).toContain(hang.kind);
+        expect(["hit-limit", "wall-clock", "any"]).toContain(hang.kind);
         expect(hang.anchor.length).toBeGreaterThan(0);
       }
   });

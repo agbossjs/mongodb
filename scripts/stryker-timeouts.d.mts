@@ -4,7 +4,7 @@ export interface ProvenHang {
   readonly mutator: string;
   readonly replacement: string;
   readonly anchor: string;
-  readonly kind: "hit-limit" | "wall-clock";
+  readonly kind: "hit-limit" | "wall-clock" | "any";
   readonly reason: string;
 }
 export interface StrykerReport {
