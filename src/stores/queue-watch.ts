@@ -232,12 +232,11 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
 
   async #reopen(): Promise<void> {
     const signal = this.#stopped.signal;
-    const isStopped = (): boolean => signal.aborted;
     for (let attempt = 0; ; attempt += 1) {
       // Stryker disable next-line ArithmeticOperator: equivalent, one past the last pause is none, and the fallback is the last pause (30 s)
       const pause = PAUSES[Math.min(attempt, PAUSES.length - 1)] ?? seconds(30);
       await this.clock.sleep(pause, signal).catch(() => undefined);
-      if (isStopped()) return;
+      if (signal.aborted) return;
       if (await this.#started()) {
         if (this.#open !== undefined) this.onQueued();
         await this.#reap();
