@@ -106,6 +106,7 @@ async function raiseVersion(db: Db): Promise<void> {
   const raise = () =>
     versionsOf(db).updateOne(
       { _id: SCHEMA_DOCUMENT_ID },
+      // Stryker disable next-line BooleanLiteral: equivalent, the server reads only that the operand is a boolean (`false` still stamps the date, server's current_date_node), which migratedAt's test asserts for `true`
       { $max: { version: SCHEMA_VERSION }, $currentDate: { migratedAt: true } },
       { upsert: true },
     );

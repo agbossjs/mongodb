@@ -70,6 +70,46 @@ export const PROVEN_HANGS = {
         "while (removable.length < limit) {",
         "the scan's loop has an empty body: nothing is ever added, so `removable.length < limit` stays true for ever",
       ],
+      [
+        "stores/mongo-paused-execution.repository.ts",
+        "ArrowFunction",
+        "() => undefined",
+        "const ids = batch.map((one) => one._id);",
+        "the ids of the batch are all `undefined`: the delete removes nothing, the same batch is read again, for ever",
+      ],
+      [
+        "stores/mongo-paused-execution.repository.ts",
+        "ConditionalExpression",
+        "false",
+        "if (removed.length === 0) return;",
+        "the sweep never returns on an empty round: it asks again for ever",
+      ],
+      [
+        "stores/mongo-paused-execution.repository.ts",
+        "EqualityOperator",
+        "removed.length !== 0",
+        "if (removed.length === 0) return;",
+        "the sweep returns on a round that removed something and asks again for ever on an empty one",
+      ],
+      [
+        "stores/paused/pause-scans.ts",
+        "ArrayDeclaration",
+        '["Stryker was here"]',
+        "const removable: PauseDocument[] = [];",
+        "the list starts with a record that has no `_id`: the sweep's delete by ids removes nothing, and the same page is read again, for ever",
+      ],
+      [
+        // NOT a hang proved: the same mutant applied by hand to a scratch copy fails five tests of this shard
+        // (the retention's conformance cases, pause-reassign-edges, pause-transaction-commands, pause-scan-keys),
+        // none of them ending at a hit limit; under Stryker it runs 3346 times against a limit of 2700 in one of
+        // the covering tests before an assertion fails it. It is not a survivor, and it is listed so that it is
+        // reviewed once and not hidden (agbossjs/mongodb#103); finding the test that loops is its own follow-up
+        "stores/mongo-paused-execution.repository.ts",
+        "ObjectLiteral",
+        "{}",
+        ".deleteMany({ _id: { $in: ids } }, { session });",
+        "the delete's filter is emptied and removes every pause (killed by five tests when run by hand), and Stryker ends it at its hit limit first",
+      ],
     ].map(([file, mutator, replacement, anchor, reason]) => ({
       file,
       mutator,
@@ -89,6 +129,15 @@ export const PROVEN_HANGS = {
       kind: "hit-limit",
       reason:
         "the reopen loop's body is emptied: `for (;;) {}` never pauses, never starts and never ends",
+    },
+    {
+      file: "stores/queue-watch.ts",
+      mutator: "ConditionalExpression",
+      replacement: "false",
+      anchor: "if (signal.aborted) return;",
+      kind: "hit-limit",
+      reason:
+        "the reopen loop no longer ends when the watch is stopped: a stopped watch whose start fails goes round for ever, on a clock that never yields a macrotask to a test",
     },
   ],
   // the liveness watch pings every half of the bound until it is stopped or the connection is declared dead
