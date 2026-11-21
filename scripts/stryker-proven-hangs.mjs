@@ -79,6 +79,18 @@ export const PROVEN_HANGS = {
       reason,
     })),
   ],
+  // the watch's reopen retries with growing pauses until a start succeeds or the watch is stopped
+  "queue-watch": [
+    {
+      file: "stores/queue-watch.ts",
+      mutator: "BlockStatement",
+      replacement: "{}",
+      anchor: "for (let attempt = 0; ; attempt += 1) {",
+      kind: "hit-limit",
+      reason:
+        "the reopen loop's body is emptied: `for (;;) {}` never pauses, never starts and never ends",
+    },
+  ],
   migrations: [
     {
       file: "connection/live-leases.ts",
