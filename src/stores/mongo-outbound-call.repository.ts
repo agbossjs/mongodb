@@ -168,10 +168,10 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
       .toArray();
     const page = found.slice(0, limit);
     const calls = page.map(callRecordOf);
-    const last = page.at(-1);
-    return last === undefined || found.length <= limit
+    // more than a page was found: the page is not empty (a limit is from 1), its last `seq` the cursor
+    return found.length <= limit
       ? { calls }
-      : { calls, next: String(SeqOf.parse(last).seq) };
+      : { calls, next: String(SeqOf.parse(page.at(-1)).seq) };
   }
 
   async deleteByEndedAtBefore(cutoff: Date): Promise<void> {
@@ -220,7 +220,10 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
           },
           ...(unset.length === 0
             ? {}
-            : { $unset: Object.fromEntries(unset.map((field) => [field, ""])) }),
+            : {
+                // Stryker disable next-line StringLiteral: equivalent, the server ignores the value of a field of $unset
+                $unset: Object.fromEntries(unset.map((field) => [field, ""])),
+              }),
         },
         { session },
       );
