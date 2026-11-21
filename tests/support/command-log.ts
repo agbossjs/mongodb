@@ -48,3 +48,7 @@ export function commandsOf(connection: { readonly client: MongoClient }): Sent[]
 
 /** `find agboss_pauses`, … */
 export const nameOf = (sent: Sent): string => `${sent.name} ${sent.collection}`;
+
+/** A command's sort or projection as the driver sends it (a `Map` for a sort), as a plain object. */
+export const plain = (value: unknown): unknown =>
+  value instanceof Map ? Object.fromEntries(value as Map<string, unknown>) : value;

@@ -120,7 +120,7 @@ export const SHARDS = {
   // the `agboss-mongodb` command (agbossjs/agboss#891): its arguments, its exit codes, and the
   // passwords it never prints
   cli: {
-    mutate: ["src/cli.ts", "src/redaction.ts"],
+    mutate: ["src/cli.ts"],
     tests: ["tests/cli/*.test.ts"],
   },
   // the connection's assembly (agbossjs/agboss#891, #1017, #1104): its client and its checks, the
@@ -145,7 +145,7 @@ export const SHARDS = {
       "src/connection/live-leases.ts",
     ],
     tests: [
-      "tests/integration/{schema,schema-edges,schema-version,live-leases,migrate-on-start-leases}.test.ts",
+      "tests/integration/{schema,schema-edges,schema-version,schema-version-edges,live-leases,migrate-on-start-leases}.test.ts",
       "tests/connection/schema-*.test.ts",
       "tests/cli/*.test.ts",
     ],

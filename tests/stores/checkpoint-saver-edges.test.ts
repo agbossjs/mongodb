@@ -7,7 +7,7 @@
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoCheckpointSaver, MongoConnection } from "../../src/index.js";
-import { commandsOf, nameOf } from "../support/command-log.js";
+import { commandsOf, nameOf, plain } from "../support/command-log.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -108,7 +108,7 @@ describe("getTuple", () => {
 
     const [latest, byId] = sent;
     expect(Object.keys(latest?.command.filter as object).sort()).toEqual(["namespace", "threadId"]);
-    expect(latest?.command.sort).toEqual({ checkpointId: -1 });
+    expect(plain(latest?.command.sort)).toEqual({ checkpointId: -1 });
     expect(byId?.command.filter).toMatchObject({ checkpointId: "0001" });
   });
 });
@@ -247,9 +247,9 @@ describe("latestByStep gives a checkpoint written without a step its step, in on
       `find ${CHECKPOINTS}`,
       `find ${CHECKPOINTS}`,
     ]);
-    expect(sent[0]?.command.projection).toEqual({ metadataType: 1, metadata: 1 });
+    expect(plain(sent[0]?.command.projection)).toEqual({ metadataType: 1, metadata: 1 });
     expect(sent[1]?.command.ordered).toBe(false);
-    expect(sent[2]?.command.sort).toEqual({ step: -1, checkpointId: -1 });
+    expect(plain(sent[2]?.command.sort)).toEqual({ step: -1, checkpointId: -1 });
     expect(
       await connection.db.collection(CHECKPOINTS).findOne({ _id: { $exists: true } }),
     ).toMatchObject({

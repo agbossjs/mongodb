@@ -11,7 +11,7 @@ import {
 } from "@agboss/core/stores";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoA2ADirectMessageRepository } from "../../src/index.js";
-import { commandsOf, nameOf } from "../support/command-log.js";
+import { commandsOf, nameOf, plain } from "../support/command-log.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -127,12 +127,12 @@ describe("deleteByCreatedAtBefore is one transaction that reads ids only, in its
     await store.deleteByCreatedAtBefore(at(100), 5);
 
     const [due, , , orphans, held] = sent;
-    expect(due?.command.sort).toEqual({ createdAt: 1, _id: 1 });
+    expect(plain(due?.command.sort)).toEqual({ createdAt: 1, _id: 1 });
     expect(due?.command.limit).toBe(5);
-    expect(orphans?.command.projection).toEqual({ _id: 1 });
-    expect(orphans?.command.sort).toEqual({ savedAt: 1, _id: 1 });
+    expect(plain(orphans?.command.projection)).toEqual({ _id: 1 });
+    expect(plain(orphans?.command.sort)).toEqual({ savedAt: 1, _id: 1 });
     expect(orphans?.command.limit).toBe(5);
-    expect(held?.command.projection).toEqual({ _id: 1 });
+    expect(plain(held?.command.projection)).toEqual({ _id: 1 });
     expect(Object.keys(held?.command.filter as object)).toEqual(["_id"]);
   });
 
@@ -171,7 +171,7 @@ describe("findAllInFlightByExpiresAtBefore", () => {
     await store.findAllInFlightByExpiresAtBefore(at(100), 7);
 
     expect(sent).toHaveLength(1);
-    expect(sent[0]?.command.sort).toEqual({ expiresAt: 1, _id: 1 });
+    expect(plain(sent[0]?.command.sort)).toEqual({ expiresAt: 1, _id: 1 });
     expect(sent[0]?.command.limit).toBe(7);
   });
 });

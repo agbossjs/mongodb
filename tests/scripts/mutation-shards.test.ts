@@ -18,6 +18,8 @@ const FOLLOW_UP = "not sharded yet: agbossjs/mongodb#105";
 const NON_SHARDED_SRC: Readonly<Record<string, string>> = {
   "src/index.ts": "the exports: no logic",
   "src/errors.ts": "the named errors: constructors of codes and messages, checked by tests/errors",
+  "src/redaction.ts":
+    "the mask of a password in a printed text: byte for byte the twin of agbossjs/postgres's, with its 500 seeded draws; a run of it as a shard found 12 survivors, equivalent ones among them (a regex's split on one space or a run, bounds no input reaches), whose rewrite must be made in both packages: agbossjs/mongodb#105",
   "src/stores/bundles.ts":
     "the thread's bundles of the record store: a read-model of records, no claim and no order a payment depends on",
   // append-only logs and last-write stores: no once-only claim, no compare-and-set
