@@ -139,9 +139,16 @@ export function testDatabase(): TestDatabase {
   const index = databasesOfFile;
   databasesOfFile += 1;
   let name: string | undefined;
+  // under Stryker, a database that cannot be made (a mutant of the schema the migration runs) fails the tests that use it,
+  // which kills the mutant; failed in `beforeAll` it is an error outside a test run, which Stryker leaves out of the score
+  let failure: unknown;
   beforeAll(async () => {
     if (STRYKER_WORKER !== undefined) {
-      name = await reusedDatabase(STRYKER_WORKER, index);
+      try {
+        name = await reusedDatabase(STRYKER_WORKER, index);
+      } catch (error) {
+        failure = error;
+      }
       return;
     }
     name = freshDatabaseName();
@@ -152,6 +159,8 @@ export function testDatabase(): TestDatabase {
     if (name !== undefined && STRYKER_WORKER === undefined) await dropDatabase(name);
   });
   const current = (): string => {
+    if (failure !== undefined)
+      throw failure instanceof Error ? failure : new Error(`the test database: ${String(failure)}`);
     if (name === undefined) throw new Error("the test database is created in beforeAll");
     return name;
   };
