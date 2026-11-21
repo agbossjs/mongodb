@@ -165,7 +165,8 @@ export class MongoQueueWatch implements ChildExecutionQueueWatch {
 
   /** Whether `open` is the stream the watch listens to (not one it dropped, nor one not yet adopted). */
   #isCurrent(open: OpenStream): boolean {
-    return !this.#stopped.signal.aborted && this.#open?.generation === open.generation;
+    // the stream adopted is the object itself: a generation names one stream only
+    return !this.#stopped.signal.aborted && this.#open === open;
   }
 
   /**
