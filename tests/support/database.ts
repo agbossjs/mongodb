@@ -87,7 +87,13 @@ async function resetSchemaOf(database: string): Promise<void> {
  * collection dropped.
  */
 async function reusedDatabase(worker: string, index: number): Promise<string> {
-  const name = `t_mutation_${worker}_${process.env.VITEST_POOL_ID ?? "0"}_${String(index)}`;
+  // the shard is in the name: a database a mutant of the schema left with another index is no other shard's
+  const shard = process.env.MUTATION_SHARD ?? "none";
+  const name =
+    `t_mutation_${shard}_${worker}_${process.env.VITEST_POOL_ID ?? "0"}_${String(index)}`.replaceAll(
+      "-",
+      "_",
+    );
   // only the shard of the schema: the others keep the indexes they migrated once, which is what makes a reused database fast
   if (process.env.MUTATION_SHARD === "migrations") await resetSchemaOf(name);
   const connection = await openConnection(urlOnDatabase(REPLICA_SET_URL, name));
