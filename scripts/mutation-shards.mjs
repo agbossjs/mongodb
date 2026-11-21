@@ -56,6 +56,9 @@ export const SHARDS = {
   // the pause store: decisions, answers, notices and their claims (agbossjs/agboss#946), deadlines
   // and their timers (#941, #1064), reassignment
   pauses: {
+    // two mutants at a time: three loops that page for ever starve the servers' elections, and the mutants running then end
+    // in transport errors, RuntimeErrors Stryker leaves out of the score (agbossjs/mongodb#103)
+    concurrency: 2,
     mutate: [
       "src/stores/mongo-paused-execution.repository.ts",
       "src/stores/paused/*.ts",

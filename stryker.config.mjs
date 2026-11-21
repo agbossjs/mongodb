@@ -28,7 +28,7 @@ export default {
   plugins: ["@stryker-mutator/vitest-runner"],
   mutate: shard.mutate,
   coverageAnalysis: "perTest",
-  concurrency: 3,
+  concurrency: shard.concurrency ?? 3,
   incremental: true,
   incrementalFile: `reports/stryker-incremental-${shard.name}.json`,
   reporters: ["clear-text", "progress", "json"],

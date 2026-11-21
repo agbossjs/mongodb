@@ -100,6 +100,14 @@ export const PAUSES_HANGS = [
     ],
     [
       "stores/paused/pause-scans.ts",
+      "ObjectLiteral",
+      "{}",
+      "{",
+      "the page's filter is emptied: it matches every pause whatever the cursor, so the scan reads the same page for ever",
+      "any",
+    ],
+    [
+      "stores/paused/pause-scans.ts",
       "ArrayDeclaration",
       '["Stryker was here"]',
       "const removable: PauseDocument[] = [];",
