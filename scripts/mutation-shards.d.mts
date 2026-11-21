@@ -6,8 +6,6 @@ export interface MutationShard {
   readonly contracts?: readonly string[];
   /** Files of `tests` left out. */
   readonly exclude?: readonly string[];
-  /** Stryker's `timeoutMS` for the shard, when it needs more than the default (above the shard's whole run). */
-  readonly timeoutMS?: number;
   /** Stryker's `concurrency` for the shard, when three mutants at a time starve the servers. */
   readonly concurrency?: number;
 }

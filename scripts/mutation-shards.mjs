@@ -142,7 +142,6 @@ export const SHARDS = {
   // migration to it, and the live-lease guard of a migration (agbossjs/agboss#1104, #1260)
   migrations: {
     // a migration per case: the hooks (a database made and migrated again) dominate the net time
-    timeoutMS: 240_000,
     mutate: [
       "src/connection/migrate.ts",
       "src/connection/schema.ts",

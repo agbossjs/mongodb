@@ -1,21 +1,15 @@
 /**
- * agbossjs/mongodb#103 (agbossjs/agboss#1367): `scripts/stryker-timeouts.mjs` fails a shard whose
- * report has a Timeout that is not a proven hang, a proven hang no Timeout matches, or a mutant that
- * ended in an error; every mutation job runs it; the shards' bound is above a mutant's whole run.
+ * agbossjs/mongodb#103 (agbossjs/agboss#1367): a Stryker Timeout is a hang, and an error is not a pass. `scripts/stryker-timeouts.mjs` fails a shard's
+ * JSON report that holds a Timeout, a RuntimeError or a CompileError nobody justified (a survivor reads as a
+ * Timeout when its run outlasts Stryker's limit, agbossjs/mongodb#103; Stryker leaves the errors out of its
+ * score), and an entry of the proven list that matches none of its shard's mutants; `stryker.config.mjs`
+ * gives every shard its own `timeoutMS` and a `timeoutFactor`, and every mutation vitest config its own
+ * `testTimeout` and `hookTimeout`, none a `testNamePattern`.
  */
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SHARDS } from "../../scripts/mutation-shards.mjs";
-import {
-  erroredMutants,
-  PROVEN_HANGS,
-  staleHangs,
-  unprovenTimeouts,
-  type ProvenHang,
-  type StrykerReport,
-} from "../../scripts/stryker-timeouts.mjs";
 import { runProcess } from "../support/process.js";
 
 const repo = new URL("../../", import.meta.url).pathname;
@@ -29,177 +23,322 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-const SOURCE = ["export function loop() {", "  for (;;) {", "    step();", "  }", "}"].join("\n");
-
-const mutant = (
-  status: string,
-  line: number,
-  extra: { mutatorName?: string; replacement?: string; statusReason?: string } = {},
-) => ({
-  mutatorName: "BlockStatement",
-  replacement: "{}",
-  status,
-  location: { start: { line } },
-  ...extra,
-});
-
-const reportOf = (...mutants: ReturnType<typeof mutant>[]): StrykerReport => ({
-  files: { "src/stores/a.ts": { source: SOURCE, mutants } },
-});
-
-const HANG: ProvenHang = {
-  file: "stores/a.ts",
-  mutator: "BlockStatement",
-  replacement: "{}",
-  anchor: "for (;;) {",
-  kind: "wall-clock",
-  reason: "the loop's body is emptied: it spins on the microtask queue and no timer ends it",
-};
-const proven = { leases: [HANG] };
-
-async function run(report: unknown, ...flags: string[]) {
-  const path = join(dir, "report.json");
-  fs.writeFileSync(path, JSON.stringify(report));
-  const result = await runProcess("node", [script, ...flags, path], {
-    env: { ...process.env, MUTATION_SHARD: "leases" },
-  });
-  return { code: result.status, said: result.stdout + result.stderr };
+interface Mutant {
+  readonly id: string;
+  readonly mutatorName: string;
+  readonly status: string;
+  readonly statusReason?: string;
+  readonly replacement: string;
+  readonly location: { readonly start: { readonly line: number; readonly column: number } };
 }
 
-describe("scripts/stryker-timeouts.mjs", () => {
-  it("a report with no Timeout and no error passes, whatever else it holds", async () => {
-    const result = await run(reportOf(mutant("Killed", 3), mutant("Survived", 4)));
-
-    expect(result.code).toBe(0);
-    expect(result.said).toContain("every one is a proven hang");
-  });
-
-  it("a Timeout that is not proven fails, naming file, line, mutator, replacement, kind and the line's text", async () => {
-    const result = await run(reportOf(mutant("Killed", 3), mutant("Timeout", 2)));
-
-    expect(result.code).toBe(1);
-    expect(result.said).toContain(
-      'src/stores/a.ts:2 BlockStatement -> {} [wall-clock] "for (;;) {"',
-    );
-    expect(result.said).not.toContain("a.ts:3");
-  });
-
-  it("a RuntimeError or a CompileError fails, with its reason: Stryker leaves them out of the score", async () => {
-    const result = await run(
-      reportOf(
-        mutant("RuntimeError", 3, { statusReason: "ERR_WORKER_OUT_OF_MEMORY" }),
-        mutant("CompileError", 4),
-      ),
-    );
-
-    expect(result.code).toBe(1);
-    expect(result.said).toContain("ERR_WORKER_OUT_OF_MEMORY");
-    expect(result.said).toContain("a.ts:4");
-  });
+const mutant = (
+  id: string,
+  mutatorName: string,
+  line: number,
+  status: string,
+  statusReason?: string,
+): Mutant => ({
+  id,
+  mutatorName,
+  status,
+  ...(statusReason === undefined ? {} : { statusReason }),
+  replacement: "{}",
+  location: { start: { line, column: 1 } },
 });
 
-describe("unprovenTimeouts", () => {
-  const timeout = (extra = {}) => reportOf(mutant("Timeout", 2, extra));
+/** A file of a report: its source (the lines the mutants are on) and its mutants. */
+interface FileReport {
+  source: string;
+  mutants: Mutant[];
+}
+const LOOP = "for (;;) {\n  retry();\n  if (stopped()) return;\n}\n";
 
-  it("a Timeout the shard names, by file, mutator, replacement, line text and kind, is proven", () => {
-    expect(unprovenTimeouts(timeout(), "leases", proven)).toEqual([]);
+/** The script on the report `<shard>.json` holding `files` and a proven list; its exit code and what it said. */
+async function checked(
+  files: Record<string, FileReport>,
+  hangs: readonly Record<string, unknown>[],
+  shard = "leases",
+  flags: readonly string[] = [],
+): Promise<{ code: number | null; said: string }> {
+  const report = join(dir, `${shard}.json`);
+  const list = join(dir, "hangs.json");
+  fs.writeFileSync(
+    report,
+    JSON.stringify({
+      schemaVersion: "2",
+      files: Object.fromEntries(
+        Object.entries(files).map(([name, file]) => [name, { language: "typescript", ...file }]),
+      ),
+    }),
+  );
+  fs.writeFileSync(list, JSON.stringify(hangs));
+  const run = await runProcess("node", [script, ...flags, "--hangs", list, report]);
+  return { code: run.status, said: run.stdout + run.stderr };
+}
+
+const HIT = "Hit limit reached (1000/100)";
+const HANG = {
+  shard: "leases",
+  file: "src/loop.ts",
+  mutator: "BlockStatement",
+  replacement: "{}",
+  anchor: "retry();",
+  kind: "wall-clock",
+  reason: "the retry loop's body is {}: the loop never ends",
+};
+/** The loop's mutant, as a Timeout the time limit ended, on the loop's second line. */
+const hung = (line = 2, id = "3"): Record<string, FileReport> => ({
+  "src/loop.ts": { source: LOOP, mutants: [mutant(id, "BlockStatement", line, "Timeout")] },
+});
+
+describe("scripts/stryker-timeouts.mjs", () => {
+  it("passes a report with no Timeout or error, whatever else it holds", async () => {
+    const run = await checked(
+      {
+        "src/a.ts": {
+          source: "a\nb\n",
+          mutants: [
+            mutant("1", "StringLiteral", 1, "Killed"),
+            mutant("2", "StringLiteral", 2, "Survived"),
+          ],
+        },
+      },
+      [],
+    );
+
+    expect(run.said).toContain("no Timeout or error of");
+    expect(run.code).toBe(0);
+  });
+
+  it("fails a Timeout nobody proved, naming the file, line, mutator, kind and what to do", async () => {
+    const run = await checked(hung(2, "7"), []);
+
+    expect(run.code).toBe(1);
+    expect(run.said).toMatch(
+      /src\/loop\.ts:2: Timeout \(wall-clock\) of a BlockStatement mutant -> \{\}; line: retry\(\);/,
+    );
+    expect(run.said).toContain("run it alone with a limit of 3 x the shard's run");
+  });
+
+  it("counts a Timeout of Stryker's hit limit and lists none: a loop ended by its count races a test that fails first", async () => {
+    const files = {
+      "src/loop.ts": { source: LOOP, mutants: [mutant("3", "BlockStatement", 2, "Timeout", HIT)] },
+    };
+
+    const run = await checked(files, []);
+    const listed = await checked(files, [{ ...HANG, kind: "hit-limit" }]);
+
+    expect(run.code).toBe(0);
+    expect(run.said).toContain(
+      "1 Timeouts of Stryker's hit limit (loops that do not end), not listed",
+    );
+    expect(listed.code).toBe(1);
+    expect(listed.said).toContain(
+      'kind "hit-limit" is none of wall-clock, runtime-error, compile-error',
+    );
+  });
+
+  it("passes a Timeout on the list, wherever its line and id are now", async () => {
+    const run = await checked(
+      {
+        "src/loop.ts": {
+          source: `// moved down\n// by an edit\n${LOOP}`,
+          mutants: [mutant("912", "BlockStatement", 4, "Timeout")],
+        },
+      },
+      [HANG],
+    );
+
+    expect(run.code).toBe(0);
+    expect(run.said).toContain("1 listed");
   });
 
   it.each([
-    ["another shard", "money", {}],
-    ["another mutator", "leases", { mutatorName: "ConditionalExpression" }],
-    ["another replacement", "leases", { replacement: "true" }],
-    [
-      "a hit limit where a wall clock was proved",
-      "leases",
-      { statusReason: "Hit limit reached (5/4)" },
-    ],
-  ])("%s is not proven", (_name, shard, extra) => {
-    expect(unprovenTimeouts(timeout(extra), shard, proven)).toHaveLength(1);
+    ["another shard", { ...HANG, shard: "other" }],
+    ["another file", { ...HANG, file: "src/other.ts" }],
+    ["another mutator", { ...HANG, mutator: "StringLiteral" }],
+    ["another replacement", { ...HANG, replacement: "false" }],
+    ["another anchor", { ...HANG, anchor: "somethingElse();" }],
+    ["another kind", { ...HANG, kind: "runtime-error" }],
+  ])("fails a Timeout whose %s is the one listed", async (_name, entry) => {
+    const run = await checked({ ...hung(), "src/other.ts": { source: "x\n", mutants: [] } }, [
+      entry,
+    ]);
+
+    expect(run.code).toBe(1);
+    expect(run.said).toContain("Timeout (wall-clock)");
   });
 
-  it("the same mutant on another line of text is not proven", () => {
-    const moved = {
-      files: {
-        "src/stores/a.ts": { source: `// moved\n${SOURCE}`, mutants: [mutant("Timeout", 2)] },
-      },
-    };
+  it("fails an entry that matches no mutant of its shard, or a Survived one: stale; tells of a Killed one", async () => {
+    const at = (status: string): Record<string, FileReport> => ({
+      "src/loop.ts": { source: LOOP, mutants: [mutant("3", "BlockStatement", 2, status)] },
+    });
 
-    expect(unprovenTimeouts(moved, "leases", proven)).toHaveLength(1);
-  });
+    const gone = await checked({ "src/loop.ts": { source: LOOP, mutants: [] } }, [HANG]);
+    const survived = await checked(at("Survived"), [HANG]);
+    const killed = await checked(at("Killed"), [HANG]);
+    const other = await checked(at("Killed"), [{ ...HANG, shard: "other" }]);
+    const partial = await checked(at("Survived"), [HANG], "leases", ["--partial"]);
 
-  it("the line's text, not its number, is what a hang is told by", () => {
-    const moved = {
-      files: {
-        "src/stores/a.ts": { source: `// moved\n${SOURCE}`, mutants: [mutant("Timeout", 3)] },
-      },
-    };
-
-    expect(unprovenTimeouts(moved, "leases", proven)).toEqual([]);
-  });
-});
-
-describe("staleHangs and erroredMutants", () => {
-  it("a proven hang that is Killed or absent in the report is stale", () => {
-    expect(staleHangs(reportOf(mutant("Killed", 2)), "leases", proven)).toEqual([HANG]);
-    expect(staleHangs(reportOf(mutant("Timeout", 2)), "leases", proven)).toEqual([]);
-  });
-
-  it("a hang of kind `any` matches a Timeout of either kind, and is never stale (a loop ends as Killed or as Timeout, by the run)", () => {
-    const either = { ...proven, leases: [{ ...HANG, kind: "any" as const }] };
-
-    expect(unprovenTimeouts(reportOf(mutant("Timeout", 2)), "leases", either)).toEqual([]);
-    expect(
-      unprovenTimeouts(
-        reportOf(mutant("Timeout", 2, { statusReason: "Hit limit reached (5/4)" })),
-        "leases",
-        either,
-      ),
-    ).toEqual([]);
-    expect(staleHangs(reportOf(mutant("Killed", 2)), "leases", either)).toEqual([]);
-  });
-
-  it("the errored ones are the RuntimeErrors and the CompileErrors", () => {
-    expect(erroredMutants(reportOf(mutant("Killed", 2), mutant("RuntimeError", 3)))).toHaveLength(
-      1,
+    expect(gone.code).toBe(1);
+    expect(gone.said).toMatch(
+      /PROVEN_HANGS has src\/loop\.ts BlockStatement -> \{\} \(wall-clock, "retry\(\);"\) that matches no mutant.*stale/,
     );
+    expect(survived.code).toBe(1);
+    expect(survived.said).toContain("matches a Survived mutant");
+    expect(killed.code).toBe(0);
+    expect(killed.said).toMatch(
+      /note: src\/loop\.ts "retry\(\);" \(wall-clock\) was Killed in this run/,
+    );
+    expect(other.code).toBe(0);
+    expect(partial.code).toBe(0);
   });
 
-  it("every proven hang of the repository has a reason, a kind and a shard that exists", () => {
-    expect(Object.keys(PROVEN_HANGS).every((shard) => shard in SHARDS)).toBe(true);
-    for (const hangs of Object.values(PROVEN_HANGS))
-      for (const hang of hangs) {
-        expect(hang.reason.length).toBeGreaterThan(20);
-        expect(["hit-limit", "wall-clock", "any"]).toContain(hang.kind);
-        expect(hang.anchor.length).toBeGreaterThan(0);
-      }
+  it.each([
+    ["RuntimeError", "runtime-error"],
+    ["CompileError", "compile-error"],
+  ])("fails a %s nobody justified, and passes it once listed", async (status, kind) => {
+    const files = {
+      "src/loop.ts": { source: LOOP, mutants: [mutant("3", "BlockStatement", 2, status)] },
+    };
+
+    const unlisted = await checked(files, []);
+    const listed = await checked(files, [{ ...HANG, kind, reason: "the index it makes clashes" }]);
+
+    expect(unlisted.code).toBe(1);
+    expect(unlisted.said).toContain(`${status} (${kind})`);
+    expect(listed.code).toBe(0);
+  });
+
+  it.each([
+    ["no reason", { ...HANG, reason: " " }, /needs reason/],
+    ["no anchor", { ...HANG, anchor: undefined }, /needs anchor/],
+    ["no shard", { ...HANG, shard: "" }, /needs shard/],
+    ["an unknown kind", { ...HANG, kind: "slow" }, /kind "slow" is none of/],
+  ])("fails a list entry with %s", async (_name, entry, said) => {
+    const run = await checked({ "src/a.ts": { source: "", mutants: [] } }, [entry]);
+
+    expect(run.code).toBe(1);
+    expect(run.said).toMatch(said);
+  });
+
+  it("fails an entry listed twice", async () => {
+    const run = await checked(hung(), [HANG, HANG]);
+
+    expect(run.code).toBe(1);
+    expect(run.said).toContain("is listed twice");
+  });
+
+  it("the proven list of the repo is well formed: every entry has its fields and reason, none twice", async () => {
+    const report = join(dir, "no-such-shard.json");
+    fs.writeFileSync(report, JSON.stringify({ files: {} }));
+
+    const run = await runProcess("node", [script, report]);
+
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+  });
+
+  it("fails a file that is no Stryker report", async () => {
+    const report = join(dir, "other.json");
+    fs.writeFileSync(report, "{}");
+
+    const run = await runProcess("node", [script, report]);
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("not a Stryker JSON report");
+  });
+
+  it("reports every unjustified mutant in one run, across reports", async () => {
+    const body = (line: number): string =>
+      JSON.stringify({
+        files: {
+          "src/a.ts": {
+            source: "a\nb\n",
+            mutants: [mutant("1", "StringLiteral", line, "Timeout")],
+          },
+        },
+      });
+    fs.writeFileSync(join(dir, "one.json"), body(1));
+    fs.writeFileSync(join(dir, "two.json"), body(2));
+
+    const run = await runProcess("node", [script, join(dir, "one.json"), join(dir, "two.json")]);
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("one.json: src/a.ts:1");
+    expect(run.stderr).toContain("two.json: src/a.ts:2");
   });
 });
 
-describe("the mutation jobs and the config", () => {
-  it.each([".github/workflows/ci.yml", ".github/workflows/mutation-nightly.yml"])(
-    "%s runs the script after the shard, also when the shard failed",
-    (file) => {
-      const workflow = fs.readFileSync(join(repo, file), "utf8");
+describe("agbossjs/mongodb#103: the mutation configs", () => {
+  async function configured(): Promise<{
+    shards: string[];
+    timeouts: Record<string, number>;
+    factor: number;
+    timeoutMS: number;
+  }> {
+    const run = await runProcess(
+      "node",
+      [
+        "--input-type=module",
+        "-e",
+        "const { SHARDS } = await import(process.argv[1]);" +
+          "const { TIMEOUTS_MS } = await import(process.argv[2]);" +
+          "const config = (await import(process.argv[3])).default;" +
+          "console.log(JSON.stringify({ shards: Object.keys(SHARDS), timeouts: TIMEOUTS_MS, factor: config.timeoutFactor, timeoutMS: config.timeoutMS }));",
+        join(repo, "scripts/mutation-shards.mjs"),
+        join(repo, "scripts/stryker-timeouts-ms.mjs"),
+        join(repo, "stryker.config.mjs"),
+      ],
+      { cwd: repo, env: { ...process.env, MUTATION_SHARD: "migrations" } },
+    );
+    expect(run.status).toBe(0);
+    return JSON.parse(run.stdout) as {
+      shards: string[];
+      timeouts: Record<string, number>;
+      factor: number;
+      timeoutMS: number;
+    };
+  }
 
-      expect(workflow).toContain("node scripts/stryker-timeouts.mjs");
-      expect(workflow).toMatch(
-        /if: always\(\) && hashFiles\(format\('reports\/mutation\/\{0\}\.json'/u,
-      );
-    },
-  );
+  it("every shard has a timeoutMS of 120 s or more, the config uses its own, a timeoutFactor is set", async () => {
+    const { shards, timeouts, factor, timeoutMS } = await configured();
 
-  it("the factor is 3 (the dry run is made alone, the mutants three at a time) and a shard may set its own bound", () => {
-    const config = fs.readFileSync(join(repo, "stryker.config.mjs"), "utf8");
-
-    expect(config).toContain("timeoutFactor: 3");
-    expect(config).toContain("timeoutMS: shard.timeoutMS ?? DEFAULT_TIMEOUT_MS");
+    expect(Object.keys(timeouts).sort()).toEqual([...shards].sort());
+    for (const [shard, ms] of Object.entries(timeouts))
+      expect(ms, shard).toBeGreaterThanOrEqual(120_000);
+    expect(timeoutMS).toBe(timeouts.migrations);
+    expect(factor).toBeGreaterThanOrEqual(3);
   });
 
-  it("no shard filters by test name: Vitest 3 would apply it over Stryker's own filter on every mutant", () => {
-    const config = fs.readFileSync(join(repo, "vitest.mutation.config.ts"), "utf8");
+  it("every entry of the proven list names a shard of the config", async () => {
+    const list = JSON.parse(
+      fs.readFileSync(join(repo, "scripts/stryker-proven-hangs.json"), "utf8"),
+    ) as { shard: string }[];
+    const { shards } = await configured();
 
-    expect(config).not.toContain("testNamePattern");
-    for (const shard of Object.values(SHARDS)) expect(shard).not.toHaveProperty("testNamePattern");
+    for (const { shard } of list) expect(shards, shard).toContain(shard);
+  });
+
+  it("the vitest mutation config sets testTimeout and hookTimeout, and no testNamePattern", () => {
+    const text = fs.readFileSync(join(repo, "vitest.mutation.config.ts"), "utf8");
+
+    expect(text).toMatch(/^\s*testTimeout: [\d_]+,$/m);
+    expect(text).toMatch(/^\s*hookTimeout: [\d_]+,$/m);
+    // vitest keeps a config's pattern as an override of Stryker's per-mutant one: every mutant ran every test
+    expect(text).not.toMatch(/^\s*testNamePattern:/m);
+  });
+
+  it("both workflows run the check on every shard's report, and the cold cache is keyed by the limits", () => {
+    for (const name of ["ci.yml", "mutation-nightly.yml"]) {
+      const text = fs.readFileSync(join(repo, ".github/workflows", name), "utf8");
+
+      expect(text, name).toContain(
+        "node scripts/stryker-timeouts.mjs reports/mutation/${{ matrix.shard }}.json",
+      );
+    }
+    const ci = fs.readFileSync(join(repo, ".github/workflows/ci.yml"), "utf8");
+    expect(ci).toContain("scripts/stryker-timeouts-ms.mjs");
   });
 });
