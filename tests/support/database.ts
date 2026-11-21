@@ -1,7 +1,6 @@
 import { SchemaSetup } from "@agboss/core/stores";
-import { MongoClient } from "mongodb";
+import { MongoClient, type Db } from "mongodb";
 import { afterAll, beforeAll } from "vitest";
-import { seedLedgerMark } from "../../src/connection/ledger-mark.js";
 import { Collections, MongoConnection } from "../../src/index.js";
 import { DROP_BOUND_MS, dropOnServer } from "./drop-databases.js";
 import { freshDatabaseName, REPLICA_SET_URL } from "./server.js";
@@ -10,6 +9,21 @@ import { freshDatabaseName, REPLICA_SET_URL } from "./server.js";
  * The database of one test file: a database of its own (`t_<uuid>`) on `AGBOSS_MONGODB_TEST_URL`,
  * its collections and indexes made as a connection's start makes them, dropped after the file.
  */
+
+/**
+ * The ledger's pruning mark, seeded as a new database has it: this file's own, not the package's
+ * `seedLedgerMark` — a mutant of the package's that throws would end a hook of every test file (an error
+ * outside a test run, which Stryker leaves out of the score), where it must end the test of the mark.
+ */
+async function seedMark(db: Db): Promise<void> {
+  await db
+    .collection<{ _id: string; prunedBefore: Date }>(Collections.CostEntries)
+    .updateOne(
+      { _id: "\u0000pruned-before" },
+      { $setOnInsert: { prunedBefore: new Date(0) } },
+      { upsert: true },
+    );
+}
 
 /** The replica set's URL with `database` as its path. */
 export function urlOnDatabase(url: string, database: string): string {
@@ -110,7 +124,7 @@ async function reusedDatabase(worker: string, index: number): Promise<string> {
         else await it.drop();
       }),
     );
-    await seedLedgerMark(connection.db);
+    await seedMark(connection.db);
   } finally {
     await connection.onDestroy();
   }
@@ -171,5 +185,5 @@ export async function emptyAll(url: string, extra: readonly string[] = []): Prom
       .filter((name) => name !== Collections.SchemaVersion)
       .map((name) => db.collection(name).deleteMany({}, { writeConcern: { w: "majority" } })),
   );
-  await seedLedgerMark(db);
+  await seedMark(db);
 }
