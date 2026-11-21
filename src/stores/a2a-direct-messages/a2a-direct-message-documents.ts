@@ -93,13 +93,17 @@ function replyOf(
   stored: z.infer<typeof Stored>,
 ): Pick<A2ADirectMessageRecord, "reply" | "completedAt"> {
   const completed = stored.state === A2ADirectMessageState.Completed;
-  const hasReply = stored.reply !== undefined && stored.completedAt !== undefined;
-  const hasNone = stored.reply === undefined && stored.completedAt === undefined;
-  if (completed ? !hasReply : !hasNone)
-    throw new Error(
+  const disagree = (): Error =>
+    new Error(
       `agboss_a2a_direct_messages ${JSON.stringify(stored.messageId)}: its state and its reply disagree`,
     );
-  if (stored.reply === undefined || stored.completedAt === undefined) return {};
+  if (stored.reply === undefined || stored.completedAt === undefined) {
+    // one of them missing: only a message not completed, with neither
+    if (completed || stored.reply !== undefined || stored.completedAt !== undefined)
+      throw disagree();
+    return {};
+  }
+  if (!completed) throw disagree();
   return {
     reply: Reply.parse(
       parsedOrUnreadable("a2a direct message reply", stored.reply, { messageId: stored.messageId }),

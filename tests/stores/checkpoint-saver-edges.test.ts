@@ -240,16 +240,22 @@ describe("latestByStep gives a checkpoint written without a step its step, in on
 
     expect(first?.checkpoint.id).toBe("0001");
     expect(second?.checkpoint.id).toBe("0001");
-    expect(sent.map(nameOf)).toEqual([
-      `find ${CHECKPOINTS}`,
-      `update ${CHECKPOINTS}`,
-      `find ${CHECKPOINTS}`,
-      `find ${CHECKPOINTS}`,
-      `find ${CHECKPOINTS}`,
-    ]);
-    expect(plain(sent[0]?.command.projection)).toEqual({ metadataType: 1, metadata: 1 });
-    expect(sent[1]?.command.ordered).toBe(false);
-    expect(plain(sent[2]?.command.sort)).toEqual({ step: -1, checkpointId: -1 });
+    const checkpointCommands = sent.filter((one) => one.collection === CHECKPOINTS);
+    const named = (name: string) => checkpointCommands.filter((one) => one.name === name);
+    // the look for a checkpoint without a step reads the metadata only, once for each call
+    const unsteppedLooks = named("find").filter(
+      (one) => JSON.stringify(plain(one.command.projection)) === '{"metadataType":1,"metadata":1}',
+    );
+    expect(unsteppedLooks).toHaveLength(2);
+    expect(unsteppedLooks[0]?.command.filter).toMatchObject({ step: { $exists: false } });
+    // the backfill is one unordered bulk write, the first call's: the second finds nothing to do
+    expect(named("update")).toHaveLength(1);
+    expect(named("update")[0]?.command.ordered).toBe(false);
+    // the answer is the newest by step, then id
+    const answers = named("find").filter(
+      (one) => JSON.stringify(plain(one.command.sort)) === '{"step":-1,"checkpointId":-1}',
+    );
+    expect(answers).toHaveLength(2);
     expect(
       await connection.db.collection(CHECKPOINTS).findOne({ _id: { $exists: true } }),
     ).toMatchObject({

@@ -25,7 +25,7 @@ export const SHARDS = {
       "src/stores/store-time.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/lease-*.test.ts"],
-    contracts: FENCING,
+    contracts: ["executionLease"],
   },
   // the fence every fencing write checks in its own transaction: the lease written, the business
   // key locked, the tree's cancel mark read after its root's document is written (#909, #1117)

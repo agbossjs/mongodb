@@ -38,17 +38,30 @@ const database = testDatabase();
  * `scripts/mutation-shards.mjs`): a `testNamePattern` would override Stryker's per-test filter on every
  * mutant (agbossjs/mongodb#103); a run of the whole suite (the variable unset) is every store.
  */
-function storesOfShard<TStores extends object>(stores: TStores): TStores {
+const wantedStores = (): readonly string[] | undefined => {
   const name = process.env.MUTATION_SHARD;
-  const wanted = name === undefined ? undefined : SHARDS[name]?.contracts;
+  return name === undefined ? undefined : SHARDS[name]?.contracts;
+};
+
+function storesOfShard<TStores extends object>(stores: TStores): TStores {
+  const wanted = wantedStores();
   if (wanted === undefined) return stores;
   return Object.fromEntries(
     Object.entries(stores).filter(([key]) => wanted.includes(key)),
   ) as TStores;
 }
 
+/** The fencing contracts a shard with a lease store leaves out (a set with leases alone says so). */
+const FENCING_STORES = ["fencedEffect", "outboundCall", "executionAuditLog"] as const;
+function leftOutOfShard(): readonly (typeof FENCING_STORES)[number][] {
+  const wanted = wantedStores();
+  if (!wanted?.includes("executionLease")) return [];
+  return FENCING_STORES.filter((key) => !wanted.includes(key));
+}
+
 storeConformance<MongoTransaction>({
   name: "MongoDB",
+  without: leftOutOfShard(),
   // agbossjs/agboss#533, #590: every schedule of two instances 4 steps deep, 50 seeded walks of
   // three; a search out of its time limit fails with what it explored
   interleavings: { depth: 4, walks: 50, timeLimit: minutes(15) },
