@@ -102,3 +102,19 @@ describe("the pauses' channels are filled by the migration to schema 3, and by n
     },
   );
 });
+
+describe("the version document says when it was written", () => {
+  it("a migration leaves `migratedAt`, a date no older than the run", async () => {
+    const db = freshDb();
+    const before = Date.now();
+
+    await migrateSchema(db);
+
+    const stored = await db
+      .collection<{ _id: string; version: number; migratedAt?: Date }>(Collections.SchemaVersion)
+      .findOne({ _id: SCHEMA_DOCUMENT_ID });
+    expect(stored?.migratedAt).toBeInstanceOf(Date);
+    expect(stored?.migratedAt?.getTime()).toBeGreaterThanOrEqual(before - 60_000);
+    expect(stored?.migratedAt?.getTime()).toBeLessThanOrEqual(Date.now() + 60_000);
+  });
+});

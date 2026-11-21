@@ -19,6 +19,19 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const PROVEN_HANGS = {
+  // the wait for live leases polls a counted number of times; a loop whose body is emptied never ends, and counts no
+  // iteration for a test to fail by: Stryker's hit counter ends it
+  migrations: [
+    {
+      file: "connection/live-leases.ts",
+      mutator: "BlockStatement",
+      replacement: "{}",
+      anchor: "for (let attempt = 1; ; attempt += 1) {",
+      kind: "hit-limit",
+      reason:
+        "the loop's body is emptied: `for (;;) {}` never sleeps, never counts an attempt and never ends",
+    },
+  ],
   // `saveIfAbsent` retries a duplicate key up to `SAVE_ATTEMPTS` times (a commit landed in between); a mutant of the
   // loop that never ends is ended by Stryker's hit counter, which no test can beat: the loop awaits, so a test's
   // own timeout would fire only after it

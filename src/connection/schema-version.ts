@@ -68,8 +68,9 @@ export async function appliedVersionOf(db: Db): Promise<number | undefined> {
 
 /** `MongoSchemaTooNewError` when `applied` is newer than this package's version. */
 function refuseNewer(applied: number | undefined): void {
-  if (applied !== undefined && applied > SCHEMA_VERSION)
-    throw new MongoSchemaTooNewError({ applied, expected: SCHEMA_VERSION });
+  const known = applied ?? 0;
+  if (known > SCHEMA_VERSION)
+    throw new MongoSchemaTooNewError({ applied: known, expected: SCHEMA_VERSION });
 }
 
 /**

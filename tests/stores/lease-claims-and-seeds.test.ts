@@ -9,7 +9,7 @@ import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/store
 import { seconds } from "@agboss/core/units";
 import { MongoNetworkError } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Collections, MongoExecutionLeaseRepository } from "../../src/index.js";
+import { Collections, MongoConnection, MongoExecutionLeaseRepository } from "../../src/index.js";
 import { HandClock } from "../contracts/lease-races.js";
 import { instanceConnection } from "../contracts/mongodb-store.js";
 import { TestApplicationContext } from "../support/application-context.js";
@@ -53,6 +53,33 @@ const unreadable = <TValue extends object>(value: TValue, field: string): TValue
       },
     },
   }) as TValue;
+
+/**
+ * From now on, the lease collection's `findOneAndUpdate` of `connection` is `answer(n, real)`: `n` the number of the
+ * call from 1, `real` the call as the driver would make it.
+ */
+function overFindOneAndUpdate(
+  connection: Awaited<ReturnType<typeof leasesOf>>["connection"],
+  answer: (n: number, real: () => Promise<unknown>) => Promise<unknown>,
+): void {
+  const raw = connection.client.db(connection.db.databaseName);
+  const calls = { n: 0 };
+  vi.spyOn(connection.db, "collection").mockImplementation((name, options) => {
+    const collection = raw.collection(name, options);
+    if (name !== Collections.ExecutionLeases) return collection;
+    return new Proxy(collection, {
+      get(target, property) {
+        const member: unknown = Reflect.get(target, property, target);
+        if (property !== "findOneAndUpdate" || typeof member !== "function")
+          return bound(member, target);
+        return (...args: unknown[]) => {
+          calls.n += 1;
+          return answer(calls.n, () => Promise.resolve(Reflect.apply(member, target, args)));
+        };
+      },
+    });
+  });
+}
 
 describe("the store", () => {
   it("is the MongoDB backend", () => {
@@ -172,5 +199,54 @@ describe("isCancelRequested reads the mark alone", () => {
     const finds = sent.filter((one) => nameOf(one) === `find ${Collections.ExecutionLeases}`);
     expect(finds).toHaveLength(1);
     expect(finds[0]?.command.projection).toEqual({ cancelRequestedAt: 1 });
+  });
+});
+
+describe("acquire, when the insert of the tree's first lease answers otherwise than the server does", () => {
+  it("an answer of none is no lease: acquire gives undefined, it does not read a lease from nothing", async () => {
+    const { connection, leases } = await leasesOf("instance-1");
+    overFindOneAndUpdate(connection, (n, real) => (n === 1 ? real() : Promise.resolve(null)));
+
+    expect(await leases.acquire(TENANT, "root-none", LEASE)).toBeUndefined();
+  });
+
+  it("an error that is no duplicate key is the error, not a retake: nothing else is asked of the server", async () => {
+    const { connection, leases } = await leasesOf("instance-1");
+    const lost = new MongoNetworkError("the reply was lost");
+    const asked = { n: 0 };
+    overFindOneAndUpdate(connection, (n, real) => {
+      asked.n = n;
+      return n === 1 ? real() : Promise.reject(lost);
+    });
+
+    const error = await leases.acquire(TENANT, "root-lost", LEASE).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+
+    expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(error).toMatchObject({ cause: lost });
+    expect(asked.n).toBe(2);
+  });
+});
+
+describe("ping", () => {
+  it("answers on a server, and rejects on a deployment that does not answer", async () => {
+    const { leases } = await leasesOf("instance-1");
+    await expect(leases.ping()).resolves.toBeUndefined();
+
+    const lost = new MongoConnection({
+      url: "mongodb://127.0.0.1:1/?replicaSet=rs0&serverSelectionTimeoutMS=200",
+    });
+    try {
+      const store = new MongoExecutionLeaseRepository(
+        lost,
+        new StoreClock(StoreTimeSource.Test, new HandClock()),
+        new TestApplicationContext({}, "instance-1"),
+      );
+      await expect(store.ping()).rejects.toThrow();
+    } finally {
+      await lost.onDestroy();
+    }
   });
 });
