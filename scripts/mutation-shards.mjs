@@ -69,6 +69,9 @@ export const SHARDS = {
   },
   // money and its limits: the cost ledger and its pruning mark, the rate limits
   money: {
+    // two mutants at a time (as `pauses`): at three, a transport error in a test's reset ended some mutant of the shard as a
+    // RuntimeError, which Stryker leaves out of the score, in most runs on a loaded machine (agbossjs/mongodb#103)
+    concurrency: 2,
     mutate: [
       "src/stores/mongo-cost-ledger.repository.ts",
       "src/connection/ledger-mark.ts",
