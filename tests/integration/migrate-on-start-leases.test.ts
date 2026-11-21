@@ -199,7 +199,8 @@ describe("#1260: a start that migrates and the live leases", () => {
   });
 
   it("a connection built without a Clock (a script) cannot wait: refused at once, as migrate is", async () => {
-    const database = await behindWithLease(1_500);
+    // a lease that would lapse within the wait, and 30 s: a loaded machine takes seconds to reach the start
+    const database = await behindWithLease(30_000);
     const connection = new MongoConnection({
       url: urlOn(database),
       schemaSetup: SchemaSetup.MigrateOnStart,
@@ -369,6 +370,8 @@ describe("#1260: the wait polls only while a lease is live", () => {
 class OldInstance {
   readonly connection: MongoConnection;
   #renewal: NodeJS.Timeout | undefined;
+  /** The renewals sent and not yet answered: the stop waits for them, so none meets a closed client. */
+  readonly #renewing = new Set<Promise<unknown>>();
 
   constructor(database: string) {
     this.connection = new MongoConnection({ url: urlOn(database) });
@@ -384,12 +387,17 @@ class OldInstance {
     );
     const held = await leases.acquire("default", "run-1", seconds(2));
     if (held === undefined) throw new Error("the old instance must take the lease");
-    this.#renewal = setInterval(() => void leases.renew(held, seconds(2)), 200);
+    this.#renewal = setInterval(() => {
+      const renewing = leases.renew(held, seconds(2)).catch(() => undefined);
+      this.#renewing.add(renewing);
+      void renewing.finally(() => this.#renewing.delete(renewing));
+    }, 200);
   }
 
   /** The instance stops: it renews no more (its last lease lapses on the server's clock). */
   async stop(): Promise<void> {
     clearInterval(this.#renewal);
+    await Promise.all([...this.#renewing]);
     await this.connection.onDestroy();
   }
 }
