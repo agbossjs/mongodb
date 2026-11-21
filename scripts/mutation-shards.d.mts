@@ -2,8 +2,8 @@
 export interface MutationShard {
   readonly mutate: readonly string[];
   readonly tests: readonly string[];
-  /** Only the cases whose full name matches it (a regular expression's source). */
-  readonly testNamePattern?: string;
+  /** The stores of the conformance file the shard runs (keys of `storeConformance`'s `stores`); none: all. */
+  readonly contracts?: readonly string[];
   /** Files of `tests` left out. */
   readonly exclude?: readonly string[];
   /** Stryker's `timeoutMS` for the shard, when it needs more than the default (above the shard's whole run). */

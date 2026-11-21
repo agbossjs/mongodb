@@ -7,11 +7,13 @@
  */
 const CONFORMANCE = "tests/contracts/store-conformance.test.ts";
 /**
- * Only these suites of the store contracts, and every case of the shard's other files: the
- * contracts of the other shards' stores take most of a run and kill none of its mutants.
+ * The stores of the shared conformance file a shard runs (`contracts`: keys of `storeConformance`'s
+ * `stores`; `tests/contracts/store-conformance.test.ts` reads them from `MUTATION_SHARD`). Not a
+ * `testNamePattern`: Vitest 3 applies that over Stryker's own per-test filter on every mutant, so
+ * a mutant covered by two tests ran them all (agbossjs/mongodb#103). The fencing stores come
+ * together: the explorer of interleavings runs on a lease store and asks for them.
  */
-const conformanceOf = (...suites) =>
-  String.raw`(${suites.join("|")}) \(MongoDB\)|^(?!.*\(MongoDB\))`;
+const FENCING = ["executionLease", "fencedEffect", "outboundCall", "executionAuditLog"];
 
 export const SHARDS = {
   // the lease document: its epochs, expiry, finish, yield and reclaim on the server's clock, the
@@ -23,7 +25,7 @@ export const SHARDS = {
       "src/stores/store-time.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/lease-*.test.ts"],
-    testNamePattern: conformanceOf("lease contract", "interleavings"),
+    contracts: FENCING,
   },
   // the fence every fencing write checks in its own transaction: the lease written, the business
   // key locked, the tree's cancel mark read after its root's document is written (#909, #1117)
@@ -34,12 +36,7 @@ export const SHARDS = {
       "src/stores/outbound-calls/lease-state.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{fence-*,cancel-fence}.test.ts"],
-    testNamePattern: conformanceOf(
-      "fenced effect contract",
-      "outbound call contract",
-      "interleavings",
-      "store set",
-    ),
+    contracts: FENCING,
   },
   // the fenced effect and the outbound call: one effect per key, the business key's fingerprint,
   // the intent, its attempts and outcomes, the paged listing
@@ -54,12 +51,7 @@ export const SHARDS = {
       "src/stores/outbound-call-pages.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{fenced-effect*,outbound-call*}.test.ts"],
-    testNamePattern: conformanceOf(
-      "fenced effect contract",
-      "outbound call contract",
-      "interleavings",
-      "store set",
-    ),
+    contracts: FENCING,
   },
   // the pause store: decisions, answers, notices and their claims (agbossjs/agboss#946), deadlines
   // and their timers (#941, #1064), reassignment
@@ -70,7 +62,7 @@ export const SHARDS = {
       "src/connection/pause-channels.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{pause*,paused*}.test.ts"],
-    testNamePattern: conformanceOf("paused execution contract"),
+    contracts: ["pausedExecution"],
   },
   // money and its limits: the cost ledger and its pruning mark, the rate limits
   money: {
@@ -81,13 +73,13 @@ export const SHARDS = {
       "src/stores/rate-limits/*.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{cost-ledger*,rate-limit*}.test.ts"],
-    testNamePattern: conformanceOf("cost ledger contract", "rate limit contract"),
+    contracts: ["costLedger", "rateLimit"],
   },
   // the child queue: a claim, a save, a release (the queue store itself)
   queue: {
     mutate: ["src/stores/mongo-child-execution-queue.repository.ts"],
     tests: [CONFORMANCE, "tests/stores/{queue-watch,child-queue*}.test.ts"],
-    testNamePattern: conformanceOf("child execution queue contract"),
+    contracts: ["childExecutionQueue"],
   },
   // the child queue's watch (agbossjs/agboss#777, #1088, #1345): its change stream, the cursors it
   // knows of, the close that kills them, and the client it runs on
@@ -104,14 +96,14 @@ export const SHARDS = {
       "src/stores/a2a-direct-messages/*.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/a2a-direct-message*.test.ts"],
-    testNamePattern: conformanceOf("A2A direct message contract"),
+    contracts: ["a2aDirectMessage"],
   },
   // the checkpoint saver (agbossjs/mongodb#104, agbossjs/agboss#1165): a thread's checkpoints in the order
   // of their step, the pending writes kept as first written, `latestByStep` as one indexed read
   checkpoints: {
     mutate: ["src/stores/mongo-checkpoint-saver.ts", "src/stores/checkpoints/*.ts"],
     tests: [CONFORMANCE, "tests/stores/checkpoint-*.test.ts"],
-    testNamePattern: conformanceOf("checkpoint saver contract"),
+    contracts: ["checkpointSaver"],
   },
   // the order and the numbers of this instance's writes: the commit order of the calls on one
   // key (agbossjs/agboss#527) and the counter behind every `seq` (#661, #682)
@@ -143,6 +135,8 @@ export const SHARDS = {
   // the schema and its migrations: its collections, indexes and validators, its version, the
   // migration to it, and the live-lease guard of a migration (agbossjs/agboss#1104, #1260)
   migrations: {
+    // a migration per case: the hooks (a database made and migrated again) dominate the net time
+    timeoutMS: 240_000,
     mutate: [
       "src/connection/migrate.ts",
       "src/connection/schema.ts",

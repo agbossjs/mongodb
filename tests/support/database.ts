@@ -51,6 +51,31 @@ const STRYKER_WORKER = process.env.STRYKER_MUTATOR_WORKER;
 let databasesOfFile = 0;
 
 /**
+ * Every index of `database` but `_id`'s dropped and its schema version forgotten, so that the migration of the
+ * next start makes them again: the database of a worker is kept between mutants, and
+ * the schema a mutant of `schema.ts` makes (an index with another key) must not meet the index the
+ * run before made (`IndexKeySpecsConflict` in the migration of `beforeAll`: a RuntimeError, which
+ * Stryker leaves out of the score instead of killing the mutant; agbossjs/mongodb#103).
+ */
+async function resetSchemaOf(database: string): Promise<void> {
+  const client = new MongoClient(REPLICA_SET_URL);
+  try {
+    const db = client.db(database);
+    const collections = await db.listCollections({}, { nameOnly: true }).toArray();
+    await Promise.all(
+      collections.map(({ name }) =>
+        db
+          .collection(name)
+          .dropIndexes()
+          .catch(() => undefined),
+      ),
+    );
+  } finally {
+    await client.close();
+  }
+}
+
+/**
  * Under Stryker, the databases of this test process (agbossjs/agboss#1213): Stryker runs a file
  * again for every mutant, and a database per file and run — dozens of collections and their
  * indexes, hundreds of times, or kept, one per file — grew the primary's memory past 1 GB (the
@@ -63,6 +88,8 @@ let databasesOfFile = 0;
  */
 async function reusedDatabase(worker: string, index: number): Promise<string> {
   const name = `t_mutation_${worker}_${process.env.VITEST_POOL_ID ?? "0"}_${String(index)}`;
+  // only the shard of the schema: the others keep the indexes they migrated once, which is what makes a reused database fast
+  if (process.env.MUTATION_SHARD === "migrations") await resetSchemaOf(name);
   const connection = await openConnection(urlOnDatabase(REPLICA_SET_URL, name));
   try {
     const stores = new Set<string>(Object.values(Collections));

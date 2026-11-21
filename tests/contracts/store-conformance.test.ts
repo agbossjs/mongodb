@@ -19,6 +19,7 @@ import {
   MongoRateLimitRepository,
   type MongoTransaction,
 } from "../../src/index.js";
+import { SHARDS } from "../../scripts/mutation-shards.mjs";
 import { emptyAll, testDatabase } from "../support/database.js";
 import { CONTRACT_ROWS, fencedEffectsOn } from "./mongodb-sets.js";
 import { mongoStore } from "./mongodb-store.js";
@@ -32,13 +33,27 @@ import { mongoStore } from "./mongodb-store.js";
  */
 const database = testDatabase();
 
+/**
+ * Under Stryker (`MUTATION_SHARD`), only the stores the shard names (`contracts` of
+ * `scripts/mutation-shards.mjs`): a `testNamePattern` would override Stryker's per-test filter on every
+ * mutant (agbossjs/mongodb#103); a run of the whole suite (the variable unset) is every store.
+ */
+function storesOfShard<TStores extends object>(stores: TStores): TStores {
+  const name = process.env.MUTATION_SHARD;
+  const wanted = name === undefined ? undefined : SHARDS[name]?.contracts;
+  if (wanted === undefined) return stores;
+  return Object.fromEntries(
+    Object.entries(stores).filter(([key]) => wanted.includes(key)),
+  ) as TStores;
+}
+
 storeConformance<MongoTransaction>({
   name: "MongoDB",
   // agbossjs/agboss#533, #590: every schedule of two instances 4 steps deep, 50 seeded walks of
   // three; a search out of its time limit fails with what it explored
   interleavings: { depth: 4, walks: 50, timeLimit: minutes(15) },
   reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
-  stores: {
+  stores: storesOfShard({
     // agbossjs/agboss#962: `latestByStep` is one indexed read, its ties by code point (#1115)
     checkpointSaver: {
       ...mongoStore(database, (connection) => new MongoCheckpointSaver(connection)),
@@ -107,5 +122,5 @@ storeConformance<MongoTransaction>({
       database,
       (connection, seam) => new MongoRateLimitRepository(connection, seam.clock, seam.application),
     ),
-  },
+  }),
 });

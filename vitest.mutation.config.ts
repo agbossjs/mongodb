@@ -12,10 +12,12 @@ export default defineConfig({
   test: {
     include: [...shard.tests],
     exclude: [...(shard.exclude ?? []), "node_modules/**"],
-    ...(shard.testNamePattern === undefined ? {} : { testNamePattern: shard.testNamePattern }),
     expect: { requireAssertions: true },
     globalSetup: ["./tests/support/global-setup.ts"],
     testTimeout: 20_000,
     hookTimeout: 30_000,
+    // a mutant that allocates without end fails at 1 GB in seconds, not at the machine's memory
+    // (agbossjs/mongodb#103: it would be a RuntimeError, which Stryker leaves out of the score)
+    poolOptions: { forks: { execArgv: ["--max-old-space-size=1024"] } },
   },
 });
