@@ -85,8 +85,9 @@ describe("a fenced call", () => {
     );
     const sent = commandsOf(connection);
 
-    await expect(open.enter(keyOf(held, ""))).rejects.toThrow();
-    await expect(open.enter(keyOf(held, "keyed", { businessKey: "order:42" }))).rejects.toThrow();
+    // the check throws at the call, before a promise is made
+    expect(() => open.enter(keyOf(held, ""))).toThrow();
+    expect(() => open.enter(keyOf(held, "keyed", { businessKey: "order:42" }))).toThrow();
 
     expect(sent).toEqual([]);
   });
