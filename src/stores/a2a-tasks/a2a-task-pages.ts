@@ -19,8 +19,9 @@ function filterOf(query: A2ATaskQuery): Filter<A2ATaskDocument> {
   return {
     tenantId: query.tenantId,
     ownerId: ownerColumnOf(query.ownerId),
-    ...(query.contextId === undefined ? {} : { contextId: query.contextId }),
-    ...(query.state === undefined ? {} : { state: query.state }),
+    // a filter that is not asked for is undefined, which the client leaves out (`ignoreUndefined`)
+    contextId: query.contextId,
+    state: query.state,
     ...(query.statusAtAfter === undefined ? {} : { statusAt: { $gt: query.statusAtAfter } }),
   };
 }

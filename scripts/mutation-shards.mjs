@@ -104,6 +104,34 @@ export const SHARDS = {
     tests: [CONFORMANCE, "tests/stores/a2a-direct-message*.test.ts"],
     contracts: ["a2aDirectMessage"],
   },
+  // the A2A task store (agbossjs/mongodb#105, agbossjs/agboss#824): of two pods accepting one message exactly one
+  // saves it (`saveIfAbsent`, one transaction), the status moves by a compare-and-set on its version and never off
+  // a terminal state (`compareAndSetStatus`), the message and its reply are kept once, the retention sweep and the
+  // page of `list`
+  "a2a-tasks": {
+    mutate: ["src/stores/mongo-a2a-task.repository.ts", "src/stores/a2a-tasks/*.ts"],
+    tests: [CONFORMANCE, "tests/stores/{a2a-task*,a2a-message-save,a2a-direct-message*}.test.ts"],
+    contracts: ["a2aTask", "a2aDirectMessage"],
+  },
+  // the mesh request store (agbossjs/mongodb#105, agbossjs/agboss#483): of two pods admitting one idempotency key
+  // exactly one inserts it, which is what runs a trusted repeat `tools/call` once
+  "mesh-requests": {
+    mutate: ["src/stores/mongo-mesh-request.repository.ts"],
+    tests: [CONFORMANCE, "tests/stores/mesh-request*.test.ts"],
+    contracts: ["meshRequest"],
+  },
+  // the execution record store (agbossjs/mongodb#105, agbossjs/agboss#1367): `completeIfStatus` is one update
+  // filtered on the expected status, the only guard of the paused -> running mark of an answer that reaches
+  // whichever instance, before and without any lease; a thread id is created once, the first answer of a pause
+  // is kept, and the reads recovery, replay, eval and memory rely on
+  "execution-records": {
+    mutate: [
+      "src/stores/mongo-execution-record.repository.ts",
+      "src/stores/records/record-writes.ts",
+    ],
+    tests: [CONFORMANCE, "tests/stores/{execution-record*,minted-thread}.test.ts"],
+    contracts: ["executionRecord"],
+  },
   // the checkpoint saver (agbossjs/mongodb#104, agbossjs/agboss#1165): a thread's checkpoints in the order
   // of their step, the pending writes kept as first written, `latestByStep` as one indexed read
   checkpoints: {

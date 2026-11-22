@@ -188,11 +188,13 @@ export const pageTokenOf = (task: Pick<A2ATaskRecord, "statusAt" | "taskId">): s
   Buffer.from(JSON.stringify([task.statusAt.getTime(), task.taskId])).toString("base64url");
 
 function jsonOf(token: string): unknown {
+  let json: unknown;
   try {
-    return JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
+    json = JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
   } catch {
-    return undefined;
+    // not JSON: `json` stays undefined, which the token's schema refuses
   }
+  return json;
 }
 
 /** Where the page of `token` starts; `InvalidA2APageTokenError` for a token no list gave. */
