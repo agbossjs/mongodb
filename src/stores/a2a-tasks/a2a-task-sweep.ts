@@ -1,5 +1,5 @@
 import { DIRECT_MESSAGE_CLAIM } from "@agboss/core/stores";
-import type { Db } from "mongodb";
+import type { Db, Filter } from "mongodb";
 import { Collections } from "../../connection/collections.js";
 import {
   taskIdOf,
@@ -10,6 +10,22 @@ import {
 
 /** How many finished tasks one batch of the sweep removes. */
 const SWEEP_BATCH = 500;
+
+// Stryker disable next-line ObjectLiteral: equivalent, a projection only trims the fields a read brings; the sweep uses a row's tenantId, taskId and _id
+const KEYS_ONLY = { tenantId: 1, taskId: 1 };
+// Stryker disable next-line ObjectLiteral: equivalent, options that only project trim the fields a read brings; the sweep uses the _id of a task alone
+const ID_ONLY = {
+  // Stryker disable next-line ObjectLiteral: equivalent, a projection only trims the fields a read brings
+  projection: { _id: 1 },
+};
+
+/** The filter of the tasks with `ids`. */
+// Stryker disable next-line ArrowFunction: equivalent in what it answers, see below: no filter matches every task
+const idsIn = (ids: readonly string[]): Filter<A2ATaskDocument> =>
+  // Stryker disable next-line ObjectLiteral: equivalent in what it answers, a filter that matches every task gives a set the sweep only asks for the ids of its own batch (`kept.has`); only the read is larger
+  ({
+    _id: { $in: ids },
+  });
 
 /**
  * The retention sweep of `MongoA2ATaskRepository` (agbossjs/agboss#824): the terminal tasks whose
@@ -25,9 +41,7 @@ export async function sweptTerminalBefore(
   const messages = db.collection<A2AMessageDocument>(Collections.A2AMessages);
   const due = { state: { $in: [...TERMINAL_STATES] }, statusAt: { $lt: cutoff } };
   for (let batches = 0; ; batches += 1) {
-    const batch = await tasks
-      .find(due, { projection: { tenantId: 1, taskId: 1 }, limit: batchSize })
-      .toArray();
+    const batch = await tasks.find(due, { projection: KEYS_ONLY, limit: batchSize }).toArray();
     if (batch.length === 0) return batches;
     await tasks.deleteMany({ ...due, _id: { $in: batch.map((task) => task._id) } });
     await messages.deleteMany({
@@ -52,18 +66,17 @@ export async function sweptOrphanMessagesBefore(
   const tasks = db.collection<A2ATaskDocument>(Collections.A2ATasks);
   const messages = db.collection<A2AMessageDocument>(Collections.A2AMessages);
   let removed = 0;
+  // Stryker disable next-line StringLiteral: equivalent, every `_id` is a JSON array's text and starts with `[`, which sorts after any start a letter gives
   for (let after = ""; ;) {
     const batch = await messages
       .find(
         { savedAt: { $lt: cutoff }, taskId: { $ne: DIRECT_MESSAGE_CLAIM }, _id: { $gt: after } },
-        { projection: { tenantId: 1, taskId: 1 }, sort: { _id: 1 }, limit: batchSize },
+        { projection: KEYS_ONLY, sort: { _id: 1 }, limit: batchSize },
       )
       .toArray();
     const last = batch.at(-1);
     if (last === undefined) return removed;
-    const alive = await tasks
-      .find({ _id: { $in: batch.map(taskIdOf) } }, { projection: { _id: 1 } })
-      .toArray();
+    const alive = await tasks.find(idsIn(batch.map(taskIdOf)), ID_ONLY).toArray();
     const kept = new Set(alive.map((task) => task._id));
     const orphans = batch.filter((message) => !kept.has(taskIdOf(message)));
     // each row is re-checked in the delete itself, as `sweptTerminalBefore` does: a second sweep may

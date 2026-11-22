@@ -1,15 +1,18 @@
-import { pauseAnswerRecordOfValue } from "@agboss/core/stores";
+import { pauseAnswerRecordOfValue, StoreOutcomeUnknownError } from "@agboss/core/stores";
 import {
   ComponentKind,
   ExecutionRecordStatus,
   PauseAnswerer,
+  RandomIdGenerator,
   PauseResolution,
   type PauseAnswerRecord,
 } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
-import { describe, expect, it } from "vitest";
+import { Collection, FindCursor } from "mongodb";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { TestApplicationContext } from "../support/application-context.js";
 import { testDatabase } from "../support/database.js";
-import { Collections } from "../../src/index.js";
+import { Collections, MongoExecutionRecordRepository } from "../../src/index.js";
 import { connectionTo } from "../support/stores.js";
 import { outcomeOf, recordOf, recordsOn } from "../support/stores.js";
 
@@ -18,6 +21,10 @@ import { outcomeOf, recordOf, recordsOn } from "../support/stores.js";
  * golden sets, memory and the pause log read — as the core's Turn store answers them.
  */
 const database = testDatabase();
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 const { Answered, Running, Paused, Failed } = ExecutionRecordStatus;
 
 /** A thread of `desk-workflow` with records of `statuses`, in that order; their ids. */
@@ -122,6 +129,167 @@ describe("MongoExecutionRecordRepository", () => {
 
     expect(late).toBe(false);
     expect(stored).toMatchObject({ status: "answered", costUsd: 0.5, route: ["start", "finish"] });
+  });
+
+  it("the paused -> running mark of an answer, written with no lease on several instances at once: exactly one lands", async () => {
+    const stores = Array.from({ length: 4 }, () => recordsOn(database.url()));
+    await Promise.all(stores.map((store) => store.ping()));
+    for (let round = 0; round < 8; round += 1) {
+      const { ids } = await threadWith(stores[0] ?? recordsOn(database.url()), [Paused]);
+      const [id = ""] = ids;
+      let release: () => void = () => undefined;
+      const go = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const running = stores.map(async (store, index) => {
+        await go;
+        return store.completeIfStatus(id, Paused, outcomeOf(Running, { costUsd: index + 1 }));
+      });
+      release();
+
+      const marks = await Promise.all(running);
+
+      expect(marks.filter(Boolean)).toHaveLength(1);
+      const [stored] = (await stores[0]?.byIds([id])) ?? [];
+      expect(stored?.status).toBe("running");
+      expect(stored?.costUsd).toBe(marks.indexOf(true) + 1);
+      // the answer that lost finds the record already moved: a second mark from paused never lands
+      expect(
+        await stores[1]?.completeIfStatus(id, Paused, outcomeOf(Running, { costUsd: 9 })),
+      ).toBe(false);
+    }
+  });
+
+  it("a thread id created on several instances at once is created once: its first owner is kept", async () => {
+    const stores = Array.from({ length: 4 }, () => recordsOn(database.url()));
+    await Promise.all(stores.map((store) => store.ping()));
+    for (let round = 0; round < 8; round += 1) {
+      const threadId = `shared-${String(round)}`;
+      let release: () => void = () => undefined;
+      const go = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const running = stores.map(async (store, index) => {
+        await go;
+        return store.createThread({
+          workflow: "desk-workflow",
+          tenantId: "default",
+          threadId,
+          ownerId: `owner-${String(index)}`,
+        });
+      });
+      release();
+
+      const made = await Promise.all(running);
+
+      expect(made).toEqual(stores.map(() => threadId));
+      const kept = await stores[0]?.threadOwner("desk-workflow", "default", threadId);
+      const first = await connectionTo(database.url())
+        .db.collection(Collections.Threads)
+        .countDocuments({ threadId });
+      expect(first).toBe(1);
+      expect(kept?.owner).toMatch(/^owner-[0-3]$/);
+    }
+  });
+
+  it("a status write for an id no record has changes nothing", async () => {
+    const records = recordsOn(database.url());
+
+    expect(await records.completeIfStatus("no-such-id", Paused, outcomeOf(Running))).toBe(false);
+  });
+
+  it("ping is the connection's own ping", async () => {
+    const connection = connectionTo(database.url());
+    const ping = vi.spyOn(connection, "ping").mockResolvedValue();
+
+    await new MongoExecutionRecordRepository(
+      connection,
+      new VirtualClock(),
+      new TestApplicationContext({}),
+      new RandomIdGenerator(),
+    ).ping();
+
+    expect(ping).toHaveBeenCalledOnce();
+  });
+
+  it("a thread's insert that fails for any reason but a taken id is thrown, whoever's id it was", async () => {
+    const records = recordsOn(database.url());
+    const broken = new Error("the insert broke");
+    const insert = vi.spyOn(Collection.prototype, "insertOne").mockRejectedValue(broken);
+
+    await expect(
+      records.createThread({ workflow: "desk-workflow", tenantId: "default", threadId: "own" }),
+    ).rejects.toThrow(StoreOutcomeUnknownError);
+    await expect(
+      records.createThread({ workflow: "desk-workflow", tenantId: "default" }),
+    ).rejects.toThrow(StoreOutcomeUnknownError);
+
+    expect(insert).toHaveBeenCalledTimes(2);
+  });
+
+  it("complete keeps the route and the steps as written", async () => {
+    const records = recordsOn(database.url());
+    const { ids } = await threadWith(records, [Paused]);
+    const [id = ""] = ids;
+    const steps = [
+      { agent: "clerk", content: "looked it up" },
+      { agent: "desk", content: "paid" },
+    ];
+
+    await records.complete(id, outcomeOf(Answered, { route: ["start", "desk"], steps }));
+
+    expect((await records.byIds([id]))[0]).toMatchObject({ route: ["start", "desk"], steps });
+  });
+
+  it("the pause log is read in the order asked, whatever order it was kept in", async () => {
+    const records = recordsOn(database.url());
+    await records.savePauseAnswer(
+      "default",
+      "tree-order",
+      answerOf("late", "2026-01-05T09:30:00.000Z"),
+    );
+    await records.savePauseAnswer(
+      "default",
+      "tree-order",
+      answerOf("early", "2026-01-05T08:30:00.000Z"),
+    );
+
+    const log = await records.findPauseAnswersByTenantIdAndRootExecutionId("default", "tree-order");
+
+    expect(log.map((entry) => entry.step.idempotencyKey)).toEqual(["early", "late"]);
+  });
+
+  it("the pause log asks for its order, by the time asked and then the order kept; an index is not assumed", async () => {
+    const records = recordsOn(database.url());
+    await records.savePauseAnswer(
+      "default",
+      "tree-sorted",
+      answerOf("k", "2026-01-05T08:30:00.000Z"),
+    );
+    const sort = vi.spyOn(FindCursor.prototype, "sort");
+
+    await records.findPauseAnswersByTenantIdAndRootExecutionId("default", "tree-sorted");
+
+    expect(sort).toHaveBeenCalledOnce();
+    expect(sort).toHaveBeenCalledWith({ askedAt: 1, seq: 1 });
+  });
+
+  it("a pause log entry that is no JSON is refused, naming the tree's execution", async () => {
+    const records = recordsOn(database.url());
+    await records.savePauseAnswer(
+      "default",
+      "tree-damaged",
+      answerOf("k", "2026-01-05T08:30:00.000Z"),
+    );
+    await connectionTo(database.url())
+      .db.collection(Collections.PauseAnswers)
+      .updateOne({ rootExecutionId: "tree-damaged" }, { $set: { record: "{not json" } });
+
+    const refused = await records
+      .findPauseAnswersByTenantIdAndRootExecutionId("default", "tree-damaged")
+      .catch((error: unknown) => error);
+
+    expect(refused).toHaveProperty("message", expect.stringContaining("tree-damaged"));
   });
 
   it("lastTurns: the newest records of a thread, oldest first; another tenant's thread is its own", async () => {

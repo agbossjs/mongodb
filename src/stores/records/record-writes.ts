@@ -87,10 +87,11 @@ export async function completeRecord(
   expected?: ExecutionRecordStatus,
 ): Promise<boolean> {
   const { replyWith, status, stopReason, route, steps, costUsd } = outcome;
+  // `status: expected` filters only when there is one: the client leaves out an undefined field (`ignoreUndefined`)
   const completed = await db
     .collection<RecordDocument>(Collections.ExecutionRecords)
     .updateOne(
-      { _id: id, ...(expected === undefined ? {} : { status: expected }) },
+      { _id: id, status: expected },
       { $set: { replyWith, status, stopReason, route: [...route], steps: [...steps], costUsd } },
     );
   return completed.matchedCount === 1;
