@@ -2,10 +2,12 @@
 export interface MutationShard {
   readonly mutate: readonly string[];
   readonly tests: readonly string[];
-  /** Only the cases whose full name matches it (a regular expression's source). */
-  readonly testNamePattern?: string;
+  /** The stores of the conformance file the shard runs (keys of `storeConformance`'s `stores`); none: all. */
+  readonly contracts?: readonly string[];
   /** Files of `tests` left out. */
   readonly exclude?: readonly string[];
+  /** Stryker's `concurrency` for the shard, when three mutants at a time starve the servers. */
+  readonly concurrency?: number;
 }
 export declare const SHARDS: Readonly<Record<string, MutationShard>>;
 export declare function chosenShard(): MutationShard & { readonly name: string };

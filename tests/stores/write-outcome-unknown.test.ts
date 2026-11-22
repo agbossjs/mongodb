@@ -29,7 +29,7 @@ import {
   MongoWriteConcernError,
   type Document,
 } from "mongodb";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   Collections,
   MongoCheckpointSaver,
@@ -61,60 +61,70 @@ const database = testDatabase();
 holdFailPoints();
 const BEFORE = new Date("2030-01-01T00:00:00.000Z");
 const WRITES = ["insert", "update", "delete", "findAndModify"];
-let connection: MongoConnection;
-let admin: MongoClient;
+let started: MongoConnection | undefined;
+let adminClient: MongoClient | undefined;
 
-beforeAll(async () => {
-  // the fail points name this client by its appName: the other files' clients never fail
-  connection = await openConnection(`${database.url()}&appName=${APP}`);
-  admin = new MongoClient(database.url());
-});
+const live = (): MongoConnection => {
+  if (started === undefined) throw new Error("the connection is made by the first test's hook");
+  return started;
+};
+const admin = (): MongoClient => {
+  if (adminClient === undefined) throw new Error("the client is made by the first test's hook");
+  return adminClient;
+};
 
+// made in the first test's hook, not in a `beforeAll`: a mutant of the connection that fails here must fail a
+// test, which kills it, not the file's setup, which Stryker leaves out of the score (agbossjs/mongodb#103)
 beforeEach(async () => {
+  // the fail points name this client by its appName: the other files' clients never fail
+  started ??= await openConnection(`${database.url()}&appName=${APP}`);
+  adminClient ??= new MongoClient(database.url());
   await emptyAll(database.url(), ["write_outcome_probe", "write_outcome_multi"]);
 });
 
 afterEach(async () => {
-  await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
+  await admin().db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
 });
 
 afterAll(async () => {
-  await connection.onDestroy();
-  await admin.close();
+  await started?.onDestroy();
+  await adminClient?.close();
 });
 
 /** The next write of this test's client is APPLIED, then answered with a write concern error (twice: the driver's retry too). */
 async function applyThenFail(): Promise<void> {
-  await admin.db("admin").command({
-    configureFailPoint: "failCommand",
-    mode: { times: 2 },
-    data: {
-      failCommands: WRITES,
-      appName: APP,
-      writeConcernError: { code: 91, errmsg: "Replication is being shut down" },
-    },
-  });
+  await admin()
+    .db("admin")
+    .command({
+      configureFailPoint: "failCommand",
+      mode: { times: 2 },
+      data: {
+        failCommands: WRITES,
+        appName: APP,
+        writeConcernError: { code: 91, errmsg: "Replication is being shut down" },
+      },
+    });
 }
 
 const count = (collection: string, filter: Document = {}): Promise<number> =>
-  connection.db.collection(collection).countDocuments(filter);
+  live().db.collection(collection).countDocuments(filter);
 
 const clock = new VirtualClock();
 const application = new TestApplicationContext({}, "instance-1");
 const ids = new CountingIdGenerator();
 const storeClock = new StoreClock(StoreTimeSource.Database, { now: () => new Date() });
 
-const trees = (): MongoExecutionTreeRepository => new MongoExecutionTreeRepository(connection);
-const mesh = (): MongoMeshRequestRepository => new MongoMeshRequestRepository(connection);
+const trees = (): MongoExecutionTreeRepository => new MongoExecutionTreeRepository(live());
+const mesh = (): MongoMeshRequestRepository => new MongoMeshRequestRepository(live());
 const limits = (): MongoRateLimitRepository =>
-  new MongoRateLimitRepository(connection, clock, application);
+  new MongoRateLimitRepository(live(), clock, application);
 const queue = (): MongoChildExecutionQueueRepository =>
-  new MongoChildExecutionQueueRepository(connection, clock, application, new RecordingLogger());
+  new MongoChildExecutionQueueRepository(live(), clock, application, new RecordingLogger());
 const pauses = (): MongoPausedExecutionRepository =>
-  new MongoPausedExecutionRepository(connection, clock);
-const checkpoints = (): MongoCheckpointSaver => new MongoCheckpointSaver(connection);
+  new MongoPausedExecutionRepository(live(), clock);
+const checkpoints = (): MongoCheckpointSaver => new MongoCheckpointSaver(live());
 const calls = (): MongoOutboundCallRepository =>
-  new MongoOutboundCallRepository(connection, storeClock);
+  new MongoOutboundCallRepository(live(), storeClock);
 
 const TREE = { tenantId: "default", rootExecutionId: "root-1" };
 const MESH = { tenantId: "default", peer: "peer-1", idempotencyKey: "key-1" };
@@ -265,7 +275,7 @@ const CASES: readonly WriteCase[] = [
     name: "fenced effect: deleteByStoredAtBefore",
     write: () =>
       new MongoFencedEffectRepository(
-        connection,
+        live(),
         storeClock,
         new FencedEffectSettings(),
       ).deleteByStoredAtBefore(BEFORE),
@@ -273,7 +283,7 @@ const CASES: readonly WriteCase[] = [
   {
     name: "execution record: createThread",
     write: () =>
-      new MongoExecutionRecordRepository(connection, clock, application, ids).createThread({
+      new MongoExecutionRecordRepository(live(), clock, application, ids).createThread({
         workflow: "w",
         tenantId: "default",
         threadId: "thread-76",
@@ -283,7 +293,7 @@ const CASES: readonly WriteCase[] = [
   {
     name: "cost ledger: saveMaxSpend",
     write: () =>
-      new MongoCostLedgerRepository(connection).saveMaxSpend(
+      new MongoCostLedgerRepository(live()).saveMaxSpend(
         { budget: "b", scope: BudgetScope.Tenant, key: "default" },
         usd(5),
       ),
@@ -291,11 +301,11 @@ const CASES: readonly WriteCase[] = [
   },
   {
     name: "audit log: deleteByOccurredAtBefore",
-    write: () => new MongoExecutionAuditLogRepository(connection).deleteByOccurredAtBefore(BEFORE),
+    write: () => new MongoExecutionAuditLogRepository(live()).deleteByOccurredAtBefore(BEFORE),
   },
   {
     name: "history: deleteByEndedAtBefore",
-    write: () => new MongoExecutionHistoryRepository(connection).deleteByEndedAtBefore(BEFORE),
+    write: () => new MongoExecutionHistoryRepository(live()).deleteByEndedAtBefore(BEFORE),
   },
   {
     name: "a2a task: deleteTerminalByStatusAtBefore (a finished task is due: the sweep's first delete)",
@@ -305,7 +315,7 @@ const CASES: readonly WriteCase[] = [
         ...{ skill: "order-workflow-start", acceptedAt: new Date("2026-01-05T09:00:00.000Z") },
         ...{ messageId: "m-1", requestHash: "h-1" },
       };
-      const tasks = new MongoA2ATaskRepository(connection);
+      const tasks = new MongoA2ATaskRepository(live());
       await tasks.saveIfAbsent({
         ...task,
         status: { state: A2ATaskState.Submitted, pendingPauses: [] },
@@ -317,12 +327,12 @@ const CASES: readonly WriteCase[] = [
         new Date("2026-01-05T09:01:00.000Z"),
       );
     },
-    write: () => new MongoA2ATaskRepository(connection).deleteTerminalByStatusAtBefore(BEFORE),
+    write: () => new MongoA2ATaskRepository(live()).deleteTerminalByStatusAtBefore(BEFORE),
     applied: async () => (await count(Collections.A2ATasks)) === 0,
   },
   {
     name: "a2a direct message: deleteIfInFlight",
-    write: () => new MongoA2ADirectMessageRepository(connection).deleteIfInFlight(DIRECT, "a-1"),
+    write: () => new MongoA2ADirectMessageRepository(live()).deleteIfInFlight(DIRECT, "a-1"),
   },
 ];
 
@@ -340,7 +350,7 @@ describe("agbossjs/mongodb#76: a single-command write answered with an error aft
     });
     expect((failure as StoreOutcomeUnknownError).cause).toBeInstanceOf(MongoWriteConcernError);
     if (one.applied !== undefined) {
-      await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
+      await admin().db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
       expect(await one.applied()).toBe(true);
     }
   });
@@ -348,7 +358,7 @@ describe("agbossjs/mongodb#76: a single-command write answered with an error aft
 
 describe("agbossjs/mongodb#76: the seam reads every write method of a collection, and only a write outside a transaction", () => {
   const raw = (): Collection<{ _id: string; x?: number }> =>
-    connection.db.collection("write_outcome_probe");
+    live().db.collection("write_outcome_probe");
 
   it.each([
     ["insertOne", () => raw().insertOne({ _id: "a" })],
@@ -394,14 +404,16 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
   });
 
   it("a write of a transaction is left as it is: a cut connection is the driver's to retry, the commit decides", async () => {
-    await admin.db("admin").command({
-      configureFailPoint: "failCommand",
-      mode: { times: 1 },
-      data: { failCommands: ["insert"], appName: APP, closeConnection: true },
-    });
+    await admin()
+      .db("admin")
+      .command({
+        configureFailPoint: "failCommand",
+        mode: { times: 1 },
+        data: { failCommands: ["insert"], appName: APP, closeConnection: true },
+      });
     let runs = 0;
 
-    await connection.inTransaction(({ db, session }) => {
+    await live().inTransaction(({ db, session }) => {
       runs += 1;
       return db
         .collection<{ _id: string }>("write_outcome_probe")
@@ -414,7 +426,7 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
   });
 
   it("updateMany outside a transaction that fails on its second document (a duplicate key) left the first written: unknown", async () => {
-    const many = connection.db.collection<{ _id: number; u?: number }>("write_outcome_multi");
+    const many = live().db.collection<{ _id: number; u?: number }>("write_outcome_multi");
     await many.createIndex({ u: 1 }, { unique: true, sparse: true }, {});
     await many.insertMany([{ _id: 1 }, { _id: 2 }]);
 
@@ -470,19 +482,21 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
   });
 
   it("a write of a transaction whose failure ends the transaction is still left to the driver (the state is read before the call)", async () => {
-    await admin.db("admin").command({
-      configureFailPoint: "failCommand",
-      mode: { times: 1 },
-      data: {
-        failCommands: ["insert"],
-        appName: APP,
-        errorCode: 11602,
-        errorLabels: ["TransientTransactionError"],
-      },
-    });
+    await admin()
+      .db("admin")
+      .command({
+        configureFailPoint: "failCommand",
+        mode: { times: 1 },
+        data: {
+          failCommands: ["insert"],
+          appName: APP,
+          errorCode: 11602,
+          errorLabels: ["TransientTransactionError"],
+        },
+      });
     let runs = 0;
 
-    await connection.inTransaction(({ db, session }) => {
+    await live().inTransaction(({ db, session }) => {
       runs += 1;
       return db
         .collection<{ _id: string }>("write_outcome_probe")

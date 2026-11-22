@@ -22,10 +22,9 @@ export interface LivenessOptions {
 export async function watchLiveness(options: LivenessOptions): Promise<string | undefined> {
   const { clock, livenessSeconds, ping, signal } = options;
   const half = seconds(livenessSeconds / 2);
-  const isEnded = (): boolean => signal.aborted;
   for (;;) {
     await clock.sleep(half, signal);
-    if (isEnded()) return undefined;
+    if (signal.aborted) return undefined;
     const answered = new AbortController();
     const outcome = await Promise.race([
       ping().then(
@@ -37,7 +36,8 @@ export async function watchLiveness(options: LivenessOptions): Promise<string | 
         .then(() => `no answer to a ping in ${String(livenessSeconds / 2)} s`),
     ]);
     answered.abort();
-    if (isEnded()) return undefined;
+    // the sleeps and the ping above are awaited: the signal may have aborted since the check at the top of the loop
+    if (signal.aborted as boolean) return undefined;
     if (outcome !== "answered") return outcome;
   }
 }

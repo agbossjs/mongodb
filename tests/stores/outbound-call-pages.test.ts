@@ -8,6 +8,11 @@ import { pageLimitOf, seqOfCursor } from "../../src/stores/outbound-call-pages.j
 describe("the outbound call listing's arguments", () => {
   it("a limit that is no whole number from 1 is a RangeError naming the limit given", () => {
     expect(pageLimitOf(1)).toBe(1);
+    expect(pageLimitOf(7)).toBe(7);
+    for (const limit of [0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])
+      expect(() => pageLimitOf(limit)).toThrow(
+        new RangeError(`a page's limit is a whole number of calls from 1, got ${String(limit)}`),
+      );
     expect(() => pageLimitOf(0.5)).toThrow(
       new RangeError("a page's limit is a whole number of calls from 1, got 0.5"),
     );
@@ -15,7 +20,7 @@ describe("the outbound call listing's arguments", () => {
 
   it("a cursor this store never gave is a RangeError saying to pass a page's next", () => {
     expect(seqOfCursor("12")).toBe(12);
-    for (const cursor of ["0", "012", "-1", "1.5", "x", "9007199254740993"])
+    for (const cursor of ["0", "012", "-1", "1.5", "x", "9007199254740993", "12 ", "12\n", "1e3"])
       expect(() => seqOfCursor(cursor)).toThrow(
         new RangeError("the cursor is not one this store gave: pass the next of one of its pages"),
       );

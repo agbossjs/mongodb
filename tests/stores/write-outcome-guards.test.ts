@@ -15,7 +15,7 @@ import {
   MongoWriteConcernError,
   type AnyBulkWriteOperation,
 } from "mongodb";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MongoConnection } from "../../src/index.js";
 import { writeErrorOf } from "../../src/connection/outcome.js";
 import { emptyAll, openConnection, testDatabase } from "../support/database.js";
@@ -25,26 +25,34 @@ const APP = "agboss-write-outcome-guards-test";
 const PROBE = "write_outcome_guards_probe";
 const database = testDatabase();
 holdFailPoints();
-let connection: MongoConnection;
-let admin: MongoClient;
+let started: MongoConnection | undefined;
+let adminClient: MongoClient | undefined;
 
-beforeAll(async () => {
-  connection = await openConnection(`${database.url()}&appName=${APP}`);
-  admin = new MongoClient(database.url());
-});
+const live = (): MongoConnection => {
+  if (started === undefined) throw new Error("the connection is made by the first test's hook");
+  return started;
+};
+const admin = (): MongoClient => {
+  if (adminClient === undefined) throw new Error("the client is made by the first test's hook");
+  return adminClient;
+};
 
+// made in the first test's hook, not in a `beforeAll`: a mutant of the connection that fails here must fail a
+// test, which kills it, not the file's setup, which Stryker leaves out of the score (agbossjs/mongodb#103)
 beforeEach(async () => {
+  started ??= await openConnection(`${database.url()}&appName=${APP}`);
+  adminClient ??= new MongoClient(database.url());
   await emptyAll(database.url(), [PROBE]);
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
+  await admin().db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
 });
 
 afterAll(async () => {
-  await connection.onDestroy();
-  await admin.close();
+  await started?.onDestroy();
+  await adminClient?.close();
 });
 
 interface Probe {
@@ -52,7 +60,7 @@ interface Probe {
   x?: number;
 }
 
-const probe = (): Collection<Probe> => connection.db.collection(PROBE);
+const probe = (): Collection<Probe> => live().db.collection(PROBE);
 
 /** Every code the whitelist knows, for a single write or only for a form refusal. */
 const KNOWN_CODES = [2, 9, 14, 40, 112, 121, 11000, 11001, 12582] as const;
@@ -75,15 +83,17 @@ describe("a write concern error is unknown whatever its code (the write may have
   it.each([11000, 2])(
     "the server applied an insert and answered a write concern error with code %i: unknown",
     async (code) => {
-      await admin.db("admin").command({
-        configureFailPoint: "failCommand",
-        mode: { times: 2 },
-        data: {
-          failCommands: ["insert"],
-          appName: APP,
-          writeConcernError: { code, errmsg: "a known code, a write concern error" },
-        },
-      });
+      await admin()
+        .db("admin")
+        .command({
+          configureFailPoint: "failCommand",
+          mode: { times: 2 },
+          data: {
+            failCommands: ["insert"],
+            appName: APP,
+            writeConcernError: { code, errmsg: "a known code, a write concern error" },
+          },
+        });
 
       const failure: unknown = await probe()
         .insertOne({ _id: "applied" })
@@ -92,7 +102,7 @@ describe("a write concern error is unknown whatever its code (the write may have
       expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
       expect(failure).toMatchObject({ cause: { code } });
       expect((failure as StoreOutcomeUnknownError).cause).toBeInstanceOf(MongoWriteConcernError);
-      await admin.db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
+      await admin().db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
       // the connection reads at majority: its snapshot may trail the write by a moment
       await vi.waitFor(async () => {
         expect(await probe().countDocuments({ _id: "applied" })).toBe(1);
@@ -145,7 +155,7 @@ describe("a command of a transaction is left to the driver although its failure 
   };
 
   it("the session says it is over only after the call: the error passes as it is, its label kept", async () => {
-    const session = connection.client.startSession();
+    const session = live().client.startSession();
     try {
       session.startTransaction();
       expect(session.inTransaction()).toBe(true);

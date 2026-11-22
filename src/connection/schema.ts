@@ -38,22 +38,26 @@ const pendingWith = (field: string): Document => ({
   [field]: { $type: "date" },
 });
 
-/** The secondary indexes of each collection (its `_id` is the primary key). */
-const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription[]>>> = {
-  [Collections.FencedEffectMarks]: [index("by_stored_at", ascending("storedAt"))],
+/**
+ * The secondary indexes of each collection (its `_id` is the primary key), each list made by a call: a mutant of
+ * one that throws is then a failing test, which kills it, not an error of every test file's import, which
+ * Stryker leaves out of the score (agbossjs/mongodb#103).
+ */
+const INDEXES: Readonly<Partial<Record<CollectionName, () => readonly IndexDescription[]>>> = {
+  [Collections.FencedEffectMarks]: () => [index("by_stored_at", ascending("storedAt"))],
   // the sweep's prune of the ledger's entries (agbossjs/agboss#771)
-  [Collections.CostEntries]: [index("by_made_at", ascending("madeAt"))],
-  [Collections.FencedEffectResults]: [index("by_stored_at", ascending("storedAt"))],
-  [Collections.OutboundCalls]: [
+  [Collections.CostEntries]: () => [index("by_made_at", ascending("madeAt"))],
+  [Collections.FencedEffectResults]: () => [index("by_stored_at", ascending("storedAt"))],
+  [Collections.OutboundCalls]: () => [
     index("by_tree", ascending("tenantId", "rootExecutionId", "seq")),
     index("by_status", ascending("tenantId", "status", "seq")),
     index("by_ended_at", ascending("endedAt")),
   ],
-  [Collections.ExecutionAuditLog]: [
+  [Collections.ExecutionAuditLog]: () => [
     index("by_tree", ascending("tenantId", "rootExecutionId", "occurredAt", "_id")),
     index("by_occurred_at", ascending("occurredAt")),
   ],
-  [Collections.ExecutionRecords]: [
+  [Collections.ExecutionRecords]: () => [
     index("by_seq", ascending("seq"), true),
     index("by_thread", ascending("tenantId", "threadId", "seq")),
     // agbossjs/agboss#808: a run's record by its id (findByTenantIdAndRunId)
@@ -62,15 +66,17 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
     index("by_version", ascending("bundle", "promptVersion", "seq")),
     index("by_workflow", ascending("bundle", "seq")),
   ],
-  [Collections.ExecutionScores]: [index("by_record", ascending("recordId"))],
-  [Collections.ExecutionSummaries]: [
+  [Collections.ExecutionScores]: () => [index("by_record", ascending("recordId"))],
+  [Collections.ExecutionSummaries]: () => [
     index("by_thread", ascending("tenantId", "threadId", "compaction", "toSeq")),
   ],
-  [Collections.PauseAnswers]: [
+  [Collections.PauseAnswers]: () => [
     index("by_tree", ascending("tenantId", "rootExecutionId", "askedAt", "seq")),
   ],
-  [Collections.ExecutionTreeKeys]: [index("by_tree", ascending("tenantId", "rootExecutionId"))],
-  [Collections.Pauses]: [
+  [Collections.ExecutionTreeKeys]: () => [
+    index("by_tree", ascending("tenantId", "rootExecutionId")),
+  ],
+  [Collections.Pauses]: () => [
     index("by_step", ascending("tenantId", "rootExecutionId", "stepKey"), true),
     index("by_tree", ascending("tenantId", "rootExecutionId", "seq")),
     index("by_resolution", ascending("status", "resolvedAt")),
@@ -87,52 +93,52 @@ const INDEXES: Readonly<Partial<Record<CollectionName, readonly IndexDescription
     }),
     index("open", ascending("status", "seq"), false, { status: { $in: ["pending", "resolved"] } }),
   ],
-  [Collections.PauseNotices]: [
+  [Collections.PauseNotices]: () => [
     index("due", ascending("isDead", "nextAttemptAt")),
     index("stale", ascending("isDead", "headWrittenAt")),
     index("by_pause", ascending("pauseId", "tenantId")),
   ],
-  [Collections.ChildExecutionQueue]: [
+  [Collections.ChildExecutionQueue]: () => [
     index("by_claim", { status: 1, depth: -1, queuedAt: 1 }),
     index("by_tree", ascending("tenantId", "rootExecutionId")),
   ],
-  [Collections.ExecutionHistory]: [
+  [Collections.ExecutionHistory]: () => [
     index("by_execution", ascending("executionId", "startedAt")),
     index("by_thread", ascending("tenantId", "threadId", "startedAt")),
     index("by_tenant_start", ascending("tenantId", "startedAt", "executionId")),
     index("by_start", ascending("startedAt", "executionId")),
     index("by_ended_at", ascending("endedAt")),
   ],
-  [Collections.MeshRequests]: [index("by_created_at", ascending("createdAt"))],
+  [Collections.MeshRequests]: () => [index("by_created_at", ascending("createdAt"))],
   // agbossjs/agboss#824: ListTasks (a caller's tasks, newest status first) and the retention sweep
-  [Collections.A2ATasks]: [
+  [Collections.A2ATasks]: () => [
     index("by_owner", { tenantId: 1, ownerId: 1, statusAt: -1, taskId: -1 }),
     index("by_finished", ascending("state", "statusAt")),
   ],
-  [Collections.A2AMessages]: [
+  [Collections.A2AMessages]: () => [
     index("by_task", ascending("tenantId", "taskId")),
     // agbossjs/agboss#860: the sweep's direct claims (task id "") older than the cutoff
     index("by_claim", ascending("taskId", "savedAt")),
   ],
   // agbossjs/agboss#860: the lost attempts in flight, and the retention sweep
-  [Collections.A2ADirectMessages]: [
+  [Collections.A2ADirectMessages]: () => [
     index("by_in_flight", ascending("state", "expiresAt")),
     index("by_created_at", ascending("createdAt")),
   ],
-  [Collections.Checkpoints]: [
+  [Collections.Checkpoints]: () => [
     index("by_thread", { threadId: 1, namespace: 1, checkpointId: -1 }),
     index("by_checkpoint", { checkpointId: -1 }),
     // agbossjs/agboss#962: a thread's newest checkpoint by step, then id: one index walk
     index("latest_by_step", { threadId: 1, namespace: 1, step: -1, checkpointId: -1 }),
   ],
-  [Collections.CheckpointWrites]: [
+  [Collections.CheckpointWrites]: () => [
     index("by_checkpoint", ascending("threadId", "namespace", "checkpointId", "seq", "position")),
   ],
 };
 
 const CollectionInfo = z.object({
   name: z.string(),
-  options: z.object({ collation: z.object({ locale: z.string() }).loose().optional() }).loose(),
+  options: z.object({ collation: z.object({ locale: z.string() }).optional() }),
 });
 
 /** The collections that exist with a collation other than the simple one. */
@@ -172,7 +178,7 @@ export async function ensureSchema(db: Db): Promise<void> {
   const existing = await existingCollectionsOf(db);
   for (const name of Object.values(Collections)) {
     await createIfMissing(db, name, existing);
-    const indexes = INDEXES[name];
+    const indexes = INDEXES[name]?.();
     if (indexes !== undefined) await db.collection(name).createIndexes([...indexes]);
   }
 }

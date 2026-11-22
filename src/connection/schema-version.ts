@@ -68,8 +68,9 @@ export async function appliedVersionOf(db: Db): Promise<number | undefined> {
 
 /** `MongoSchemaTooNewError` when `applied` is newer than this package's version. */
 function refuseNewer(applied: number | undefined): void {
-  if (applied !== undefined && applied > SCHEMA_VERSION)
-    throw new MongoSchemaTooNewError({ applied, expected: SCHEMA_VERSION });
+  const known = applied ?? 0;
+  if (known > SCHEMA_VERSION)
+    throw new MongoSchemaTooNewError({ applied: known, expected: SCHEMA_VERSION });
 }
 
 /**
@@ -105,6 +106,7 @@ async function raiseVersion(db: Db): Promise<void> {
   const raise = () =>
     versionsOf(db).updateOne(
       { _id: SCHEMA_DOCUMENT_ID },
+      // Stryker disable next-line BooleanLiteral: equivalent, the server reads only that the operand is a boolean (`false` still stamps the date, server's current_date_node), which migratedAt's test asserts for `true`
       { $max: { version: SCHEMA_VERSION }, $currentDate: { migratedAt: true } },
       { upsert: true },
     );

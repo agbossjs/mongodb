@@ -41,7 +41,8 @@ export interface CheckpointDocument {
 /** The step a checkpoint is ordered by: `metadata.step` when a finite number, else -2. */
 export function stepOf(metadata: { readonly step?: unknown } | undefined): number {
   const step = metadata?.step;
-  return typeof step === "number" && Number.isFinite(step) ? step : -2;
+  // `Number.isFinite` is false for what is no number: no type check beside it (it would be a mutant nothing can tell)
+  return Number.isFinite(step) ? Number(step) : -2;
 }
 
 export interface WriteDocument {

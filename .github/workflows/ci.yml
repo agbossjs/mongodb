@@ -193,6 +193,8 @@ jobs:
             queue,
             queue-watch,
             ordering,
+            a2a-direct,
+            checkpoints,
             settings,
             cli,
             connection,
@@ -248,14 +250,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: reports/stryker-incremental-${{ matrix.shard }}.json
-          key: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'vitest.mutation.config.ts') }}-${{ github.sha }}
-          restore-keys: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'vitest.mutation.config.ts') }}-
+          key: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'scripts/stryker-timeouts-ms.mjs', 'vitest.mutation.config.ts') }}-${{ github.sha }}
+          restore-keys: stryker-${{ matrix.shard }}-${{ hashFiles('stryker.config.mjs', 'scripts/mutation-shards.mjs', 'scripts/stryker-timeouts-ms.mjs', 'vitest.mutation.config.ts') }}-
 
       # below the job's 120 minutes (a shard runs 45 to 95 of them), so a runaway one fails here and the
       # report below still uploads (agbossjs/mongodb#92)
       - name: Mutation testing of the shard (break below 100 % killed or justified)
         timeout-minutes: 100
         run: npm run test:mutation
+
+      # a Timeout counts as killed and hid survivors (agbossjs/mongodb#103): none that is not a proven hang
+      - name: Timeouts of the shard are proven hangs
+        if: always() && hashFiles(format('reports/mutation/{0}.json', matrix.shard)) != ''
+        run: node scripts/stryker-timeouts.mjs reports/mutation/${{ matrix.shard }}.json
 
       - if: always()
         uses: actions/upload-artifact@v4

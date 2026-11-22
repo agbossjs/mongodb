@@ -19,9 +19,11 @@ import {
 } from "../../src/stores/framework-json.js";
 import { oldAnswerLogEntry, oldPausedRun } from "../stores/pause-names-0.1.0.fixtures.js";
 
-const base = pausedRunOfJson(JSON.stringify(oldPausedRun));
+// read in a test, not at the import: a mutant of the reading that fails here must fail a test, which kills it,
+// not the import of the file, which Stryker leaves out of the score (agbossjs/mongodb#103)
+const base = (): PausedExecution["run"] => pausedRunOfJson(JSON.stringify(oldPausedRun));
 const run = (extra: Partial<PausedExecution["run"]>): PausedExecution["run"] => ({
-  ...base,
+  ...base(),
   ...extra,
 });
 
