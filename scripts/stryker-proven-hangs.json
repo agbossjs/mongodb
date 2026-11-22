@@ -1,1 +1,119 @@
-[]
+[
+  {
+    "shard": "connection",
+    "file": "src/connection/mongodb-connection.ts",
+    "mutator": "ObjectLiteral",
+    "replacement": "{}",
+    "anchor": "const settings: MongoConnectionSettings = Object.freeze({",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "connection",
+    "file": "src/connection/mongodb-connection.ts",
+    "mutator": "CallExpression",
+    "replacement": ";",
+    "anchor": "checkedWatchLivenessOf(settings.watchLivenessSeconds);",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "connection",
+    "file": "src/connection/mongodb-connection.ts",
+    "mutator": "CallExpression",
+    "replacement": ";",
+    "anchor": "rememberSettings(this, settings);",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "connection",
+    "file": "src/connection/mongodb-connection.ts",
+    "mutator": "CallExpression",
+    "replacement": ";",
+    "anchor": "requireConcerns(concernProblemsOf(clientOf(settings.url)));",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/close-bounded.ts",
+    "mutator": "EqualityOperator",
+    "replacement": "clock !== undefined",
+    "anchor": "if (clock === undefined) {",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/close-bounded.ts",
+    "mutator": "BlockStatement",
+    "replacement": "{}",
+    "anchor": "if (clock === undefined) {",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/close-bounded.ts",
+    "mutator": "StringLiteral",
+    "replacement": "\"\"",
+    "anchor": "const servers = member(member(member(client, \"topology\"), \"s\"), \"servers\");",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/deployment.ts",
+    "mutator": "BlockStatement",
+    "replacement": "{}",
+    "anchor": "export function topologyOf(hello: unknown): MongoTopology {",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/deployment.ts",
+    "mutator": "ConditionalExpression",
+    "replacement": "true",
+    "anchor": "if (!reply.success) return MongoTopology.Standalone;",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/close-bounded.ts",
+    "mutator": "ConditionalExpression",
+    "replacement": "true",
+    "anchor": "if (typeof topology !== \"object\" || topology === null) return \"client.topology (an object)\";",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/close-bounded.ts",
+    "mutator": "ConditionalExpression",
+    "replacement": "false",
+    "anchor": "if (typeof topology !== \"object\" || topology === null) return \"client.topology (an object)\";",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/close-bounded.ts",
+    "mutator": "LogicalOperator",
+    "replacement": "typeof topology !== \"object\" && topology === null",
+    "anchor": "if (typeof topology !== \"object\" || topology === null) return \"client.topology (an object)\";",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  },
+  {
+    "shard": "store-bound",
+    "file": "src/connection/close-bounded.ts",
+    "mutator": "StringLiteral",
+    "replacement": "\"\"",
+    "anchor": "const servers = member(member(topology, \"s\"), \"servers\");",
+    "kind": "wall-clock",
+    "reason": "a static mutant (code that runs when a test file loads): Stryker runs it against each of its covering tests with the environment reloaded, and on CI's runners that run outlasts the shard's limit in some runs (a different few each run) and ends Killed in others; Killed in every local run (3 of 3), so not a survivor; a limit of 900 s did not end every one of them either (store-bound: 100 min step bound reached)"
+  }
+]
