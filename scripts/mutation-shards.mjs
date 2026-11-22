@@ -132,6 +132,15 @@ export const SHARDS = {
     tests: [CONFORMANCE, "tests/stores/{execution-record*,minted-thread}.test.ts"],
     contracts: ["executionRecord"],
   },
+  // the execution tree store (agbossjs/mongodb#105, agbossjs/agboss#105): `saveIfAbsentInTree`, one upsert with
+  // `$setOnInsert`, is the only guard of every once-only key of a tree: the public `saveIfAbsent` of user code in any
+  // execution (a child on any instance, no lease of the root) and the child-failure claim of passes that overlap during
+  // a lease takeover; the keys of a tenant's root, the value as JSON, the delete of one tree
+  "execution-tree": {
+    mutate: ["src/stores/mongo-execution-tree.repository.ts"],
+    tests: [CONFORMANCE, "tests/stores/execution-tree*.test.ts"],
+    contracts: ["executionTree"],
+  },
   // the checkpoint saver (agbossjs/mongodb#104, agbossjs/agboss#1165): a thread's checkpoints in the order
   // of their step, the pending writes kept as first written, `latestByStep` as one indexed read
   checkpoints: {

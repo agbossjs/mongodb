@@ -197,6 +197,7 @@ jobs:
             a2a-tasks,
             mesh-requests,
             execution-records,
+            execution-tree,
             checkpoints,
             settings,
             cli,

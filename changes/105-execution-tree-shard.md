@@ -1,0 +1,6 @@
+---
+section: Changed
+issue: 105
+---
+
+**The execution tree store is a mutation shard at 100 %, and its "not sharded" reason is gone** (agbossjs/mongodb#105, agbossjs/mongodb#110, agbossjs/agboss#105): the new `execution-tree` shard mutates `mongo-execution-tree.repository.ts`: `saveIfAbsentInTree` (one upsert with `$setOnInsert`), the read of a key and its unreadable text, and the delete of one tree. The reason the file was left out ("its writers hold the lease") was false: the public `ExecutionTreeRepository.saveIfAbsent` is called by user code in any execution of the tree, a child on any instance, with no lease of the root, and the child-failure claim of the core's re-entry is written by passes that overlap during a lease takeover, so the store's own upsert is the only guard. A race test now has 4 writers on connections of their own, released together, save one key: exactly one wins and its value is kept. The race test of the record store ("a thread id created on several instances at once is created once: its first owner is kept") now reads the thread's changes from the server: one insert and no other write of the id, the stored owner the insert's, so a read-then-replace of the caller's own id fails it, not only the `insertOne` spy. No behaviour changed.
