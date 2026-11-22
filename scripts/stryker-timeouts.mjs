@@ -19,12 +19,22 @@
 //   - both ways: a mutant that matches no entry fails, and an entry of the report's shard that matches no mutant, or a
 //     Survived one, is stale and fails (one whose mutant was Killed this time is told, not failed); `--partial` skips
 //     that half for a run of part of a shard.
+//   - a Timeout of the clock that is not listed is not yet a verdict either (agbossjs/mongodb#103: 12 of 13 listed ones
+//     were Killed in 0.3-11 s when run alone; which static mutants end as Timeouts moves from run to run on a loaded CI
+//     runner, so a list only hides it). With `--rerun`, each one is run again alone, in a fresh Stryker process
+//     (`--concurrency 1 --force --mutate <file>:<lines>`, the shard's own config and servers, a generous timeoutMS, its own
+//     incremental file and temp dir so the shard's are left as they are): Killed is told and passes; Survived, a second
+//     Timeout of the clock, an error, or a mutant the rerun does not find fails, unless the mutant is listed. A listed
+//     one is not rerun. More than `MAX_RERUNS` of them is no flake: fail without rerunning.
 // Self-contained: the list is a JSON file beside the script, `--hangs <file>` names another. The stores copy both as they are.
-// `node scripts/stryker-timeouts.mjs [--partial] [--hangs <file>] <report.json> [...]` checks Stryker JSON reports
-// (reporters: json); a report's shard is its file's name without `.json`.
+// `node scripts/stryker-timeouts.mjs [--partial] [--hangs <file>] [--rerun [--rerun-dir <dir>] [--rerun-timeout-ms <ms>]
+// [--stryker <executable>]] <report.json> [...]` checks Stryker JSON reports (reporters: json); a report's shard is its
+// file's name without `.json`. `--rerun-dir` is the directory Stryker runs in (its config, the paths of the report),
+// the current one by default; `--stryker` replaces Stryker's bin (for a test).
 import { readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { judgedAlone, MAX_RERUNS, RERUN_TIMEOUT_MS, rerunAlone } from "./stryker-rerun.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_HANGS = join(here, "stryker-proven-hangs.json");
@@ -141,8 +151,31 @@ function staleOf(name, shard, report, hangs, bad) {
   return problems;
 }
 
+/** Why a mutant nobody justified fails, when it is not rerun. */
+const describeUnjustified = (name, shard, found) =>
+  `${name}: ${describeBad(found)}. A survivor reads as a Timeout when its run outlasts the limit: run it alone with a limit of 3 x the shard's run; if it survives, kill it with a test; if it still does not finish, add it to PROVEN_HANGS (shard ${shard}) with the reason; an error is a mutant no test judged: find out why`;
+
+/** The problems of the mutants of `shard` nobody justified: each is rerun alone when it is a Timeout of the clock and `rerun` is there. */
+function problemsOfUnjustified(name, shard, unjustified, rerun) {
+  const problems = [];
+  const clocks = unjustified.filter((one) => one.kind === "wall-clock").length;
+  const rerunnable = rerun !== undefined && clocks <= MAX_RERUNS;
+  if (rerun !== undefined && !rerunnable)
+    problems.push(
+      `${name}: ${String(clocks)} unlisted Timeouts of the clock, more than ${String(MAX_RERUNS)}: that is no flake of a loaded runner, so none is rerun; run the shard alone and find out why`,
+    );
+  for (const one of unjustified) {
+    const problem =
+      rerunnable && one.kind === "wall-clock"
+        ? judgedAlone(name, shard, one, rerun(shard, one), describeBad(one))
+        : describeUnjustified(name, shard, one);
+    if (problem !== undefined) problems.push(problem);
+  }
+  return problems;
+}
+
 /** The problems of one report of `shard`: its unjustified mutants, and (unless `partial`) the entries of the shard that match none. */
-function auditReport(name, shard, report, hangs, partial) {
+function auditReport(name, shard, report, hangs, partial, rerun) {
   if (!isReport(report)) return [`${name}: not a Stryker JSON report (no "files")`];
   const found = badMutantsOf(report);
   const counted = found.filter((one) => one.kind === "hit-limit");
@@ -151,12 +184,8 @@ function auditReport(name, shard, report, hangs, partial) {
       `${name}: ${String(counted.length)} Timeouts of Stryker's hit limit (loops that do not end), not listed`,
     );
   const bad = found.filter((one) => one.kind !== "hit-limit");
-  const problems = bad
-    .filter((found) => !hangs.some((hang) => matches(hang, shard, found)))
-    .map(
-      (found) =>
-        `${name}: ${describeBad(found)}. A survivor reads as a Timeout when its run outlasts the limit: run it alone with a limit of 3 x the shard's run; if it survives, kill it with a test; if it still does not finish, add it to PROVEN_HANGS (shard ${shard}) with the reason; an error is a mutant no test judged: find out why`,
-    );
+  const unjustified = bad.filter((one) => !hangs.some((hang) => matches(hang, shard, one)));
+  const problems = problemsOfUnjustified(name, shard, unjustified, rerun);
   if (!partial) problems.push(...staleOf(name, shard, report, hangs, bad));
   return problems;
 }
@@ -166,14 +195,15 @@ function auditReport(name, shard, report, hangs, partial) {
  * when every Timeout, RuntimeError and CompileError is on the list and every entry of a reported shard still matches one.
  * @param {readonly { name: string, shard: string, report: any }[]} reports
  * @param {readonly { shard: string, file: string, mutator: string, replacement: string, anchor: string, kind: string, reason: string }[]} hangs
- * @param {{ partial?: boolean }} [options]
+ * @param {{ partial?: boolean, rerun?: (shard: string, found: any) => { status: string, detail: string } }} [options]
+ *   `rerun` runs an unlisted Timeout of the clock alone and says how it ended; without it such a Timeout fails
  * @returns {string[]}
  */
 export function auditTimeouts(reports, hangs, options = {}) {
   const listed = problemsOfList(hangs);
   if (listed.length > 0) return listed;
   return reports.flatMap(({ name, shard, report }) =>
-    auditReport(name, shard, report, hangs, options.partial === true),
+    auditReport(name, shard, report, hangs, options.partial === true, options.rerun),
   );
 }
 
@@ -181,15 +211,23 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
   const args = process.argv.slice(2);
   let hangsFile = DEFAULT_HANGS;
   let partial = false;
+  let rerun = false;
+  let stryker;
+  let rerunDir = process.cwd();
+  let rerunTimeoutMs = RERUN_TIMEOUT_MS;
   const paths = [];
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--hangs") hangsFile = resolve(args[(index += 1)] ?? "");
     else if (args[index] === "--partial") partial = true;
+    else if (args[index] === "--rerun") rerun = true;
+    else if (args[index] === "--stryker") stryker = resolve(args[(index += 1)] ?? "");
+    else if (args[index] === "--rerun-dir") rerunDir = resolve(args[(index += 1)] ?? "");
+    else if (args[index] === "--rerun-timeout-ms") rerunTimeoutMs = Number(args[(index += 1)]);
     else paths.push(args[index]);
   }
   if (paths.length === 0) {
     console.error(
-      "usage: node scripts/stryker-timeouts.mjs [--partial] [--hangs <file>] <report.json> [...]",
+      "usage: node scripts/stryker-timeouts.mjs [--partial] [--hangs <file>] [--rerun [--rerun-dir <dir>] [--rerun-timeout-ms <ms>]] <report.json> [...]",
     );
     process.exit(2);
   }
@@ -199,7 +237,13 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
     shard: basename(path, ".json"),
     report: JSON.parse(readFileSync(path, "utf8")),
   }));
-  const problems = auditTimeouts(reports, PROVEN_HANGS, { partial });
+  const problems = auditTimeouts(reports, PROVEN_HANGS, {
+    partial,
+    rerun: rerun
+      ? (shard, found) =>
+          rerunAlone(shard, found, { stryker, cwd: rerunDir, timeoutMs: rerunTimeoutMs })
+      : undefined,
+  });
   if (problems.length > 0) {
     console.error(
       `Stryker Timeouts and errors (#1367) — a Timeout is a proven hang, an error is justified:\n  ${problems.join("\n  ")}`,
