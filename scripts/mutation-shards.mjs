@@ -132,6 +132,9 @@ export const SHARDS = {
   // the connection's assembly (agbossjs/agboss#891, #1017, #1104): its client and its checks, the
   // transaction and the commit it reads, the start that is retried after a failure, the stop
   connection: {
+    // one mutant at a time: most of the mutants are static (each runs every covering test with the environment reloaded), and
+    // with two or three at once on CI's runners a few of them ended as Timeouts of the clock, a different few each run (agbossjs/mongodb#103)
+    concurrency: 1,
     mutate: ["src/connection/mongodb-connection.ts"],
     tests: [
       "tests/connection/{mongodb-connection*,watch-liveness-*,driver-internals}.test.ts",
@@ -168,6 +171,8 @@ export const SHARDS = {
   // writes, a replica set), the concerns, the transaction, the bounded close, the liveness ping,
   // and the stored texts read back
   "store-bound": {
+    // one mutant at a time, as `connection`
+    concurrency: 1,
     mutate: [
       "src/connection/{close-bounded,concerns,deployment,heartbeat,transaction}.ts",
       "src/stores/{unreadable,framework-json}.ts",
