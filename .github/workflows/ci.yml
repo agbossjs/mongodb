@@ -259,10 +259,10 @@ jobs:
         timeout-minutes: 100
         run: npm run test:mutation
 
-      # a Timeout counts as killed and hid survivors (agbossjs/mongodb#103): none that is not a proven hang
+      # a Timeout counts as killed and hid survivors (agbossjs/mongodb#103): none that is not a proven hang; an unlisted one is run again alone (agbossjs/agboss#1367)
       - name: Timeouts of the shard are proven hangs
         if: always() && hashFiles(format('reports/mutation/{0}.json', matrix.shard)) != ''
-        run: node scripts/stryker-timeouts.mjs reports/mutation/${{ matrix.shard }}.json
+        run: node scripts/stryker-timeouts.mjs --rerun --stryker scripts/mutation-run.mjs reports/mutation/${{ matrix.shard }}.json
 
       - if: always()
         uses: actions/upload-artifact@v4

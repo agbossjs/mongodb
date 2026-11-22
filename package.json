@@ -70,7 +70,7 @@
     "check:root": "node scripts/check-root.mjs",
     "check:knip": "knip",
     "check:docs": "npm run build && node scripts/check-docs.mjs",
-    "test:mutation": "stryker run"
+    "test:mutation": "node scripts/mutation-run.mjs run"
   },
   "peerDependencies": {
     "@agboss/core": "^0.1.1",

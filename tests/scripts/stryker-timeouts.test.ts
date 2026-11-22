@@ -271,6 +271,201 @@ describe("scripts/stryker-timeouts.mjs", () => {
   });
 });
 
+/**
+ * A stand-in for Stryker (`--stryker`): it logs its arguments beside itself and writes the report a run of
+ * `--mutate <file>:<line>-<line>` would, holding one BlockStatement mutant there with the status in `status` (and
+ * a statusReason in `reason`, if there is one), or none when `status` says `none`, or no report at all for `crash`.
+ */
+function fakeStryker(status: string, reason = ""): string {
+  const bin = join(dir, "fake-stryker.mjs");
+  fs.writeFileSync(join(dir, "status"), status);
+  fs.writeFileSync(join(dir, "reason"), reason);
+  fs.writeFileSync(
+    bin,
+    `#!/usr/bin/env node
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+const here = dirname(fileURLToPath(import.meta.url));
+const args = process.argv.slice(2);
+const config = (await import(pathToFileURL(args[args.length - 1]).href)).default;
+appendFileSync(join(here, "calls.log"), JSON.stringify({ args, config, shard: process.env.MUTATION_SHARD, cwd: process.cwd() }) + "\\n");
+const status = readFileSync(join(here, "status"), "utf8");
+if (status === "crash") process.exit(1);
+const reason = readFileSync(join(here, "reason"), "utf8");
+const mutate = args[args.indexOf("--mutate") + 1];
+const [file, range] = mutate.split(":");
+const line = Number(range.split("-")[0]);
+const mutants = status === "none" ? [] : [{ id: "1", mutatorName: "BlockStatement", replacement: "{}", status, ...(reason === "" ? {} : { statusReason: reason }), location: { start: { line, column: 1 }, end: { line, column: 5 } } }];
+writeFileSync(config.jsonReporter.fileName, JSON.stringify({ files: { [file]: { language: "typescript", source: "", mutants } } }));
+`,
+    { mode: 0o755 },
+  );
+  return bin;
+}
+
+interface Call {
+  args: string[];
+  config: {
+    mutate: string[];
+    timeoutMS: number;
+    reporters: string[];
+    incrementalFile: string;
+    tempDirName: string;
+    jsonReporter: { fileName: string };
+  };
+  shard: string;
+  cwd: string;
+}
+
+const calls = (): Call[] =>
+  fs
+    .readFileSync(join(dir, "calls.log"), "utf8")
+    .trim()
+    .split("\n")
+    .map((one) => JSON.parse(one) as Call);
+
+const firstCall = (): Call => {
+  const [first] = calls();
+  if (first === undefined) throw new Error("the fake Stryker was not run");
+  return first;
+};
+
+describe("scripts/stryker-timeouts.mjs --rerun (agbossjs/mongodb#103)", () => {
+  /** `checked`, with `--rerun` and a fake Stryker that ends the mutant as `status`. */
+  const rerun = async (
+    status: string,
+    hangs: readonly Record<string, unknown>[] = [],
+    files: Record<string, FileReport> = hung(),
+    reason = "",
+  ): Promise<{ code: number | null; said: string }> => {
+    // the repo's Stryker config, which the rerun's config wraps
+    fs.writeFileSync(
+      join(dir, "stryker.config.mjs"),
+      'export default { mutate: ["src/**/*.ts"], timeoutMS: 60000, incrementalFile: "reports/stryker-incremental-leases.json", jsonReporter: { fileName: "reports/mutation/leases.json" } };\n',
+    );
+    return checked(files, hangs, "leases", [
+      "--rerun",
+      "--stryker",
+      fakeStryker(status, reason),
+      "--rerun-dir",
+      dir,
+      "--rerun-timeout-ms",
+      "123000",
+    ]);
+  };
+
+  it("passes a Timeout of the clock that is Killed run alone, and says so", async () => {
+    const run = await rerun("Killed");
+
+    expect(run.code).toBe(0);
+    expect(run.said).toMatch(/src\/loop\.ts:2 .* Killed run alone .*not a hang/);
+  });
+
+  it("runs it alone in a fresh process: one worker, forced, its own lines, a generous limit, its own report and temp dir", async () => {
+    await rerun("Killed");
+
+    const call = firstCall();
+    expect(call.args[0]).toBe("run");
+    expect(call.args[call.args.indexOf("--concurrency") + 1]).toBe("1");
+    expect(call.args).toContain("--force");
+    expect(call.args[call.args.indexOf("--mutate") + 1]).toBe("src/loop.ts:2-2");
+    expect(call.args[call.args.indexOf("--timeoutMS") + 1]).toBe("123000");
+    // the repo's own config (here its `mutate` and `timeoutMS`), with a report, incremental file and temp dir of the rerun's
+    expect(call.config.mutate).toEqual(["src/**/*.ts"]);
+    expect(call.config.timeoutMS).toBe(60_000);
+    expect(call.config.reporters).toEqual(["json"]);
+    expect(call.config.tempDirName).toBe(".stryker-tmp-leases-rerun");
+    expect(call.config.incrementalFile).not.toContain("reports/");
+    expect(call.config.jsonReporter.fileName).not.toContain("reports/");
+    expect(call.shard).toBe("leases");
+    expect(fs.realpathSync(call.cwd)).toBe(fs.realpathSync(dir));
+    expect(calls()).toHaveLength(1);
+  });
+
+  it.each(["Survived", "Timeout", "RuntimeError", "CompileError"])(
+    "fails a Timeout that is %s run alone",
+    async (status) => {
+      const run = await rerun(status);
+
+      expect(run.code).toBe(1);
+      expect(run.said).toContain(`Run alone in a fresh Stryker process it was ${status}`);
+    },
+  );
+
+  it("counts a Timeout that ends by Stryker's hit limit when run alone", async () => {
+    const run = await rerun("Timeout", [], hung(), HIT);
+
+    expect(run.code).toBe(0);
+    expect(run.said).toContain("Stryker's hit limit run alone");
+  });
+
+  it.each(["none", "crash"])(
+    "fails when the rerun has no such mutant or no report (%s)",
+    async (status) => {
+      const run = await rerun(status);
+
+      expect(run.code).toBe(1);
+      expect(run.said).toMatch(/it was (not found|not run)/);
+    },
+  );
+
+  it("does not rerun a listed Timeout, nor a hit-limit one, nor an error", async () => {
+    const listed = await rerun("Survived", [HANG]);
+
+    expect(listed.code).toBe(0);
+    expect(fs.existsSync(join(dir, "calls.log"))).toBe(false);
+  });
+
+  it("still fails a listed mutant that Survived, and a stale entry, as without --rerun", async () => {
+    const survived = await rerun("Killed", [HANG], {
+      "src/loop.ts": { source: LOOP, mutants: [mutant("3", "BlockStatement", 2, "Survived")] },
+    });
+    const stale = await rerun("Killed", [HANG], { "src/loop.ts": { source: LOOP, mutants: [] } });
+
+    expect(survived.code).toBe(1);
+    expect(survived.said).toContain("matches a Survived mutant");
+    expect(stale.code).toBe(1);
+    expect(stale.said).toContain("matches no mutant");
+  });
+
+  it("fails an unlisted RuntimeError without a rerun", async () => {
+    const run = await rerun("Killed", [], {
+      "src/loop.ts": { source: LOOP, mutants: [mutant("3", "BlockStatement", 2, "RuntimeError")] },
+    });
+
+    expect(run.code).toBe(1);
+    expect(run.said).toContain("RuntimeError (runtime-error)");
+    expect(fs.existsSync(join(dir, "calls.log"))).toBe(false);
+  });
+
+  it("reruns each unlisted Timeout once, and none when there are more than ten", async () => {
+    const few = Array.from({ length: 3 }, (_, index) =>
+      mutant(String(index), "BlockStatement", index + 1, "Timeout"),
+    );
+    const many = Array.from({ length: 11 }, (_, index) =>
+      mutant(String(index), "BlockStatement", index + 1, "Timeout"),
+    );
+
+    const passed = await rerun("Killed", [], { "src/loop.ts": { source: LOOP, mutants: few } });
+    expect(passed.code).toBe(0);
+    expect(calls()).toHaveLength(3);
+
+    fs.rmSync(join(dir, "calls.log"));
+    const refused = await rerun("Killed", [], { "src/loop.ts": { source: LOOP, mutants: many } });
+    expect(refused.code).toBe(1);
+    expect(refused.said).toContain("11 unlisted Timeouts of the clock, more than 10");
+    expect(fs.existsSync(join(dir, "calls.log"))).toBe(false);
+  });
+
+  it("without --rerun an unlisted Timeout of the clock fails at once, as before", async () => {
+    const run = await checked(hung(), []);
+
+    expect(run.code).toBe(1);
+    expect(fs.existsSync(join(dir, "calls.log"))).toBe(false);
+  });
+});
+
 describe("agbossjs/mongodb#103: the mutation configs", () => {
   async function configured(): Promise<{
     shards: string[];
@@ -334,11 +529,17 @@ describe("agbossjs/mongodb#103: the mutation configs", () => {
     for (const name of ["ci.yml", "mutation-nightly.yml"]) {
       const text = fs.readFileSync(join(repo, ".github/workflows", name), "utf8");
 
+      // an unlisted Timeout of the clock is run again alone, through the wrapper that shortens the transaction lifetime
       expect(text, name).toContain(
-        "node scripts/stryker-timeouts.mjs reports/mutation/${{ matrix.shard }}.json",
+        "node scripts/stryker-timeouts.mjs --rerun --stryker scripts/mutation-run.mjs reports/mutation/${{ matrix.shard }}.json",
       );
     }
     const ci = fs.readFileSync(join(repo, ".github/workflows/ci.yml"), "utf8");
     expect(ci).toContain("scripts/stryker-timeouts-ms.mjs");
+    // `npm run test:mutation` (the shard's run, CI and the nightly) goes through the same wrapper
+    const pkg = JSON.parse(fs.readFileSync(join(repo, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["test:mutation"]).toBe("node scripts/mutation-run.mjs run");
   });
 });
