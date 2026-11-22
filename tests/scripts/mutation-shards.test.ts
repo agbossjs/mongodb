@@ -17,27 +17,28 @@ import { SHARDS } from "../../scripts/mutation-shards.mjs";
  */
 const NON_SHARDED_SRC: Readonly<Record<string, string>> = {
   "src/index.ts": "the exports: no logic",
-  "src/errors.ts": "the named errors: constructors of codes and messages, checked by tests/errors",
+  "src/errors.ts":
+    "the named errors: constructors that build a code and a message from one options object; tests/errors walks every export",
   "src/redaction.ts":
     "the mask of a password in a printed text: byte for byte the twin of agbossjs/postgres's, with its 500 seeded draws; a run of it as a shard found 12 survivors, equivalent ones among them (a regex's split on one space or a run, bounds no input reaches), whose rewrite must be made in both packages: agbossjs/mongodb#105",
   "src/stores/bundles.ts":
-    "the thread's bundles of the record store: a read-model of records, no claim and no order a payment depends on",
+    "the store classes as two lists for `@Application({ providers })`: imports and arrays, no logic",
   // append-only logs and last-write stores: no once-only claim, no compare-and-set
   "src/stores/audit-log/audit-event-documents.ts":
-    "the audit log's document: an insert of what happened, ordered by the sequence (`ordering` shard); no claim",
+    "the audit log's document as read back: the shapes of the four kinds of event and the old names of an outbound call's outcomes; no write, no claim",
   "src/stores/mongo-execution-audit-log.repository.ts":
     "the append-only audit log: one insert per event and a sweep by cutoff; no once-only claim and no compare-and-set",
   "src/stores/history/history-documents.ts":
-    "the history's document: the record as JSON beside its keys; the same record saved twice keeps the last",
+    "the history's document as read back: its JSON record checked by the core, an unreadable one named; no write, no claim",
   "src/stores/mongo-execution-history.repository.ts":
     "the history of root executions: one replace with upsert (the last save wins), reads, a sweep of ended ones; no claim",
   "src/stores/records/record-memory.ts":
-    "the memory summaries of the record store: derived text, no claim",
+    "the memory summaries of the record store: reads, and one insert of a summary under a fresh random id; no claim",
   "src/stores/records/record-reads.ts": "the reads of the record store: no write",
   "src/stores/records/record-scores.ts":
-    "scores, their summaries and the config snapshot's drift: derived numbers; the claim of a snapshot is the first write",
+    "scores, their summaries and the config snapshot: one insert per score and derived numbers; the snapshot is an upsert by its own hash, and what it feeds is a diagnostic only (the drift warning at start and the snapshots listed), which no run and no payment depends on, so which of two writers lands first is no guarantee",
   "src/stores/records/record-documents.ts":
-    "the record store's documents: shapes and their conversions",
+    "the record store's documents: shapes, their conversions and one read of a record's `seq`; no claim",
 };
 
 const sourcesOf = (dir: string): string[] =>
