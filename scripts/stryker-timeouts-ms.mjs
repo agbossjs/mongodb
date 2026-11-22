@@ -24,6 +24,7 @@ export const TIMEOUTS_MS = {
   "a2a-tasks": 120_000,
   "mesh-requests": 120_000,
   "execution-records": 120_000,
+  "execution-tree": 120_000,
   checkpoints: 120_000,
   ordering: 120_000,
   settings: 120_000,

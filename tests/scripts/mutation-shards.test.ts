@@ -12,7 +12,8 @@ import { SHARDS } from "../../scripts/mutation-shards.mjs";
 /**
  * The files no shard mutates, reviewed, each with what it is and why it is not mutated (agbossjs/mongodb#104, #105:
  * "a store of no money path" is said only of what has no once-only claim and no compare-and-set that a caller
- * without the lease depends on; the one store with such a claim that is not a shard names its writers).
+ * without the lease depends on; the execution tree store has one, written by user code in any execution of the tree
+ * and by overlapping passes, so it is a shard).
  */
 const NON_SHARDED_SRC: Readonly<Record<string, string>> = {
   "src/index.ts": "the exports: no logic",
@@ -37,16 +38,6 @@ const NON_SHARDED_SRC: Readonly<Record<string, string>> = {
     "scores, their summaries and the config snapshot's drift: derived numbers; the claim of a snapshot is the first write",
   "src/stores/records/record-documents.ts":
     "the record store's documents: shapes and their conversions",
-  // The execution tree store is not sharded, and the reason is not "every caller holds the lease" (re-checked at the
-  // pinned core, agbossjs/mongodb#105): `saveIfAbsentInTree` has one winner per key by its own upsert with
-  // `$setOnInsert`, which the `executionTree` contract exercises. Its writers: the child-failure announcement
-  // claim, the undo-done marks and the compensated keys (`unwinding-marks.ts`) are written in a pass by the holder
-  // of the lease, whose epoch is the fence the `fence` shard mutates; the cancel request (`cancel-requests.ts`) is
-  // written without the lease, but the lease store's mark goes first (`cancel-fence.ts`, a `fence` file); the
-  // without-recovery mark of a new root (`tree-ends.ts`) is written before its first lease, on a root id minted
-  // for that call, so no second writer of the key exists
-  "src/stores/mongo-execution-tree.repository.ts":
-    "`saveIfAbsentInTree`: one upsert with `$setOnInsert`, one winner per key; its writers are named above (the lease holder's pass, the cancel mark first, a root id minted for the call)",
 };
 
 const sourcesOf = (dir: string): string[] =>

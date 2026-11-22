@@ -8,7 +8,7 @@ import {
   type PauseAnswerRecord,
 } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
-import { Collection, FindCursor } from "mongodb";
+import { ChangeStream, Collection, FindCursor } from "mongodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TestApplicationContext } from "../support/application-context.js";
 import { testDatabase } from "../support/database.js";
@@ -26,6 +26,48 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 const { Answered, Running, Paused, Failed } = ExecutionRecordStatus;
+
+type Records = ReturnType<typeof recordsOn>;
+
+/** `threadId` created by every store at once (released together), each as its own owner; their answers. */
+async function createdTogether(stores: readonly Records[], threadId: string): Promise<string[]> {
+  let release: () => void = () => undefined;
+  const go = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const running = stores.map(async (store, index) => {
+    await go;
+    return store.createThread({
+      workflow: "desk-workflow",
+      tenantId: "default",
+      threadId,
+      ownerId: `owner-${String(index)}`,
+    });
+  });
+  release();
+  return Promise.all(running);
+}
+
+/**
+ * The writes `changes` shows of `threadId` up to a marker thread `store` creates after them: the writes
+ * of the race, in the order the server committed them.
+ */
+async function writesOfThread(
+  changes: ChangeStream,
+  store: Records | undefined,
+  threadId: string,
+  marker: string,
+): Promise<{ operation: string; owner: unknown }[]> {
+  await store?.createThread({ workflow: "desk-workflow", tenantId: "default", threadId: marker });
+  const writes: { operation: string; owner: unknown }[] = [];
+  for (;;) {
+    const event = await changes.next();
+    const document = "fullDocument" in event ? event.fullDocument : undefined;
+    if (document?.threadId === marker) return writes;
+    if (document?.threadId === threadId)
+      writes.push({ operation: event.operationType, owner: document.owner });
+  }
+}
 
 /** A thread of `desk-workflow` with records of `statuses`, in that order; their ids. */
 async function threadWith(
@@ -163,32 +205,36 @@ describe("MongoExecutionRecordRepository", () => {
   it("a thread id created on several instances at once is created once: its first owner is kept", async () => {
     const stores = Array.from({ length: 4 }, () => recordsOn(database.url()));
     await Promise.all(stores.map((store) => store.ping()));
-    for (let round = 0; round < 8; round += 1) {
-      const threadId = `shared-${String(round)}`;
-      let release: () => void = () => undefined;
-      const go = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      const running = stores.map(async (store, index) => {
-        await go;
-        return store.createThread({
-          workflow: "desk-workflow",
-          tenantId: "default",
+    const threads = connectionTo(database.url()).db.collection(Collections.Threads);
+    // every write to a thread, in the order the server committed it (agbossjs/mongodb#110): a creator that
+    // overwrites the first owner, or writes after it, shows as a second event of the id
+    const changes = threads.watch([], { fullDocument: "updateLookup" });
+    await changes.tryNext();
+    try {
+      for (let round = 0; round < 8; round += 1) {
+        const threadId = `shared-${String(round)}`;
+
+        const made = await createdTogether(stores, threadId);
+
+        expect(made).toEqual(stores.map(() => threadId));
+        const writes = await writesOfThread(
+          changes,
+          stores[0],
           threadId,
-          ownerId: `owner-${String(index)}`,
-        });
-      });
-      release();
-
-      const made = await Promise.all(running);
-
-      expect(made).toEqual(stores.map(() => threadId));
-      const kept = await stores[0]?.threadOwner("desk-workflow", "default", threadId);
-      const first = await connectionTo(database.url())
-        .db.collection(Collections.Threads)
-        .countDocuments({ threadId });
-      expect(first).toBe(1);
-      expect(kept?.owner).toMatch(/^owner-[0-3]$/);
+          `marker-${String(round)}`,
+        );
+        expect(writes.map((write) => write.operation)).toEqual(["insert"]);
+        const kept = await stores[0]?.threadOwner("desk-workflow", "default", threadId);
+        expect(kept?.owner).toBe(writes[0]?.owner);
+        expect(kept?.owner).toMatch(/^owner-[0-3]$/);
+        for (const store of stores)
+          expect((await store.threadOwner("desk-workflow", "default", threadId))?.owner).toBe(
+            kept?.owner,
+          );
+        expect(await threads.countDocuments({ threadId })).toBe(1);
+      }
+    } finally {
+      await changes.close();
     }
   });
 
