@@ -8,14 +8,8 @@
  * written" would be a lie; and a read, or a write of a transaction, is never unknown.
  */
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
-import {
-  A2ATaskState,
-  BudgetScope,
-  ExecutionRecordStatus,
-  StoreClock,
-  StoreTimeSource,
-  FencedEffectSettings,
-} from "@agboss/core";
+import { BudgetScope, ExecutionRecordStatus, StoreClock, StoreTimeSource } from "@agboss/core";
+import { A2ATaskState } from "@agboss/core/stores";
 import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
 import { VirtualClock } from "@agboss/core/testing";
 import { seconds, usd } from "@agboss/core/units";
@@ -148,28 +142,38 @@ interface WriteCase {
   readonly applied?: () => Promise<boolean>;
 }
 
+/** The claim of a mesh request by an attempt (#1319c). */
+const claim = (attemptId: string, createdAt: string) => ({
+  tool: "charge",
+  requestHash: `sha256:${"ab".repeat(32)}`,
+  createdAt,
+  expiresAt: "2026-02-05T09:00:00.000Z",
+  attemptId,
+  lockedUntil: "2026-01-05T09:00:30.000Z",
+});
+
 const CASES: readonly WriteCase[] = [
   {
     name: "mesh request: saveIfAbsent",
-    write: () => mesh().saveIfAbsent({ ...MESH, createdAt: BEFORE.toISOString() }),
+    write: () => mesh().saveIfAbsent({ ...MESH, ...claim("a-1", BEFORE.toISOString()) }),
     applied: async () => (await count(Collections.MeshRequests)) === 1,
   },
   {
     name: "mesh request: saveResponse",
-    setup: () => mesh().saveIfAbsent({ ...MESH, createdAt: BEFORE.toISOString() }),
-    write: () => mesh().saveResponse(MESH, { ok: true }),
+    setup: () => mesh().saveIfAbsent({ ...MESH, ...claim("a-1", BEFORE.toISOString()) }),
+    write: () => mesh().saveResponse(MESH, "a-1", { ok: true }),
     applied: async () => (await count(Collections.MeshRequests, { response: { $ne: null } })) === 1,
   },
   {
     name: "mesh request: deleteByKey",
-    setup: () => mesh().saveIfAbsent({ ...MESH, createdAt: BEFORE.toISOString() }),
-    write: () => mesh().deleteByKey(MESH),
+    setup: () => mesh().saveIfAbsent({ ...MESH, ...claim("a-1", BEFORE.toISOString()) }),
+    write: () => mesh().deleteByKey(MESH, "a-1"),
     applied: async () => (await count(Collections.MeshRequests)) === 0,
   },
   {
-    name: "mesh request: deleteByCreatedAtBefore",
-    setup: () => mesh().saveIfAbsent({ ...MESH, createdAt: "2020-01-01T00:00:00.000Z" }),
-    write: () => mesh().deleteByCreatedAtBefore(BEFORE),
+    name: "mesh request: deleteExpired",
+    setup: () => mesh().saveIfAbsent({ ...MESH, ...claim("a-1", "2020-01-01T00:00:00.000Z") }),
+    write: () => mesh().deleteExpired(BEFORE),
     applied: async () => (await count(Collections.MeshRequests)) === 0,
   },
   {
@@ -248,7 +252,7 @@ const CASES: readonly WriteCase[] = [
       pauses().decideByTenantIdAndPauseId(
         "default",
         "p1",
-        { decision: { approved: true }, answeredBy: "manager-17" },
+        { decision: { approved: true }, actor: { id: "manager-17" } },
         BEFORE,
       ),
     applied: async () => (await count(Collections.Pauses, { status: "taken" })) === 1,
@@ -268,17 +272,12 @@ const CASES: readonly WriteCase[] = [
     applied: async () => (await count(Collections.Sequences)) === 1,
   },
   {
-    name: "outbound call: deleteByEndedAtBefore",
-    write: () => calls().deleteByEndedAtBefore(BEFORE),
+    name: "outbound call: deleteExpired",
+    write: () => calls().deleteExpired(BEFORE),
   },
   {
-    name: "fenced effect: deleteByStoredAtBefore",
-    write: () =>
-      new MongoFencedEffectRepository(
-        live(),
-        storeClock,
-        new FencedEffectSettings(),
-      ).deleteByStoredAtBefore(BEFORE),
+    name: "fenced effect: deleteExpired",
+    write: () => new MongoFencedEffectRepository(live(), storeClock).deleteExpired(BEFORE),
   },
   {
     name: "execution record: createThread",
@@ -291,27 +290,31 @@ const CASES: readonly WriteCase[] = [
     applied: async () => (await count(Collections.Threads)) === 1,
   },
   {
-    name: "cost ledger: saveMaxSpend",
+    name: "cost ledger: saveLimit",
     write: () =>
-      new MongoCostLedgerRepository(live()).saveMaxSpend(
+      new MongoCostLedgerRepository(live()).saveLimit(
         { budget: "b", scope: BudgetScope.Tenant, key: "default" },
-        usd(5),
+        { maxSpend: usd(5) },
       ),
     applied: async () => (await count(Collections.CostMaxSpend)) === 1,
   },
   {
-    name: "audit log: deleteByOccurredAtBefore",
-    write: () => new MongoExecutionAuditLogRepository(live()).deleteByOccurredAtBefore(BEFORE),
+    name: "audit log: deleteExpired",
+    write: () =>
+      new MongoExecutionAuditLogRepository(live()).deleteExpired(BEFORE, () =>
+        Promise.resolve(true),
+      ),
   },
   {
-    name: "history: deleteByEndedAtBefore",
-    write: () => new MongoExecutionHistoryRepository(live()).deleteByEndedAtBefore(BEFORE),
+    name: "history: deleteExpired",
+    write: () => new MongoExecutionHistoryRepository(live()).deleteExpired(BEFORE),
   },
   {
-    name: "a2a task: deleteTerminalByStatusAtBefore (a finished task is due: the sweep's first delete)",
+    name: "a2a task: deleteExpired (a finished task is due: the sweep's first delete)",
     setup: async () => {
       const task = {
-        ...{ tenantId: "default", taskId: "t-1", ownerId: "alice", contextId: "ctx-1" },
+        ...{ endpoint: "orders", tenantId: "default", taskId: "t-1", ownerId: "alice" },
+        contextId: "ctx-1",
         ...{ skill: "order-workflow-start", acceptedAt: new Date("2026-01-05T09:00:00.000Z") },
         ...{ messageId: "m-1", requestHash: "h-1" },
       };
@@ -327,7 +330,7 @@ const CASES: readonly WriteCase[] = [
         new Date("2026-01-05T09:01:00.000Z"),
       );
     },
-    write: () => new MongoA2ATaskRepository(live()).deleteTerminalByStatusAtBefore(BEFORE),
+    write: () => new MongoA2ATaskRepository(live()).deleteExpired(new Map([["orders", BEFORE]])),
     applied: async () => (await count(Collections.A2ATasks)) === 0,
   },
   {
@@ -427,7 +430,7 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
 
   it("updateMany outside a transaction that fails on its second document (a duplicate key) left the first written: unknown", async () => {
     const many = live().db.collection<{ _id: number; u?: number }>("write_outcome_multi");
-    await many.createIndex({ u: 1 }, { unique: true, sparse: true }, {});
+    await many.createIndex({ u: 1 }, { unique: true, sparse: true });
     await many.insertMany([{ _id: 1 }, { _id: 2 }]);
 
     const failure: unknown = await many

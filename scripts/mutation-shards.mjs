@@ -21,10 +21,14 @@ export const SHARDS = {
   leases: {
     mutate: [
       "src/stores/mongo-execution-lease.repository.ts",
+      "src/stores/mongo-lease-marks.repository.ts",
       "src/stores/lease-documents.ts",
+      "src/stores/lease-marks.ts",
+      "src/stores/lease-seed.ts",
+      "src/stores/status-log.ts",
       "src/stores/store-time.ts",
     ],
-    tests: [CONFORMANCE, "tests/stores/lease-*.test.ts"],
+    tests: [CONFORMANCE, "tests/stores/{lease-*,cluster-mirror,status-log}.test.ts"],
     contracts: ["executionLease"],
   },
   // the fence every fencing write checks in its own transaction: the lease written, the business
@@ -44,10 +48,12 @@ export const SHARDS = {
     mutate: [
       "src/stores/mongo-fenced-effect.repository.ts",
       "src/stores/fenced-effects/*.ts",
+      "src/connection/ambient.ts",
       "src/stores/key-entry.ts",
       "src/stores/keys.ts",
       "src/stores/mongo-outbound-call.repository.ts",
       "src/stores/outbound-calls/outbound-call-documents.ts",
+      "src/stores/outbound-calls/outbound-call-lookup.ts",
       "src/stores/outbound-call-pages.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{fenced-effect*,outbound-call*}.test.ts"],
@@ -83,7 +89,7 @@ export const SHARDS = {
   },
   // the child queue: a claim, a save, a release (the queue store itself)
   queue: {
-    mutate: ["src/stores/mongo-child-execution-queue.repository.ts"],
+    mutate: ["src/stores/mongo-child-execution-queue.repository.ts", "src/stores/child-queue/*.ts"],
     tests: [CONFORMANCE, "tests/stores/{queue-watch,child-queue*}.test.ts"],
     contracts: ["childExecutionQueue"],
   },
@@ -128,6 +134,8 @@ export const SHARDS = {
     mutate: [
       "src/stores/mongo-execution-record.repository.ts",
       "src/stores/records/record-writes.ts",
+      "src/stores/records/record-threads.ts",
+      "src/stores/records/record-idle.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{execution-record*,minted-thread}.test.ts"],
     contracts: ["executionRecord"],

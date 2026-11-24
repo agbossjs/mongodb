@@ -41,6 +41,21 @@ export interface LeaseDocument {
    * (a seed document when the cancel came before the first `acquire`), read by every fenced write.
    */
   cancelRequestedAt?: Date;
+  /**
+   * The tree's stop mark (agbossjs/agboss#1341b): when it was first requested and how — `stopMode`
+   * only escalates (`immediate` is never lowered), written by one update pipeline (`lease-marks.ts`).
+   */
+  stopRequestedAt?: Date;
+  stopMode?: "after-step" | "immediate";
+  /** The external pause (#1341c): set by `requestPause`, lifted by `unpause`. */
+  isExternallyPaused?: boolean;
+  externalPauseReason?: string;
+  externalPauseMode?: "after-step" | "immediate";
+  /**
+   * The highest token of the tree's root lease an `Immediate` pause fenced (#1341c): `$max`, never
+   * lowered, never cleared — a write at or below it is stale.
+   */
+  fencedThroughToken?: number;
   /** How many fenced writes of the tree's children locked this document (a write nothing reads). */
   fenceChecks?: number;
 }

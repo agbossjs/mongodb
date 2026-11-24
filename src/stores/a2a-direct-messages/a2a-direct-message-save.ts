@@ -43,6 +43,7 @@ export const directMessagesOf = (db: Db): Collection<A2ADirectMessageDocument> =
 
 /** A message as `saveIfAbsent` keeps it: `InFlight`, its first attempt. */
 const savedOf = (message: NewA2ADirectMessage): A2ADirectMessageRecord => ({
+  endpoint: message.endpoint,
   tenantId: message.tenantId,
   ownerId: message.ownerId,
   messageId: message.messageId,

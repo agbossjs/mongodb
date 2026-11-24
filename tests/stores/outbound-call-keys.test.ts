@@ -9,7 +9,8 @@
  * retention's filter beside its `$lt` (a comparison with a date never matches a null or a missing
  * field, by the server's type brackets: the key says what the comment above it does).
  */
-import { OutboundCallStatus, StoreClock, StoreTimeSource, type EffectKey } from "@agboss/core";
+import { OutboundCallStatus, StoreClock, StoreTimeSource } from "@agboss/core";
+import { type EffectKey } from "@agboss/core/stores";
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { hours } from "@agboss/core/units";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -97,9 +98,9 @@ describe("agbossjs/agboss#81: a move is of a pending attempt", () => {
   it("a call that failed is not completed", async () => {
     const { calls, connection, key, saved } = await instance();
     await saved();
-    expect(await calls.markFailed(key, OWNER, FAILURE)).toBe(true);
+    expect(await calls.markFailed(key, OWNER, FAILURE, null)).toBe(true);
 
-    expect(await calls.markCompleted(key, OWNER, "{}")).toBe(false);
+    expect(await calls.markCompleted(key, OWNER, "{}", null)).toBe(false);
 
     expect(await document(connection)).toMatchObject({ status: OutboundCallStatus.Failed });
     expect((await calls.findByKey(key))?.result).toBeUndefined();
@@ -108,9 +109,9 @@ describe("agbossjs/agboss#81: a move is of a pending attempt", () => {
   it("a call that completed is not failed", async () => {
     const { calls, connection, key, saved } = await instance();
     await saved();
-    expect(await calls.markCompleted(key, OWNER, '{"ok":true}')).toBe(true);
+    expect(await calls.markCompleted(key, OWNER, '{"ok":true}', null)).toBe(true);
 
-    expect(await calls.markFailed(key, OWNER, FAILURE)).toBe(false);
+    expect(await calls.markFailed(key, OWNER, FAILURE, null)).toBe(false);
 
     expect(await document(connection)).toMatchObject({ status: OutboundCallStatus.Completed });
     expect((await calls.findByKey(key))?.failure).toBeUndefined();
@@ -137,15 +138,29 @@ describe("agbossjs/agboss#81: a move is of a pending attempt", () => {
   });
 });
 
-describe("agbossjs/agboss#81: the end of a call is read by the retention sweep", () => {
-  it("a failed call has its end, as a completed one: the sweep removes both, never a pending one", async () => {
+describe("agbossjs/agboss#1317: the end of a call carries its expiry, read by the retention sweep", () => {
+  it("a failed call has its expiry, as a completed one: the sweep removes both once it has come, never a pending one or one kept for good", async () => {
     const { calls, clock, connection, key, saved } = await instance();
     await saved();
-    await calls.markFailed(key, OWNER, FAILURE);
-    expect(await document(connection)).toMatchObject({ endedAt: clock.now() });
+    const expiresAt = new Date(clock.now().getTime() + 500);
+    await calls.markFailed(key, OWNER, FAILURE, expiresAt);
+    expect(await document(connection)).toMatchObject({ expiresAt });
 
-    await calls.deleteByEndedAtBefore(new Date(clock.now().getTime() + 1000));
+    expect(await calls.deleteExpired(new Date(expiresAt.getTime() - 1))).toBe(0);
+    expect(await document(connection)).not.toBeNull();
+    expect(await calls.deleteExpired(expiresAt)).toBe(1);
 
     expect(await document(connection)).toBeNull();
+  });
+
+  it("a call ended with no expiry (Ttl.Forever) and a pending one are never removed", async () => {
+    const { calls, clock, connection, key, saved } = await instance();
+    await saved();
+    expect(await calls.deleteExpired(new Date(clock.now().getTime() + 10_000))).toBe(0);
+    await calls.markCompleted(key, OWNER, "{}", null);
+
+    expect(await calls.deleteExpired(new Date(clock.now().getTime() + 10_000))).toBe(0);
+
+    expect(await document(connection)).not.toBeNull();
   });
 });

@@ -23,7 +23,7 @@ const reassign = (store: MongoPausedExecutionRepository, from: string, to: strin
   store.reassignByTenantIdAndPauseId(
     "default",
     from,
-    { pauseId: to, assignee: "alice" },
+    { pauseId: to, assignees: ["alice"] },
     NINE,
     NO_RECIPIENTS,
   );

@@ -30,6 +30,7 @@ const START = Date.parse("2026-10-18T08:00:00.000Z");
 
 const entry = (pass: string, index: number): LedgerEntry => ({
   caller: "clerk-agent",
+  provider: "test",
   model: "test/clerk",
   inputTokens: 0,
   outputTokens: 0,
@@ -60,7 +61,7 @@ describe("MongoCostLedgerRepository: pruning (agbossjs/agboss#771)", () => {
     for (const outcome of outcomes)
       if (outcome.status === "rejected")
         expect(outcome.reason).toMatchObject({ code: "cost-ledger.entry-expired" });
-    expect(await first.findSpentByCounter(day("race"))).toBe(3.75);
+    expect((await first.findUsageByCounter(day("race"))).spent).toBe(3.75);
   });
 
   it("an entry kept before #771 has no date: never pruned, saved again it adds nothing", async () => {
@@ -74,7 +75,7 @@ describe("MongoCostLedgerRepository: pruning (agbossjs/agboss#771)", () => {
     await ledger.deleteByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z"));
     await ledger.saveAll([day("old")], [entry("pass-old", 0)]);
 
-    expect(await ledger.findSpentByCounter(day("old"))).toBe(0);
+    expect((await ledger.findUsageByCounter(day("old"))).spent).toBe(0);
   });
 });
 
@@ -135,7 +136,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
         code: "mongodb.ledger-mark-missing",
         name: "MongoLedgerMarkMissingError",
       });
-      expect(await ledger.findSpentByCounter(day("gone"))).toBe(0.125);
+      expect((await ledger.findUsageByCounter(day("gone"))).spent).toBe(0.125);
     } finally {
       await close();
     }
@@ -154,7 +155,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
       await expect(
         ledger.deleteByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z")),
       ).rejects.toMatchObject({ code: "mongodb.ledger-mark-missing" });
-      expect(await ledger.findSpentByCounter(day("none"))).toBe(0.125);
+      expect((await ledger.findUsageByCounter(day("none"))).spent).toBe(0.125);
       expect(await entries.findOne({ _id: "pass-n:0" })).not.toBeNull();
       expect(await entries.findOne({ _id: MARK_ID })).toBeNull();
     } finally {
@@ -183,7 +184,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
         code: "cost-ledger.entry-expired",
       });
       await ledger.saveAll([day("back")], [entry("pass-b", 1)]);
-      expect(await ledger.findSpentByCounter(day("back"))).toBe(0.25);
+      expect((await ledger.findUsageByCounter(day("back"))).spent).toBe(0.25);
     } finally {
       await close();
     }
@@ -202,7 +203,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
         code: "mongodb.ledger-mark-missing",
       });
       expect(await entries.findOne({ _id: MARK_ID })).toEqual({ _id: MARK_ID, prunedBefore: 0 });
-      expect(await ledger.findSpentByCounter(day("ms"))).toBe(0);
+      expect((await ledger.findUsageByCounter(day("ms"))).spent).toBe(0);
     } finally {
       await close();
     }
@@ -234,7 +235,7 @@ describe("MongoCostLedgerRepository: the mark is made with its collection (agbos
           .find({ _id: MARK_ID })
           .toArray();
         expect(marks).toEqual([{ _id: MARK_ID, prunedBefore: new Date(0) }]);
-        expect(await ledgers[0]?.findSpentByCounter(day("starts"))).toBe(0.375);
+        expect((await ledgers[0]?.findUsageByCounter(day("starts")))?.spent).toBe(0.375);
       } finally {
         for (const connection of connections) await connection.onDestroy();
       }
@@ -294,7 +295,7 @@ describe("MongoCostLedgerRepository: a dropped ledger is never made again as nev
         await expect(
           ledger.deleteByMadeAtBefore(new Date("2030-01-01T00:00:00.000Z")),
         ).rejects.toMatchObject({ code: "mongodb.ledger-mark-missing" });
-        expect(await ledger.findSpentByCounter(day("drop"))).toBe(0.125);
+        expect((await ledger.findUsageByCounter(day("drop"))).spent).toBe(0.125);
       } finally {
         await connection.onDestroy();
       }
@@ -315,7 +316,7 @@ describe("MongoCostLedgerRepository: a dropped ledger is never made again as nev
         await expect(ledger.saveAll([day("kept")], [entry("pass-k", 5)])).rejects.toMatchObject({
           code: "mongodb.ledger-mark-missing",
         });
-        expect(await ledger.findSpentByCounter(day("kept"))).toBe(0.125);
+        expect((await ledger.findUsageByCounter(day("kept"))).spent).toBe(0.125);
       } finally {
         await connection.onDestroy();
       }
@@ -348,7 +349,7 @@ describe("MongoCostLedgerRepository: a dropped ledger is never made again as nev
         });
         const fresh: LedgerEntry = { ...entry("pass-u", 1), madeAt: new Date(Date.now() + 60_000) };
         await ledger.saveAll([day("cure")], [fresh]);
-        expect(await ledger.findSpentByCounter(day("cure"))).toBe(0.25);
+        expect((await ledger.findUsageByCounter(day("cure"))).spent).toBe(0.25);
       } finally {
         await connection.onDestroy();
       }
@@ -370,7 +371,7 @@ describe("MongoCostLedgerRepository: a dropped ledger is never made again as nev
         expect(marks).toEqual([{ _id: MARK_ID, prunedBefore: new Date(0) }]);
         const ledger = new MongoCostLedgerRepository(connection);
         await ledger.saveAll([day("new")], [entry("pass-f", 0)]);
-        expect(await ledger.findSpentByCounter(day("new"))).toBe(0.125);
+        expect((await ledger.findUsageByCounter(day("new"))).spent).toBe(0.125);
       } finally {
         await connection.onDestroy();
       }

@@ -9,9 +9,9 @@ import {
   OutboundCallStatus,
   StoreClock,
   StoreTimeSource,
-  type EffectKey,
   type OutboundCallIntent,
 } from "@agboss/core";
+import { type EffectKey } from "@agboss/core/stores";
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { hours } from "@agboss/core/units";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -154,17 +154,17 @@ describe("a page of a tenant's calls in a status", () => {
     const rest = await calls.findAllByTenantIdAndStatus({
       ...query,
       limit: 2,
-      ...(first.next === undefined ? {} : { after: first.next }),
+      ...(first.nextCursor === undefined ? {} : { cursor: first.nextCursor }),
     });
-    const none = await calls.findAllByTenantIdAndStatus({ ...query, limit: 2, after: "999" });
+    const none = await calls.findAllByTenantIdAndStatus({ ...query, limit: 2, cursor: "999" });
 
-    expect(first.calls).toHaveLength(2);
-    expect(first.next).toBeDefined();
-    expect(exact.calls).toHaveLength(3);
-    expect(exact).not.toHaveProperty("next");
-    expect(rest.calls).toHaveLength(1);
-    expect(rest).not.toHaveProperty("next");
-    expect(none).toEqual({ calls: [] });
+    expect(first.items).toHaveLength(2);
+    expect(first.nextCursor).toBeDefined();
+    expect(exact.items).toHaveLength(3);
+    expect(exact).not.toHaveProperty("nextCursor");
+    expect(rest.items).toHaveLength(1);
+    expect(rest).not.toHaveProperty("nextCursor");
+    expect(none).toEqual({ items: [] });
   });
 });
 
@@ -190,7 +190,7 @@ describe("a move's statement", () => {
     await save("a");
     const sent = commandsOf(connection);
 
-    expect(await calls.markCompleted(keyOf("a"), OWNER, '{"ok":true}')).toBe(true);
+    expect(await calls.markCompleted(keyOf("a"), OWNER, '{"ok":true}', null)).toBe(true);
 
     const update = sent.find((one) => nameOf(one) === `update ${CALLS}`);
     const statement = update === undefined ? undefined : statementOf(update);

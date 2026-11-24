@@ -9,12 +9,12 @@
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import {
   Clock,
-  FingerprintRequiredError,
+  IdempotencyError,
   type ExecutionLease,
-  type EffectKey,
   StoreClock,
   StoreTimeSource,
 } from "@agboss/core";
+import { type EffectKey } from "@agboss/core/stores";
 import { ClockSkew, SkewedClock } from "@agboss/core/testing";
 import { hours, seconds, type Milliseconds } from "@agboss/core/units";
 import { describe, expect, it } from "vitest";
@@ -153,7 +153,7 @@ describe("agbossjs/agboss#825 on MongoDB: the key checked at the store's entry",
     };
 
     await expect(instance.calls.saveIfAbsent(key, intent)).rejects.toBeInstanceOf(
-      FingerprintRequiredError,
+      IdempotencyError.FingerprintRequired,
     );
     expect(
       await instance.calls.findAllByTenantIdAndRootExecutionId("default", "unfingerprinted"),

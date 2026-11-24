@@ -1,6 +1,7 @@
 import {
   ApplicationContext,
   ChildExecutionQueueRepository,
+  ChildPlacement,
   Clock,
   ExecutionRecordStatus,
   Injectable,
@@ -12,71 +13,17 @@ import {
   type QueuedChildExecution,
 } from "@agboss/core";
 import type { Collection } from "mongodb";
-import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { DUPLICATE_KEY, hasCode, idOf } from "./keys.js";
+import {
+  childOf,
+  Depth,
+  DEPTH,
+  UNSET,
+  type QueuedDocument,
+} from "./child-queue/child-queue-documents.js";
 import { MongoQueueWatch } from "./queue-watch.js";
-
-/** One queued child: the contract's fields, `_id` its tenant and execution. */
-interface QueuedDocument extends Omit<
-  QueuedChildExecution,
-  "instanceId" | "claimedAt" | "endedAt" | "failure"
-> {
-  _id: string;
-  instanceId?: string;
-  claimedAt?: Date;
-  endedAt?: Date;
-  failure?: string;
-}
-
-const Stored = z.object({
-  tenantId: z.string(),
-  executionId: z.string(),
-  rootExecutionId: z.string(),
-  parentExecutionId: z.string(),
-  rootWorkflow: z.string(),
-  workflow: z.string(),
-  depth: z.number(),
-  status: z.enum(ExecutionRecordStatus),
-  run: z.string(),
-  queuedAt: z.date(),
-  instanceId: z.string().optional(),
-  claimedAt: z.date().optional(),
-  endedAt: z.date().optional(),
-  failure: z.string().optional(),
-});
-
-/** The queue's depth, as one `$group` gives it (none when no row is queued or running). */
-const Depth = z.object({ queued: z.number(), running: z.number(), oldest: z.date().nullable() });
-
-/** The value of a field named in `$unset`: the server ignores it, whatever it is. */
-// Stryker disable next-line StringLiteral: equivalent, `$unset` ignores the value of each field it names
-const UNSET = "";
-
-const isStatus = (status: ExecutionRecordStatus) => ({ $eq: ["$status", status] });
-
-/**
- * The queue's depth (agbossjs/agboss#485): one aggregation over the `status` prefix of the claims
- * index — the queued and running documents only, grouped once.
- */
-const DEPTH = [
-  { $match: { status: { $in: [ExecutionRecordStatus.Queued, ExecutionRecordStatus.Running] } } },
-  {
-    $group: {
-      _id: null,
-      queued: { $sum: { $cond: [isStatus(ExecutionRecordStatus.Queued), 1, 0] } },
-      running: { $sum: { $cond: [isStatus(ExecutionRecordStatus.Running), 1, 0] } },
-      oldest: { $min: { $cond: [isStatus(ExecutionRecordStatus.Queued), "$queuedAt", null] } },
-    },
-  },
-];
-
-/** A document as the contract gives it back. */
-const childOf = (found: unknown): QueuedChildExecution => {
-  const { instanceId, claimedAt, endedAt, failure, ...child } = Stored.parse(found);
-  return { ...child, instanceId, claimedAt, endedAt, failure };
-};
 
 /**
  * `ChildExecutionQueueRepository` on MongoDB (#333 PR 2, agbossjs/agboss#527): one document per
@@ -128,12 +75,32 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
         ? []
         : [{ status: ExecutionRecordStatus.Running, claimedAt: child.claimedAt }]),
     ];
+    // where it may run (#1286): kept as the save names it, a stale one of an earlier queueing cleared
+    const placement = {
+      placement: child.placement,
+      excludeInstanceId: child.excludeInstanceId,
+    };
+    const unsetPlacement = Object.entries(placement).flatMap(([field, value]) =>
+      value === undefined ? [[field, UNSET] as const] : [],
+    );
     try {
       await this.#queue.updateOne(
         { _id: idOf(tenantId, executionId), $or: again },
         {
-          $set: queued,
-          $unset: { instanceId: UNSET, claimedAt: UNSET, endedAt: UNSET, failure: UNSET },
+          $set: {
+            ...queued,
+            ...(child.placement === undefined ? {} : { placement: child.placement }),
+            ...(child.excludeInstanceId === undefined
+              ? {}
+              : { excludeInstanceId: child.excludeInstanceId }),
+          },
+          $unset: {
+            instanceId: UNSET,
+            claimedAt: UNSET,
+            endedAt: UNSET,
+            failure: UNSET,
+            ...Object.fromEntries(unsetPlacement),
+          },
         },
         { upsert: true },
       );
@@ -172,7 +139,13 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
 
   async claimFirstByStatusQueuedOrderByDepthDesc(): Promise<QueuedChildExecution | undefined> {
     const claimed = await this.#queue.findOneAndUpdate(
-      { status: ExecutionRecordStatus.Queued },
+      {
+        status: ExecutionRecordStatus.Queued,
+        // what a general claim skips (#1286): an `IsolatedWorker` child (its own process claims it)
+        // and a child this instance queued itself for `OtherWorker`
+        placement: { $ne: ChildPlacement.IsolatedWorker },
+        excludeInstanceId: { $ne: this.applicationContext.instanceId },
+      },
       {
         $set: {
           status: ExecutionRecordStatus.Running,
@@ -186,6 +159,51 @@ export class MongoChildExecutionQueueRepository extends ChildExecutionQueueRepos
       { sort: { depth: -1, queuedAt: 1 }, returnDocument: "after" },
     );
     return claimed === null ? undefined : childOf(claimed);
+  }
+
+  /** The queued `IsolatedWorker` children, the deepest first, then the longest waiting. */
+  async findQueuedIsolatedWorkerChildren(limit: number): Promise<readonly QueuedChildExecution[]> {
+    const found = await this.#queue
+      .find({ status: ExecutionRecordStatus.Queued, placement: ChildPlacement.IsolatedWorker })
+      .sort({ depth: -1, queuedAt: 1 })
+      .limit(limit)
+      .toArray();
+    return found.map(childOf);
+  }
+
+  /** The targeted claim: one child, `Queued` and `IsolatedWorker`, in one update. */
+  async claimIsolatedWorkerByTenantIdAndExecutionId(
+    tenantId: string,
+    executionId: string,
+  ): Promise<QueuedChildExecution | undefined> {
+    const claimed = await this.#queue.findOneAndUpdate(
+      {
+        _id: idOf(tenantId, executionId),
+        status: ExecutionRecordStatus.Queued,
+        placement: ChildPlacement.IsolatedWorker,
+      },
+      {
+        $set: {
+          status: ExecutionRecordStatus.Running,
+          instanceId: this.applicationContext.instanceId,
+          claimedAt: this.clock.now(),
+        },
+      },
+      { returnDocument: "after" },
+    );
+    return claimed === null ? undefined : childOf(claimed);
+  }
+
+  /** Withdraws a child still `Queued`: a claim and a withdrawal of one document never both win. */
+  async withdrawByTenantIdAndExecutionIdIfQueued(
+    tenantId: string,
+    executionId: string,
+  ): Promise<boolean> {
+    const removed = await this.#queue.deleteOne({
+      _id: idOf(tenantId, executionId),
+      status: ExecutionRecordStatus.Queued,
+    });
+    return removed.deletedCount === 1;
   }
 
   async completeByTenantIdAndExecutionId(

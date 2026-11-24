@@ -22,7 +22,7 @@ import { idOf } from "../../src/stores/keys.js";
 import { insertPause } from "../../src/stores/paused/pause-documents.js";
 import { mailboxesOf } from "../../src/stores/paused/pause-mailboxes.js";
 import { emptyAll, testDatabase } from "../support/database.js";
-import { oldPausedRun } from "./pause-names-0.1.0.fixtures.js";
+import { currentPausedRun } from "../support/paused-run.js";
 import { ANSWER, NINE, pauseOf } from "../support/pauses.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -52,9 +52,8 @@ describe("agbossjs/agboss#81: a paused run", () => {
   it("is saved with the time it paused at, the clock's", async () => {
     const run = pausedRunOfJson(
       JSON.stringify({
-        ...oldPausedRun,
+        ...currentPausedRun,
         ...{ threadId: "thread-1", tenantId: "acme", runId: "run-9", turnId: "turn-1" },
-        ternId: undefined,
       }),
     );
 
@@ -192,7 +191,7 @@ describe("agbossjs/agboss#81: a reassignment's replacement", () => {
     const store = storeOn();
     await store.findOrCreateByStepKey(pauseOf("before"));
     const hostile = {
-      ...{ pauseId: "after", assignee: "alice" },
+      ...{ pauseId: "after", assignees: ["alice"] },
       ...{ status: PauseStatus.Resolved, isSent: true, askedAt: "2020-01-01T00:00:00.000Z" },
       reassignedFrom: "someone-else",
     };

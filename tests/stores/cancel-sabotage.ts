@@ -1,13 +1,13 @@
 import {
   ExecutionCancelFencedError,
-  FencedEffectStatus,
-  type EffectKey,
+  IdempotencyRunStatus,
   type ExecutionLease,
-  type FencedEffectOutcome,
-  type FencedEffectSettings,
+  type IdempotencyRunOutcome,
   type FencedEffectWork,
   type StoreClock,
 } from "@agboss/core";
+import { type EffectKey } from "@agboss/core/stores";
+import { withAmbientTransaction } from "../../src/connection/ambient.js";
 import { cancelTreeOf, effectKeyIdentityOf, type ExecutionTree } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
 import type { ClientSession, Db } from "mongodb";
@@ -17,7 +17,6 @@ import {
   MongoFencedEffectRepository,
   MongoOutboundCallRepository,
   type MongoConnection,
-  type MongoTransaction,
 } from "../../src/index.js";
 import { checkFence, lockKey } from "../../src/stores/fence.js";
 import { idOf } from "../../src/stores/keys.js";
@@ -75,29 +74,32 @@ export class CancelCheckEffects extends MongoFencedEffectRepository {
     private readonly mongo: MongoConnection,
     private readonly seam: StoreClock,
     private readonly check: CancelCheck,
-    settings: FencedEffectSettings,
   ) {
-    super(mongo, seam, settings);
+    super(mongo, seam);
   }
 
   protected override runInTransaction<TResult>(
     key: EffectKey,
-    work: FencedEffectWork<MongoTransaction, TResult>,
-  ): Promise<FencedEffectOutcome<TResult>> {
+    work: FencedEffectWork<TResult>,
+  ): Promise<IdempotencyRunOutcome<TResult>> {
     return this.mongo.inTransaction(async (transaction) => {
       const { db, session } = transaction;
       const now = this.seam.now();
       await checkFence(db, session, key, this.seam);
       const id = idOf(effectKeyIdentityOf(key));
-      if (key.businessKey !== undefined) await lockKey(db, session, id, now);
+      if (key.businessKey !== undefined)
+        await lockKey(db, session, id, { now, expiresAt: key.expiresAt });
       const results = db.collection<ResultDocument>(Collections.FencedEffectResults);
       const stored = await results.findOne({ _id: id }, { session });
       if (stored !== null) return replayOf<TResult>(key, stored);
       await this.check(db, session, key);
-      const text = this.storedResultOf(key, await work(transaction));
+      const text = this.storedResultOf(
+        key,
+        await withAmbientTransaction(this.mongo, transaction, async () => work()),
+      );
       await results.insertOne(resultDocumentOf(key, text, now), { session });
       return {
-        status: FencedEffectStatus.Ran,
+        status: IdempotencyRunStatus.Ran,
         result: JSON.parse(text) as TResult,
         token: key.token,
       };
@@ -153,14 +155,14 @@ export class AgePruningEffects extends MongoFencedEffectRepository {
   constructor(
     private readonly mongo: MongoConnection,
     clock: StoreClock,
-    settings: FencedEffectSettings,
   ) {
-    super(mongo, clock, settings);
+    super(mongo, clock);
   }
 
-  override async deleteByStoredAtBefore(cutoff: Date): Promise<void> {
-    await super.deleteByStoredAtBefore(cutoff);
-    await liftOld(this.mongo.db, cutoff);
+  override async deleteExpired(now: Date): Promise<number> {
+    const removed = await super.deleteExpired(now);
+    await liftOld(this.mongo.db, now);
+    return removed;
   }
 }
 
@@ -173,9 +175,10 @@ export class AgePruningCalls extends MongoOutboundCallRepository {
     super(mongo, clock);
   }
 
-  override async deleteByEndedAtBefore(cutoff: Date): Promise<void> {
-    await super.deleteByEndedAtBefore(cutoff);
-    await liftOld(this.mongo.db, cutoff);
+  override async deleteExpired(now: Date): Promise<number> {
+    const removed = await super.deleteExpired(now);
+    await liftOld(this.mongo.db, now);
+    return removed;
   }
 }
 

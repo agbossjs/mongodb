@@ -1,17 +1,16 @@
 import {
   ApplicationContext,
-  ExecutionLeaseRepository,
   Injectable,
   StoreClock,
   type ExecutionIdentity,
   type ExecutionLease,
   type StoreDescriptor,
 } from "@agboss/core";
-import { remainingOf, type ExecutionTree } from "@agboss/core/stores";
+import { remainingOf } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
-import type { Collection } from "mongodb";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
+import { settled } from "../connection/outcome.js";
 import { DUPLICATE_KEY, hasCode, treeIdOf } from "./keys.js";
 import {
   DROP_OLD_NAMES,
@@ -23,10 +22,8 @@ import {
   takePipeline,
   STORED_TOKEN,
   Yielded,
-  type LeaseDocument,
 } from "./lease-documents.js";
-import { markCancel } from "./cancel-fence.js";
-import { settled } from "../connection/outcome.js";
+import { MongoLeaseMarks } from "./mongo-lease-marks.repository.js";
 import { storeNowOf } from "./store-time.js";
 
 /** One kept execution id (agbossjs/agboss#591): unique by `_id`, never removed. */
@@ -60,41 +57,16 @@ interface ExecutionIdDocument {
  * a failover never rolls an epoch back, and no call takes a lease twice.
  */
 @Injectable({ deps: [MongoConnection, StoreClock, ApplicationContext] })
-export class MongoExecutionLeaseRepository extends ExecutionLeaseRepository {
+export class MongoExecutionLeaseRepository extends MongoLeaseMarks {
   /** One transactional backend with the other MongoDB stores (agbossjs/agboss#526). */
   static override readonly store: StoreDescriptor = { backend: "mongodb" };
 
-  constructor(
-    private readonly connection: MongoConnection,
-    private readonly clock: StoreClock,
-    private readonly applicationContext: ApplicationContext,
-  ) {
-    super();
-  }
-
-  get #leases(): Collection<LeaseDocument> {
-    return this.connection.db.collection<LeaseDocument>(Collections.ExecutionLeases);
+  get #leases() {
+    return this.leases;
   }
 
   ping(): Promise<void> {
     return this.connection.ping();
-  }
-
-  requestCancel(tree: ExecutionTree): Promise<void> {
-    return settled("requestCancel", () => markCancel(this.connection.db, tree, this.clock));
-  }
-
-  /**
-   * Whether the tree's cancel mark is set (#1152): `cancelRequestedAt` on the lease document of
-   * `(tenantId, rootExecutionId)` — tenant-scoped by the document's key, a seed document counts —,
-   * one majority read, changing nothing.
-   */
-  async isCancelRequested(tree: ExecutionTree): Promise<boolean> {
-    const found = await this.#leases.findOne(
-      { _id: treeIdOf(tree.tenantId, tree.rootExecutionId) },
-      { projection: { cancelRequestedAt: 1 } },
-    );
-    return found?.cancelRequestedAt !== undefined;
   }
 
   claimExecutionId(identity: ExecutionIdentity): Promise<boolean> {

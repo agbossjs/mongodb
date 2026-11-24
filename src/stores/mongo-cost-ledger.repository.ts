@@ -5,11 +5,13 @@ import {
   Injectable,
   totalCost,
   type BudgetAccount,
+  type BudgetLimit,
+  type BudgetUsage,
   type CostCounter,
   type LedgerEntry,
 } from "@agboss/core";
 import { assertLedgerCutoff, assertLedgerEntries } from "@agboss/core/stores";
-import { usd, type Usd } from "@agboss/core/units";
+import { usd } from "@agboss/core/units";
 import type { AnyBulkWriteOperation, ClientSession, Collection } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
@@ -20,6 +22,8 @@ import { idOf } from "./keys.js";
 interface CounterDocument {
   _id: string;
   spentUsd: number;
+  /** Input plus output tokens (#1318): what `maxTokens` counts. */
+  tokens: number;
 }
 
 interface EntryDocument {
@@ -29,13 +33,18 @@ interface EntryDocument {
   madeAt?: Date;
 }
 
-interface MaxSpendDocument {
+/** The limits an execution last read for an account (#1318): either may be absent. */
+interface LimitDocument {
   _id: string;
-  maxSpendUsd: number;
+  maxSpendUsd?: number;
+  maxTokens?: number;
 }
 
-const Spent = z.object({ spentUsd: z.number() });
-const MaxSpend = z.object({ maxSpendUsd: z.number() });
+const Held = z.object({ spentUsd: z.number(), tokens: z.number().optional() });
+const Limit = z.object({ maxSpendUsd: z.number().optional(), maxTokens: z.number().optional() });
+
+/** What a counter that was never written holds. */
+const NO_USAGE: BudgetUsage = { spent: usd(0), tokens: 0 };
 
 /** The scope as stored: one of `BudgetScope`'s values (anything else is refused). */
 const scopeOf = (account: BudgetAccount): string => z.enum(BudgetScope).parse(account.scope);
@@ -57,7 +66,7 @@ const byId = ([left]: readonly [string, number], [right]: readonly [string, numb
 /** The counters' updates for a save of `cost`, one per counter, in one order. */
 function countersOf(
   counters: readonly CostCounter[],
-  cost: number,
+  added: { readonly cost: number; readonly tokens: number },
 ): AnyBulkWriteOperation<CounterDocument>[] {
   const times = new Map<string, number>();
   for (const counter of counters) {
@@ -66,7 +75,11 @@ function countersOf(
   }
   // in one order, so two saves of overlapping counters meet on the same first document
   return [...times.entries()].sort(byId).map(([_id, count]) => ({
-    updateOne: { filter: { _id }, update: { $inc: { spentUsd: count * cost } }, upsert: true },
+    updateOne: {
+      filter: { _id },
+      update: { $inc: { spentUsd: count * added.cost, tokens: count * added.tokens } },
+      upsert: true,
+    },
   }));
 }
 
@@ -101,17 +114,19 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
     return this.connection.db.collection<EntryDocument>(Collections.CostEntries);
   }
 
-  get #maxSpend(): Collection<MaxSpendDocument> {
-    return this.connection.db.collection<MaxSpendDocument>(Collections.CostMaxSpend);
+  get #limits(): Collection<LimitDocument> {
+    return this.connection.db.collection<LimitDocument>(Collections.CostMaxSpend);
   }
 
   ping(): Promise<void> {
     return this.connection.ping();
   }
 
-  async findSpentByCounter(counter: CostCounter): Promise<Usd> {
+  async findUsageByCounter(counter: CostCounter): Promise<BudgetUsage> {
     const found = await this.#counters.findOne({ _id: counterIdOf(counter) });
-    return usd(found === null ? 0 : Spent.parse(found).spentUsd);
+    if (found === null) return NO_USAGE;
+    const held = Held.parse(found);
+    return { spent: usd(held.spentUsd), tokens: held.tokens ?? 0 };
   }
 
   async saveAll(counters: readonly CostCounter[], entries: readonly LedgerEntry[]): Promise<void> {
@@ -124,10 +139,16 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
       const prunedBefore = await prunedBeforeOf(this.connection.db, session);
       const added = await this.#unrecordedEntriesOf(entries, prunedBefore, session);
       if (added.length === 0) return;
-      await this.#counters.bulkWrite(countersOf(counters, totalCost(added)), {
-        session,
-        ordered: true,
-      });
+      await this.#counters.bulkWrite(
+        countersOf(counters, {
+          cost: totalCost(added),
+          tokens: sum(added.map((entry) => entry.inputTokens + entry.outputTokens)),
+        }),
+        {
+          session,
+          ordered: true,
+        },
+      );
     });
   }
 
@@ -179,16 +200,37 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
     });
   }
 
-  async findMaxSpendByAccount(account: BudgetAccount): Promise<Usd | undefined> {
-    const found = await this.#maxSpend.findOne({ _id: accountIdOf(account) });
-    return found === null ? undefined : usd(MaxSpend.parse(found).maxSpendUsd);
+  async findLimitByAccount(account: BudgetAccount): Promise<BudgetLimit | undefined> {
+    const found = await this.#limits.findOne({ _id: accountIdOf(account) });
+    if (found === null) return undefined;
+    const held = Limit.parse(found);
+    return {
+      ...(held.maxSpendUsd === undefined ? {} : { maxSpend: usd(held.maxSpendUsd) }),
+      ...(held.maxTokens === undefined ? {} : { maxTokens: held.maxTokens }),
+    };
   }
 
-  async saveMaxSpend(account: BudgetAccount, maxSpend: Usd): Promise<void> {
-    await this.#maxSpend.updateOne(
+  /** Keeps the limits the execution read (the last one wins): a limit it has none of is cleared. */
+  async saveLimit(account: BudgetAccount, limit: BudgetLimit): Promise<void> {
+    await this.#limits.updateOne(
       { _id: accountIdOf(account) },
-      { $set: { maxSpendUsd: maxSpend } },
+      {
+        ...(limit.maxSpend === undefined && limit.maxTokens === undefined
+          ? {}
+          : {
+              $set: {
+                ...(limit.maxSpend === undefined ? {} : { maxSpendUsd: limit.maxSpend }),
+                ...(limit.maxTokens === undefined ? {} : { maxTokens: limit.maxTokens }),
+              },
+            }),
+        $unset: {
+          ...(limit.maxSpend === undefined ? { maxSpendUsd: "" } : {}),
+          ...(limit.maxTokens === undefined ? { maxTokens: "" } : {}),
+        },
+      },
       { upsert: true },
     );
   }
 }
+
+const sum = (values: readonly number[]): number => values.reduce((total, one) => total + one, 0);

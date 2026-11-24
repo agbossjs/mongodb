@@ -16,7 +16,7 @@ import {
   MongoFencedEffectRepository,
   MongoOutboundCallRepository,
   MongoPausedExecutionRepository,
-  type MongoTransaction,
+  requireMongoTransaction,
 } from "../../src/index.js";
 
 /**
@@ -35,7 +35,7 @@ export class MongoFaultEnvironment {
 /** The collection of the fixture's business documents. */
 export const FAULT_BUSINESS_ROWS = "fault_business_rows";
 
-export const faultStores: FaultStoreSet<MongoTransaction> = {
+export const faultStores: FaultStoreSet = {
   // agbossjs/agboss#799: the leases expire by the server's $$NOW, at the real rate — the fault suite
   // reads the history on it, whatever the pods' timeScale
   storeTime: FaultStoreTime.Database,
@@ -64,7 +64,9 @@ export const faultStores: FaultStoreSet<MongoTransaction> = {
     values: { mongodbUrl: secret("AGBOSS_FAULT_DATABASE_URL") },
   },
   businessRows: {
-    insert: async ({ db, session }, row) => {
+    // the effect's ambient transaction (#1317c)
+    insert: async (row) => {
+      const { db, session } = requireMongoTransaction();
       await db.collection(FAULT_BUSINESS_ROWS).insertOne({ row }, { session });
     },
     committed: async (app) => {

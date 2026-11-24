@@ -1,4 +1,4 @@
-import { A2ATaskSaveStatus, A2ATaskState, type NewA2ATask } from "@agboss/core";
+import { A2ATaskSaveStatus, A2ATaskState, type NewA2ATask } from "@agboss/core/stores";
 import type { Db } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { MongoA2ATaskRepository } from "../../src/index.js";
@@ -18,6 +18,7 @@ const NINE = new Date("2026-01-05T09:00:00.000Z");
 const at = (minutes: number): Date => new Date(NINE.getTime() + minutes * 60_000);
 
 const newTask = (taskId: string, messageId: string, acceptedAt: Date): NewA2ATask => ({
+  endpoint: "orders",
   tenantId: "default",
   taskId,
   ownerId: "alice",
@@ -66,6 +67,7 @@ describe("agbossjs/agboss#960: the MongoDB orphan sweep against a resend of the 
     const connection = connectionTo(database.url());
     const tasks = new MongoA2ATaskRepository(connection);
     const orphan = {
+      endpoint: "orders",
       tenantId: "default",
       ownerId: "alice",
       messageId: "m-x",
@@ -76,12 +78,13 @@ describe("agbossjs/agboss#960: the MongoDB orphan sweep against a resend of the 
     expect(await tasks.saveMessageIfAbsent(orphan)).toBeUndefined();
     let resent: A2ATaskSaveStatus | undefined;
     const between = async (): Promise<void> => {
-      await sweptOrphanMessagesBefore(connection.db, at(10));
+      await sweptOrphanMessagesBefore(connection.db, "orders", at(10));
       resent = (await tasks.saveIfAbsent(newTask("t-20", "m-x", at(20)))).status;
     };
 
     const removed = await sweptOrphanMessagesBefore(
       pausedAfterTaskRead(connection.db, between),
+      "orders",
       at(10),
     );
 
@@ -100,6 +103,7 @@ describe("agbossjs/agboss#960: the MongoDB orphan sweep against a resend of the 
     const connection = connectionTo(database.url());
     const tasks = new MongoA2ATaskRepository(connection);
     const orphan = {
+      endpoint: "orders",
       tenantId: "default",
       ownerId: "alice",
       messageId: "m-y",
@@ -109,7 +113,7 @@ describe("agbossjs/agboss#960: the MongoDB orphan sweep against a resend of the 
     };
     await tasks.saveMessageIfAbsent(orphan);
 
-    expect(await sweptOrphanMessagesBefore(connection.db, at(10))).toBe(1);
+    expect(await sweptOrphanMessagesBefore(connection.db, "orders", at(10))).toBe(1);
 
     expect(await tasks.findByMessage(orphan)).toBeUndefined();
   });

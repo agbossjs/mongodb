@@ -28,22 +28,25 @@ const idsIn = (ids: readonly string[]): Filter<A2ATaskDocument> =>
   });
 
 /**
- * The retention sweep of `MongoA2ATaskRepository` (agbossjs/agboss#824): the terminal tasks whose
- * status changed before `cutoff`, `batchSize` at a time, each batch's tasks then their messages,
- * every command on its own. Resolves with the number of batches it removed.
+ * The retention sweep of `MongoA2ATaskRepository` (agbossjs/agboss#824, #1320): the terminal tasks of
+ * `endpoint` whose status changed before `cutoff`, `batchSize` at a time, each batch's tasks then
+ * their messages, every command on its own. Resolves with the number of tasks it removed.
  */
 export async function sweptTerminalBefore(
   db: Db,
+  endpoint: string,
   cutoff: Date,
   batchSize = SWEEP_BATCH,
 ): Promise<number> {
   const tasks = db.collection<A2ATaskDocument>(Collections.A2ATasks);
   const messages = db.collection<A2AMessageDocument>(Collections.A2AMessages);
-  const due = { state: { $in: [...TERMINAL_STATES] }, statusAt: { $lt: cutoff } };
-  for (let batches = 0; ; batches += 1) {
+  const due = { endpoint, state: { $in: [...TERMINAL_STATES] }, statusAt: { $lt: cutoff } };
+  let removed = 0;
+  for (;;) {
     const batch = await tasks.find(due, { projection: KEYS_ONLY, limit: batchSize }).toArray();
-    if (batch.length === 0) return batches;
-    await tasks.deleteMany({ ...due, _id: { $in: batch.map((task) => task._id) } });
+    if (batch.length === 0) return removed;
+    removed += (await tasks.deleteMany({ ...due, _id: { $in: batch.map((task) => task._id) } }))
+      .deletedCount;
     await messages.deleteMany({
       $or: batch.map(({ tenantId, taskId }) => ({ tenantId, taskId })),
     });
@@ -60,6 +63,7 @@ export async function sweptTerminalBefore(
  */
 export async function sweptOrphanMessagesBefore(
   db: Db,
+  endpoint: string,
   cutoff: Date,
   batchSize = SWEEP_BATCH,
 ): Promise<number> {
@@ -70,7 +74,12 @@ export async function sweptOrphanMessagesBefore(
   for (let after = ""; ;) {
     const batch = await messages
       .find(
-        { savedAt: { $lt: cutoff }, taskId: { $ne: DIRECT_MESSAGE_CLAIM }, _id: { $gt: after } },
+        {
+          endpoint,
+          savedAt: { $lt: cutoff },
+          taskId: { $ne: DIRECT_MESSAGE_CLAIM },
+          _id: { $gt: after },
+        },
         { projection: KEYS_ONLY, sort: { _id: 1 }, limit: batchSize },
       )
       .toArray();
@@ -85,7 +94,12 @@ export async function sweptOrphanMessagesBefore(
     if (orphans.length > 0)
       removed += (
         await messages.deleteMany({
-          $or: orphans.map(({ _id, taskId }) => ({ _id, taskId, savedAt: { $lt: cutoff } })),
+          $or: orphans.map(({ _id, taskId }) => ({
+            _id,
+            endpoint,
+            taskId,
+            savedAt: { $lt: cutoff },
+          })),
         })
       ).deletedCount;
     after = last._id;

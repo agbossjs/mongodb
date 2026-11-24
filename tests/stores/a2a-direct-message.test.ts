@@ -1,8 +1,9 @@
+import { usd } from "@agboss/core/units";
 import {
   A2ADirectMessageSaveStatus,
   A2ADirectMessageState,
   type NewA2ADirectMessage,
-} from "@agboss/core/a2a";
+} from "@agboss/core/stores";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoA2ADirectMessageRepository } from "../../src/index.js";
 import { testDatabase } from "../support/database.js";
@@ -20,6 +21,7 @@ const NINE = new Date("2026-01-05T09:00:00.000Z");
 const at = (seconds: number): Date => new Date(NINE.getTime() + seconds * 1000);
 
 const newMessage = (messageId: string, extra: Partial<NewA2ADirectMessage> = {}) => ({
+  endpoint: "orders",
   tenantId: "acme",
   ownerId: "alice",
   messageId,
@@ -42,7 +44,7 @@ afterEach(async () => {
   await collection(Collections.A2AMessages).deleteMany({});
 });
 
-const REPLY = { finish: "quote-workflow-finish", output: { text: "ok" }, spentUsd: 0.01 };
+const REPLY = { finish: "quote-workflow-finish", output: { text: "ok" }, spentUsd: usd(0.01) };
 
 describe("agbossjs/agboss#860: a MongoDB direct message read back fails closed", () => {
   it.each([
@@ -100,7 +102,7 @@ describe("agbossjs/agboss#860: a MongoDB direct message's save and the sweep", (
       const resend = newMessage(messageId, { attemptId: "run-again", createdAt: at(60) });
       const [save] = await Promise.all([
         saver.saveIfAbsent(resend),
-        sweeper.deleteByCreatedAtBefore(at(30), 10),
+        sweeper.deleteExpired(new Map([["orders", at(30)]]), 10),
       ]);
 
       expect(save.status).toBe(A2ADirectMessageSaveStatus.Saved);

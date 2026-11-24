@@ -1,5 +1,6 @@
 import { ExecutionRecordStatus, IdGenerator, type NewTurn, type TurnOutcome } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
+import { usd } from "@agboss/core/units";
 import { afterEach } from "vitest";
 import { MongoConnection, MongoExecutionRecordRepository } from "../../src/index.js";
 import { TestApplicationContext } from "./application-context.js";
@@ -61,7 +62,7 @@ export const outcomeOf = (
   stopReason: "",
   route: ["start", "clerk"],
   steps: [{ agent: "clerk", content: "looked it up" }],
-  costUsd: 0.01,
+  costUsd: usd(0.01),
   ...fields,
 });
 
@@ -75,7 +76,7 @@ export const recordOf = (
   runId: "run-1",
   threadId,
   tenantId: "default",
-  bundle: "desk-workflow",
+  workflow: "desk-workflow",
   task: "where is order 7?",
   promptVersion: "p1",
   modelVersion: "m1",

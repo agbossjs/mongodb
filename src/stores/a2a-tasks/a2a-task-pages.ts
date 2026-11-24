@@ -1,4 +1,4 @@
-import type { A2ATaskPage, A2ATaskQuery } from "@agboss/core";
+import type { A2ATaskPage, A2ATaskQuery } from "@agboss/core/stores";
 import type { Collection, Filter } from "mongodb";
 import {
   ownerColumnOf,
@@ -17,6 +17,7 @@ import {
 /** The filters of `query`. */
 function filterOf(query: A2ATaskQuery): Filter<A2ATaskDocument> {
   return {
+    endpoint: query.endpoint,
     tenantId: query.tenantId,
     ownerId: ownerColumnOf(query.ownerId),
     // a filter that is not asked for is undefined, which the client leaves out (`ignoreUndefined`)

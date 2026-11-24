@@ -1,10 +1,8 @@
-import { FencedEffectSettings } from "@agboss/core";
 import type { FencedEffectTarget, StoreInstanceContext } from "@agboss/core/testing/contracts";
 import {
   MongoExecutionLeaseRepository,
   MongoFencedEffectRepository,
   type MongoConnection,
-  type MongoTransaction,
 } from "../../src/index.js";
 
 /** The collection of the business rows a contract case's fenced effect writes. */
@@ -21,19 +19,17 @@ let inserted = 0;
 export function fencedEffectsOn(
   connection: MongoConnection,
   seam: StoreInstanceContext,
-  effects = new MongoFencedEffectRepository(
-    connection,
-    seam.storeClock,
-    new FencedEffectSettings(),
-  ),
+  effects = new MongoFencedEffectRepository(connection, seam.storeClock),
   leases = new MongoExecutionLeaseRepository(connection, seam.storeClock, seam.application),
-): FencedEffectTarget<MongoTransaction> {
+): FencedEffectTarget {
   const rows = connection.db.collection<{ row: string; at: number }>(CONTRACT_ROWS);
   return {
     effects,
     leases,
     rows: {
-      insert: async ({ session }, row) => {
+      // the effect's ambient transaction (#1317c)
+      insert: async (row) => {
+        const { session } = connection.requireTransaction();
         inserted += 1;
         await rows.insertOne({ row, at: inserted }, { session });
       },

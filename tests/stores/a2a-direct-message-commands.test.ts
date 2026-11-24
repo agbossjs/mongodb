@@ -1,3 +1,4 @@
+import { usd } from "@agboss/core/units";
 /**
  * agbossjs/mongodb#104: the commands the direct-message store sends, as the shard's mutants drop their
  * options: a save and a sweep are one transaction (a command of theirs outside it is blind to the
@@ -27,6 +28,7 @@ const DIRECT = Collections.A2ADirectMessages;
 const CLAIMS = Collections.A2AMessages;
 
 const newMessage = (messageId: string): NewA2ADirectMessage => ({
+  endpoint: "orders",
   tenantId: "acme",
   ownerId: "alice",
   messageId,
@@ -40,7 +42,7 @@ const newMessage = (messageId: string): NewA2ADirectMessage => ({
   createdAt: NINE,
 });
 const keyOf = (messageId: string) => ({ tenantId: "acme", ownerId: "alice", messageId });
-const REPLY = { finish: "quote-finish", output: { text: "ok" }, spentUsd: 0.01 };
+const REPLY = { finish: "quote-finish", output: { text: "ok" }, spentUsd: usd(0.01) };
 
 afterEach(async () => {
   const connection = connectionTo(database.url());
@@ -91,7 +93,7 @@ describe("saveIfAbsent is one transaction", () => {
   });
 });
 
-describe("deleteByCreatedAtBefore is one transaction that reads ids only, in its paging order", () => {
+describe("deleteExpired is one transaction that reads ids only, in its paging order", () => {
   /** A completed message `id` accepted at `NINE`, and one whose document is gone but its claim is not. */
   async function sweepable(store: MongoA2ADirectMessageRepository): Promise<void> {
     await store.saveIfAbsent(newMessage("done-1"));
@@ -105,9 +107,9 @@ describe("deleteByCreatedAtBefore is one transaction that reads ids only, in its
     await sweepable(store);
     const sent = commandsOf(connection);
 
-    const gone = await store.deleteByCreatedAtBefore(at(100), 5);
+    const gone = await store.deleteExpired(new Map([["orders", at(100)]]), 5);
 
-    expect(gone.map((message) => message.messageId)).toEqual(["done-1"]);
+    expect(gone).toBe(1);
     expect(sent.map(nameOf)).toEqual([
       `find ${DIRECT}`,
       `delete ${DIRECT}`,
@@ -124,10 +126,10 @@ describe("deleteByCreatedAtBefore is one transaction that reads ids only, in its
     await sweepable(store);
     const sent = commandsOf(connection);
 
-    await store.deleteByCreatedAtBefore(at(100), 5);
+    await store.deleteExpired(new Map([["orders", at(100)]]), 5);
 
     const [due, , , orphans, held] = sent;
-    expect(plain(due?.command.sort)).toEqual({ createdAt: 1, _id: 1 });
+    expect(plain(due?.command.sort)).toEqual({ completedAt: 1, _id: 1 });
     expect(due?.command.limit).toBe(5);
     expect(plain(orphans?.command.projection)).toEqual({ _id: 1 });
     expect(plain(orphans?.command.sort)).toEqual({ savedAt: 1, _id: 1 });
@@ -141,7 +143,7 @@ describe("deleteByCreatedAtBefore is one transaction that reads ids only, in its
     await sweepable(store);
     const sent = commandsOf(connection);
 
-    await store.deleteByCreatedAtBefore(at(100), 5);
+    await store.deleteExpired(new Map([["orders", at(100)]]), 5);
 
     const deletes = sent.filter((one) => one.name === "delete");
     const [messages, claims, orphans] = deletes.map(
@@ -156,9 +158,9 @@ describe("deleteByCreatedAtBefore is one transaction that reads ids only, in its
     const { connection, store } = setup();
     const sent = commandsOf(connection);
 
-    const gone = await store.deleteByCreatedAtBefore(at(100), 5);
+    const gone = await store.deleteExpired(new Map([["orders", at(100)]]), 5);
 
-    expect(gone).toEqual([]);
+    expect(gone).toBe(0);
     expect(sent.map(nameOf)).toEqual([`find ${DIRECT}`, `find ${CLAIMS}`, `find ${DIRECT}`]);
   });
 });
@@ -186,7 +188,7 @@ describe("a page's limit is a whole number from 1", () => {
       await expect(store.findAllInFlightByExpiresAtBefore(at(1), limit)).rejects.toThrow(
         new RangeError(message),
       );
-      await expect(store.deleteByCreatedAtBefore(at(1), limit)).rejects.toThrow(
+      await expect(store.deleteExpired(new Map([["orders", at(1)]]), limit)).rejects.toThrow(
         new RangeError(message),
       );
     },

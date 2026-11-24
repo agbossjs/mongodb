@@ -1,4 +1,5 @@
 import type { Turn } from "@agboss/core";
+import { usd } from "@agboss/core/units";
 import type { Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
@@ -23,6 +24,8 @@ const STATUSES = [
   "answered",
   "guarded",
   "failed",
+  "stopped",
+  "cancelled",
   "paused",
   "queued",
   "written",
@@ -35,7 +38,7 @@ const Stored = z.object({
   runId: text.nullable(),
   tenantId: text,
   threadId: text,
-  bundle: text,
+  workflow: text,
   createdAt: z.date(),
   task: text,
   replyWith: text,
@@ -43,7 +46,7 @@ const Stored = z.object({
   stopReason: text,
   route: z.array(text),
   steps: z.array(z.object({ agent: text, content: text })),
-  costUsd: z.number(),
+  costUsd: z.number().transform(usd),
   promptVersion: text,
   modelVersion: text,
   replayOf: text.nullable(),

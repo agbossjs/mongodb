@@ -25,6 +25,7 @@ const START = Date.parse("2026-10-18T08:00:00.000Z");
 
 const entry = (index: number): LedgerEntry => ({
   caller: "clerk-agent",
+  provider: "test",
   model: "test/clerk",
   inputTokens: 0,
   outputTokens: 0,
@@ -67,7 +68,7 @@ describe("agbossjs/agboss#832: a dropped ledger between two starts on the fault 
         await expect(ledger.saveAll([counter], [again])).rejects.toMatchObject({
           code: "mongodb.ledger-mark-missing",
         });
-      expect(await ledger.findSpentByCounter(counter)).toBe(0.25);
+      expect((await ledger.findUsageByCounter(counter)).spent).toBe(0.25);
     });
   }, 120_000);
 });

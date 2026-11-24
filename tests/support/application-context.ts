@@ -11,6 +11,7 @@ export class TestApplicationContext extends ApplicationContext {
   readonly startedAt = new Date("2026-01-05T09:00:00.000Z");
   readonly environmentName = "test";
   readonly environment: ApplicationContext["environment"];
+  readonly profiles: ApplicationContext["profiles"] = ["test"];
   readonly host: HostContext = {
     hostname: "test-host",
     pid: 1,

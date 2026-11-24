@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
 import { testDatabase } from "../support/database.js";
-import { oldPausedRun } from "./pause-names-0.1.0.fixtures.js";
+import { currentPausedRun } from "../support/paused-run.js";
 import { connectionTo } from "../support/stores.js";
 
 /**
@@ -19,14 +19,13 @@ const pausesOn = (): MongoPausedExecutionRepository =>
   new MongoPausedExecutionRepository(connectionTo(database.url()), new VirtualClock());
 
 const run = {
-  ...oldPausedRun,
+  ...currentPausedRun,
   threadId: "thread-1",
   tenantId: "acme",
   runId: "run-1",
   turnId: "turn-1",
-  ternId: undefined,
   startInput: { ssn: SECRET },
-  data: { ...Object(oldPausedRun.data), note: SECRET },
+  data: { ...Object(currentPausedRun.data), note: SECRET },
 };
 
 interface StoredPaused {
@@ -66,31 +65,24 @@ const failureOf = async (): Promise<Error> => {
 };
 
 describe("agbossjs/agboss#906 D4: MongoDB paused runs", () => {
-  it("a run stored by 0.1.0 under `ternId` is read as `turnId`, and resumes from there", async () => {
+  it("a run stored under 0.1.0's name `ternId` is refused (no 0.1.0 compatibility), naming the field", async () => {
     await storedAs(({ turnId, ...rest }) => ({ ...rest, ternId: turnId }));
 
-    const found = await pausesOn().findByTenantIdAndThreadId("acme", "thread-1");
+    const error = await failureOf();
 
-    expect(found?.run).toMatchObject({ turnId: "turn-1", runId: "run-1", tenantId: "acme" });
-    expect(found?.run).not.toHaveProperty("ternId");
+    expect(error.message).toContain("a stored paused run is not readable");
+    expect(error.message).toContain("the field(s) turnId");
   });
 
-  it("a run written whole by 0.1.0 (a typed literal against the published declarations) is read: its pending pause has the new names", async () => {
-    await storedAs(() => ({
-      ...oldPausedRun,
-      threadId: "thread-1",
-      runId: "run-1",
-      tenantId: "acme",
-    }));
+  it("a run in the 0.1.1 shape is read whole", async () => {
+    await storedAs(() => ({ ...currentPausedRun, threadId: "thread-1", tenantId: "acme" }));
 
     const found = await pausesOn().findByTenantIdAndThreadId("acme", "thread-1");
 
-    expect(found?.run).toMatchObject({ turnId: "turn-1", cost: { unknownCalls: 0 } });
-    expect(found?.run.pending[0]).toMatchObject({
-      kind: "approval",
-      step: "clerk-agent",
-      answerer: "channel",
-      answeredBy: "channel",
+    expect(found?.run).toMatchObject({
+      turnId: "turn-1",
+      runId: "run-1",
+      cost: { unknownCalls: 0 },
     });
   });
 

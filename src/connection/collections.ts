@@ -79,6 +79,12 @@ export const Collections = {
    * message id — its id claimed in `A2AMessages`, a claim of no task (`taskId` `""`).
    */
   A2ADirectMessages: "agboss_a2a_direct_messages",
+  /**
+   * The status history of a thread (agbossjs/agboss#1341d): one document per change, `_id` the
+   * thread's tenant, id and `seq`, written in the very transaction of the change — a lease's mark
+   * or a record's status write.
+   */
+  ThreadStatusTransitions: "agboss_thread_status_transitions",
   /** LangGraph's checkpoints. */
   Checkpoints: "agboss_checkpoints",
   /** LangGraph's pending writes of a checkpoint. */

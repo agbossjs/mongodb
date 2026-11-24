@@ -46,7 +46,7 @@ function checkedLimit(limit: number): number {
  * - `completeIfInFlight`, `retakeIfExpired` (also `expiresAt <= now`, the caller's clock) and
  *   `deleteIfInFlight` are each one conditional command on `_id`, the state and the attempt id: of
  *   two writers exactly one matches. A removed message's claim stays until the sweep.
- * - `deleteByCreatedAtBefore` is one transaction of at most `limit` completed messages — never one
+ * - `deleteExpired` is one transaction of at most `limit` completed messages — never one
  *   in flight, a live attempt's (agbossjs/agboss#860 D2) — and `limit` claims
  *   (`a2a-direct-message-sweep.ts`).
  *
@@ -145,13 +145,18 @@ export class MongoA2ADirectMessageRepository extends A2ADirectMessageRepository 
     return found.map(directMessageOf);
   }
 
-  async deleteByCreatedAtBefore(
-    cutoff: Date,
+  /**
+   * Per endpoint, in one transaction: at most `limit` completed messages whose reply was kept before
+   * the endpoint's cutoff — never one in flight —, the oldest first, with their ids' claims, then at
+   * most `limit` claims more left by messages of the endpoint removed before. How many messages went.
+   */
+  async deleteExpired(
+    cutoffsByEndpoint: ReadonlyMap<string, Date>,
     limit: number,
-  ): Promise<readonly A2ADirectMessageRecord[]> {
+  ): Promise<number> {
     const checked = checkedLimit(limit);
     return this.connection.inTransaction(({ session, db }) =>
-      sweptIn(db, session, cutoff, checked),
+      sweptIn(db, session, cutoffsByEndpoint, checked),
     );
   }
 

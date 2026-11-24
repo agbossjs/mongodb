@@ -3,8 +3,12 @@
  * contract case refuses a limit that is no whole number from 1 and a cursor this store never gave.
  */
 
+/** The size of a page when none is asked. */
+const DEFAULT_PAGE = 100;
+
 /** `limit` as asked: a whole number from 1 — `0`, a fraction, `NaN` or a negative one is a `RangeError`. */
-export function pageLimitOf(limit: number): number {
+export function pageLimitOf(limit: number | undefined): number {
+  if (limit === undefined) return DEFAULT_PAGE;
   if (Number.isSafeInteger(limit) && limit >= 1) return limit;
   throw new RangeError(`a page's limit is a whole number of calls from 1, got ${String(limit)}`);
 }

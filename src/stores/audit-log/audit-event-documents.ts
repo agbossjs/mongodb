@@ -1,8 +1,8 @@
 import {
   ExecutionAuditEventKind,
-  FencedEffectEventOutcome,
   HandOverReason,
   HandOverSite,
+  IdempotencyRunEventOutcome,
   LeaseTakeoverReason,
   OutboundCallEventOutcome,
   OutboundCallStatus,
@@ -60,11 +60,11 @@ const HandedOver = z.strictObject({
   observedToken: z.number().int().optional(),
 });
 
-const FencedEffect = z.strictObject({
+const IdempotencyRun = z.strictObject({
   ...base,
-  kind: z.literal(ExecutionAuditEventKind.FencedEffect),
+  kind: z.literal(ExecutionAuditEventKind.IdempotencyRun),
   name: z.string(),
-  outcome: z.enum(FencedEffectEventOutcome),
+  outcome: z.enum(IdempotencyRunEventOutcome),
   step: Step,
   writtenToken: z.number().int().optional(),
   replayedFrom: Origin.optional(),
@@ -92,7 +92,7 @@ const OutboundCall = z.strictObject({
     .optional(),
 });
 
-const Record = z.discriminatedUnion("kind", [Takeover, HandedOver, FencedEffect, OutboundCall]);
+const Record = z.discriminatedUnion("kind", [Takeover, HandedOver, IdempotencyRun, OutboundCall]);
 
 const EventDocument = z.object({ record: z.string() });
 

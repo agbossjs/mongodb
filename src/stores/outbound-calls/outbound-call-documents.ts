@@ -1,5 +1,6 @@
-import { OutboundCallStatus, type EffectKey, type OutboundCallRecord } from "@agboss/core";
-import { effectKeyIdentityOf } from "@agboss/core/stores";
+import { OutboundCallStatus, type OutboundCallRecord } from "@agboss/core";
+import { effectKeyIdentityOf, type EffectKey } from "@agboss/core/stores";
+import type { Filter, UpdateFilter } from "mongodb";
 import { z } from "zod";
 import { idOf } from "../keys.js";
 
@@ -19,8 +20,11 @@ export interface OutboundCallDocument {
   status: OutboundCallStatus;
   attempt: number;
   attemptOwner: string;
-  /** When it last ended, a date (the record keeps it as ISO text); `null` while pending. */
-  endedAt: Date | null;
+  /**
+   * When the ended call may be removed (#1317: `now + ttl` of its end, a date), `null` while pending
+   * and for `Ttl.Forever`: what `deleteExpired` and its index read.
+   */
+  expiresAt: Date | null;
 }
 
 const text = z.string();
@@ -76,8 +80,51 @@ export interface AsRead {
 /** The change of a compare-and-set: the record's new fields, and its new end. */
 export interface Change {
   readonly fields: Partial<OutboundCallRecord>;
-  readonly endedAt?: Date;
+  readonly expiresAt?: Date | null;
 }
 
 /** A change as of the store's time the fence decided by. */
 export type ChangeAt = (now: Date) => Change;
+
+/**
+ * The compare-and-set of `key`'s document: the filter — the status, attempt owner and, when given,
+ * attempt the caller read — and the update that writes `change` under the key's lease and token (the
+ * record's own fields, the fields it is found by, `expiresAt`; a move leaves out the last ending).
+ */
+export function moveOf(
+  key: EffectKey,
+  from: AsRead,
+  change: Change,
+): {
+  readonly filter: Filter<OutboundCallDocument>;
+  readonly update: UpdateFilter<OutboundCallDocument>;
+} {
+  const fields = { ...change.fields, token: key.token, leaseExecutionId: key.leaseExecutionId };
+  const set = Object.fromEntries(
+    Object.entries(fields).map(([field, value]) => [`record.${field}`, value]),
+  );
+  const unset = ENDING_FIELDS.filter((field) => !(field in set));
+  return {
+    filter: {
+      _id: callIdOf(key),
+      status: from.status,
+      attemptOwner: from.attemptOwner,
+      ...(from.attempt === undefined ? {} : { attempt: from.attempt }),
+    },
+    update: {
+      $set: {
+        ...set,
+        status: fields.status ?? from.status,
+        ...(fields.attempt === undefined ? {} : { attempt: fields.attempt }),
+        ...(fields.attemptOwner === undefined ? {} : { attemptOwner: fields.attemptOwner }),
+        expiresAt: change.expiresAt ?? null,
+      },
+      ...(unset.length === 0
+        ? {}
+        : {
+            // Stryker disable next-line StringLiteral: equivalent, the server ignores the value of a field of $unset
+            $unset: Object.fromEntries(unset.map((field) => [field, ""])),
+          }),
+    },
+  };
+}

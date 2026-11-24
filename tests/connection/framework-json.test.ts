@@ -17,11 +17,12 @@ import {
   pausedRunOfJson,
   pauseRecordOf,
 } from "../../src/stores/framework-json.js";
-import { oldAnswerLogEntry, oldPausedRun } from "../stores/pause-names-0.1.0.fixtures.js";
+import { answerOf } from "../support/pause-answers.js";
+import { pausedRunOf } from "../support/paused-run.js";
 
 // read in a test, not at the import: a mutant of the reading that fails here must fail a test, which kills it,
 // not the import of the file, which Stryker leaves out of the score (agbossjs/mongodb#103)
-const base = (): PausedExecution["run"] => pausedRunOfJson(JSON.stringify(oldPausedRun));
+const base = (): PausedExecution["run"] => pausedRunOfJson(pausedRunJsonOf(pausedRunOf()));
 const run = (extra: Partial<PausedExecution["run"]>): PausedExecution["run"] => ({
   ...base(),
   ...extra,
@@ -43,7 +44,16 @@ const pause: PauseRecord = {
   step: "clerk-agent",
   channel: "refund-approval-channel",
   answerer: PauseAnswerer.Channel,
-  ask: { callId: "call-1", tool: "charge", arguments: { text: "10 USD" }, summary: "charge" },
+  input: { text: "10 USD" },
+  toolCall: { callId: "call-1", tool: "charge", summary: "charge" },
+  trail: [
+    {
+      action: "opened",
+      at: "2026-01-05T09:00:00.000Z",
+      target: "refund-approval-channel",
+      channel: "refund-approval-channel",
+    },
+  ],
   status: PauseStatus.Pending,
   isSent: false,
   askedAt: "2026-01-05T09:00:00.000Z",
@@ -89,9 +99,11 @@ describe("a paused run's non-finite numbers", () => {
 
 describe("the records a store keeps as JSON are read whole by the core", () => {
   it("a pause's log entry is read from its JSON", () => {
-    const answer = pauseAnswerOfJson(JSON.stringify(oldAnswerLogEntry), { executionId: "run-1" });
+    const answer = pauseAnswerOfJson(JSON.stringify(answerOf("manager-17")), {
+      executionId: "child-7",
+    });
 
-    expect(answer).toMatchObject({ executionId: "run-1", answeredBy: "manager-17" });
+    expect(answer).toMatchObject({ executionId: "child-7", actor: { id: "manager-17" } });
   });
 
   it("a log entry that is not JSON is unreadable: it names what it is and the ids, never the text", () => {

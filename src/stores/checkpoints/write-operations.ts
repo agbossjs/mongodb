@@ -12,6 +12,7 @@ interface Serde {
 interface WriteKey {
   readonly tenantId: string;
   readonly threadId: string;
+  readonly rootId: string;
   readonly namespace: string;
   readonly checkpointId: string;
 }

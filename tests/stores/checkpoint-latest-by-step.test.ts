@@ -65,6 +65,7 @@ describe("agbossjs/agboss#962: MongoCheckpointSaver.latestByStep", () => {
         _id: `busy|${String(n)}`,
         tenantId: "default",
         threadId: "busy",
+        rootId: "busy",
         namespace: "",
         checkpointId: `id-${String(n).padStart(6, "0")}`,
         parentCheckpointId: null,

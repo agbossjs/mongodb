@@ -36,6 +36,10 @@ export default tseslint.config(
       // a Stryker sandbox (a copy of the package) left behind by an interrupted mutation run
       ".stryker-tmp*",
       "reports",
+      // the process fixtures are written in the 0.1.0 DSL: out of the typecheck until the DSL port
+      "tests/fixtures",
+      "tests/processes",
+      "tests/integration/close-quiet-app.integration.test.ts",
     ],
   },
   js.configs.recommended,

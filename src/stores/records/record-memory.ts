@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Collection, Db } from "mongodb";
+import { usd } from "@agboss/core/units";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { oldestFirst, seqOf } from "./record-documents.js";
@@ -7,8 +8,8 @@ import { newest, oldest } from "./record-reads.js";
 import type { NewSummary, Summary, Turn } from "@agboss/core";
 
 /**
- * Conversation memory on the records (#77, #120 PR 3): the turns a compaction has not summarised,
- * the turns before one, a turn's position, and each compaction's summaries of a thread — a turn's
+ * Conversation memory on the records (#77, #120 PR 3): the turns a memory has not summarised,
+ * the turns before one, a turn's position, and each memory's summaries of a thread — a turn's
  * place is its record's `seq`.
  */
 
@@ -23,13 +24,13 @@ const StoredSummaryDocument = z.object({
   _id: z.string(),
   tenantId: z.string(),
   threadId: z.string(),
-  bundle: z.string(),
-  compaction: z.string(),
+  workflow: z.string(),
+  memory: z.string(),
   fromTurnId: z.string(),
   toTurnId: z.string(),
   turns: z.number(),
   text: z.string(),
-  costUsd: z.number(),
+  costUsd: z.number().transform(usd),
   createdAt: z.date(),
 });
 
@@ -43,15 +44,15 @@ const summariesIn = (db: Db): Collection<SummaryDocument> =>
 
 const LastSeq = z.object({ toSeq: z.number().nullable() });
 
-/** The thread's records after the compaction's last summary, oldest first. */
+/** The thread's records after the memory's last summary, oldest first. */
 export async function uncoveredRecords(
   db: Db,
   tenantId: string,
   threadId: string,
-  compaction: string,
+  memory: string,
 ): Promise<Turn[]> {
   const last = await summariesIn(db).findOne(
-    { tenantId, threadId, compaction, toSeq: { $ne: null } },
+    { tenantId, threadId, memory, toSeq: { $ne: null } },
     { sort: { toSeq: -1 } },
   );
   const after = last === null ? 0 : (LastSeq.parse(last).toSeq ?? 0);
@@ -103,27 +104,27 @@ export async function addSummary(db: Db, summary: NewSummary, now: Date): Promis
   return stored;
 }
 
-/** The compaction's newest `limit` summaries of the thread, oldest first. */
+/** The memory's newest `limit` summaries of the thread, oldest first. */
 export async function latestSummariesOf(
   db: Db,
   tenantId: string,
   threadId: string,
-  compaction: string,
+  memory: string,
   limit: number,
 ): Promise<Summary[]> {
   if (limit <= 0) return [];
   const found = await summariesIn(db)
-    .find({ tenantId, threadId, compaction })
+    .find({ tenantId, threadId, memory })
     .sort({ toSeq: -1 })
     .limit(limit)
     .toArray();
   return oldestFirst(found).map(summaryOf);
 }
 
-/** How many summaries the compaction keeps of the thread. */
+/** How many summaries the memory keeps of the thread. */
 export const summaryCountOf = (
   db: Db,
   tenantId: string,
   threadId: string,
-  compaction: string,
-): Promise<number> => summariesIn(db).countDocuments({ tenantId, threadId, compaction });
+  memory: string,
+): Promise<number> => summariesIn(db).countDocuments({ tenantId, threadId, memory });

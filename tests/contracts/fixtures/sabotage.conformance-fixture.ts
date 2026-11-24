@@ -1,16 +1,16 @@
 // agbossjs/agboss#527 — the contract suites bite on MongoDB: deliberately broken stores run through
 // storeConformance (in a vitest of its own, sabotage.test.ts), each with the rule it breaks.
 import {
-  ExecutionFencedError,
-  FencedEffectSettings,
-  FencedEffectStatus,
+  ExecutionError,
+  IdempotencyRunStatus,
   type ExecutionLease,
-  type EffectKey,
-  type FencedEffectOutcome,
+  type IdempotencyRunOutcome,
   type FencedEffectWork,
   StoreClock,
   StoreTimeSource,
+  fencedRefusalOf,
 } from "@agboss/core";
+import { type EffectKey } from "@agboss/core/stores";
 import { effectKeyIdentityOf } from "@agboss/core/stores";
 import { storeConformance, type StoreInstanceContext } from "@agboss/core/testing/contracts";
 import type { Milliseconds } from "@agboss/core/units";
@@ -22,7 +22,6 @@ import {
   MongoOutboundCallRepository,
   MongoPausedExecutionRepository,
   type MongoConnection,
-  type MongoTransaction,
 } from "../../../src/index.js";
 import { checkCancel } from "../../../src/stores/cancel-fence.js";
 import { lockKey } from "../../../src/stores/fence.js";
@@ -56,6 +55,7 @@ import {
 } from "../../stores/cancel-sabotage.js";
 import { TestApplicationContext } from "../../support/application-context.js";
 import { emptyAll, testDatabase } from "../../support/database.js";
+import { withAmbientTransaction } from "../../../src/connection/ambient.js";
 import { fenceRaceCases } from "../fence-races.js";
 import { HandClock, leaseRaceCases } from "../lease-races.js";
 import { instanceConnection } from "../mongodb-store.js";
@@ -155,40 +155,52 @@ class ReadOnlyFenceEffects extends MongoFencedEffectRepository {
     private readonly mongo: MongoConnection,
     private readonly seam: Pick<StoreInstanceContext, "storeClock">,
   ) {
-    super(mongo, seam.storeClock, new FencedEffectSettings());
+    super(mongo, seam.storeClock);
   }
 
   protected override runInTransaction<TResult>(
     key: EffectKey,
-    work: FencedEffectWork<MongoTransaction, TResult>,
-  ): Promise<FencedEffectOutcome<TResult>> {
+    work: FencedEffectWork<TResult>,
+  ): Promise<IdempotencyRunOutcome<TResult>> {
     return this.mongo.inTransaction(async (transaction) => {
       const { db, session } = transaction;
       const now = this.seam.storeClock.now();
       const lease = await db
         .collection<Lease>(Collections.ExecutionLeases)
         .findOne({ _id: JSON.stringify([key.tenantId, key.leaseExecutionId]) }, { session });
-      const refused = (observedToken?: number): ExecutionFencedError =>
-        ExecutionFencedError.of({ scopeKey: key.scopeKey, token: key.token, observedToken });
+      const refused = (observedToken?: number): ExecutionError.Fenced =>
+        fencedRefusalOf({ scopeKey: key.scopeKey, token: key.token, observedToken });
       if (!isHeldAt(lease, key.token, now)) throw refused(lease?.token);
       const mark = await db
         .collection<{ _id: string; highestToken: number }>(Collections.FencedEffectMarks)
         .findOneAndUpdate(
           { _id: key.scopeKey },
-          { $max: { highestToken: key.token }, $set: { storedAt: now } },
+          [
+            {
+              $set: {
+                highestToken: { $max: [{ $ifNull: ["$highestToken", 0] }, key.token] },
+                storedAt: now,
+                expiresAt: key.expiresAt,
+              },
+            },
+          ],
           { upsert: true, returnDocument: "after", session },
         );
       const highest = mark?.highestToken ?? 0;
       if (highest > key.token) throw refused(highest);
       const id = JSON.stringify([effectKeyIdentityOf(key)]);
-      if (key.businessKey !== undefined) await lockKey(db, session, id, now);
+      if (key.businessKey !== undefined)
+        await lockKey(db, session, id, { now, expiresAt: key.expiresAt });
       const results = db.collection<ResultDocument>(Collections.FencedEffectResults);
       const stored = await results.findOne({ _id: id }, { session });
       if (stored !== null) return replayOf<TResult>(key, stored);
-      const text = this.storedResultOf(key, await work(transaction));
+      const text = this.storedResultOf(
+        key,
+        await withAmbientTransaction(this.mongo, transaction, async () => work()),
+      );
       await results.insertOne(resultDocumentOf(key, text, now), { session });
       return {
-        status: FencedEffectStatus.Ran,
+        status: IdempotencyRunStatus.Ran,
         result: JSON.parse(text) as TResult,
         token: key.token,
       };
@@ -241,7 +253,7 @@ storeConformance({
 });
 
 // a fenced effect whose lease check is a read: a zombie's write commits after the takeover
-storeConformance<MongoTransaction>({
+storeConformance({
   name: "a fence check that only reads",
   reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
   interleavings: false,
@@ -291,6 +303,7 @@ fenceRaceCases("a fence check that only reads", async () => {
   const application = (instanceId: string): TestApplicationContext =>
     new TestApplicationContext({}, instanceId);
   return {
+    connection: one,
     first: {
       effects: new ReadOnlyFenceEffects(one, { storeClock: clock }),
       leases: new MongoExecutionLeaseRepository(one, clock, application("instance-1")),
@@ -376,7 +389,7 @@ const brokenCancels: readonly BrokenCancel[] = [
 ];
 
 for (const broken of brokenCancels)
-  storeConformance<MongoTransaction>({
+  storeConformance({
     name: broken.name,
     reset: () => emptyAll(database.url(), [CONTRACT_ROWS]),
     without: ["executionAuditLog"],
@@ -386,10 +399,9 @@ for (const broken of brokenCancels)
         leasesOf(broken, connection, seam),
       ),
       fencedEffect: mongoStore(database, (connection, seam) => {
-        const settings = new FencedEffectSettings();
         const effects = broken.agePruning
-          ? new AgePruningEffects(connection, seam.storeClock, settings)
-          : new CancelCheckEffects(connection, seam.storeClock, broken.check ?? passes, settings);
+          ? new AgePruningEffects(connection, seam.storeClock)
+          : new CancelCheckEffects(connection, seam.storeClock, broken.check ?? passes);
         return fencedEffectsOn(connection, seam, effects, leasesOf(broken, connection, seam));
       }),
       outboundCall: mongoStore(database, (connection, seam) => ({

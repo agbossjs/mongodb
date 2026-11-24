@@ -143,7 +143,7 @@ export function expireChange(
           before,
           {
             status: PauseStatus.Resolved,
-            answer: { ...expiry.answer, answeredBy: undefined },
+            answer: { ...expiry.answer, actor: undefined },
             resolution: PauseResolution.DecidedOnExpiry,
           },
           at,

@@ -4,6 +4,7 @@ import {
   type A2ADirectMessageRecord,
   type A2ADirectMessageReply,
 } from "@agboss/core/stores";
+import { usd } from "@agboss/core/units";
 import { z } from "zod";
 import { messageIdOf, ownerColumnOf } from "../a2a-tasks/a2a-task-documents.js";
 import { parsedOrUnreadable } from "../unreadable.js";
@@ -17,6 +18,7 @@ import { parsedOrUnreadable } from "../unreadable.js";
 
 export interface A2ADirectMessageDocument {
   _id: string;
+  endpoint: string;
   tenantId: string;
   /** `""` for none, which no owner's id is (agbossjs/agboss#589). */
   ownerId: string;
@@ -43,10 +45,12 @@ export const directIdOf = (key: A2ADirectMessageKey): string => messageIdOf(key)
 const Reply = z.strictObject({
   finish: z.string(),
   output: z.unknown(),
-  spentUsd: z.number().nonnegative(),
+  spentUsd: z.number().nonnegative().transform(usd),
+  spentTokens: z.number().int().nonnegative().optional(),
 });
 
 const Stored = z.object({
+  endpoint: z.string(),
   tenantId: z.string(),
   ownerId: z.string(),
   messageId: z.string(),
@@ -70,6 +74,7 @@ export const replyTextOf = (reply: A2ADirectMessageReply): string => JSON.string
 
 export const directDocumentOf = (message: A2ADirectMessageRecord): A2ADirectMessageDocument => ({
   _id: directIdOf(message),
+  endpoint: message.endpoint,
   tenantId: message.tenantId,
   ownerId: ownerColumnOf(message.ownerId),
   messageId: message.messageId,
@@ -116,6 +121,7 @@ function replyOf(
 export function directMessageOf(document: unknown): A2ADirectMessageRecord {
   const stored = Stored.parse(document);
   return {
+    endpoint: stored.endpoint,
     tenantId: stored.tenantId,
     ownerId: stored.ownerId === "" ? undefined : stored.ownerId,
     messageId: stored.messageId,

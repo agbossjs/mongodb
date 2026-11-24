@@ -11,5 +11,10 @@ export function parsedOrUnreadable(
   ids: Readonly<Record<string, string | undefined>>,
   reviver?: (key: string, value: unknown) => unknown,
 ): unknown {
-  return parsedStoredJson(what, text, ids, reviver);
+  return parsedStoredJson({
+    what,
+    text,
+    ids,
+    ...(reviver === undefined ? {} : { reviver }),
+  });
 }

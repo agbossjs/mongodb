@@ -21,6 +21,12 @@ const NON_SHARDED_SRC: Readonly<Record<string, string>> = {
     "the named errors: constructors that build a code and a message from one options object; tests/errors walks every export",
   "src/redaction.ts":
     "the mask of a password in a printed text: byte for byte the twin of agbossjs/postgres's, with its 500 seeded draws; a run of it as a shard found 12 survivors, equivalent ones among them (a regex's split on one space or a run, bounds no input reaches), whose rewrite must be made in both packages: agbossjs/mongodb#105",
+  "src/driver.ts":
+    "`MongoDriver`'s options and the settings they resolve to, read once at start: wiring, no money-path decision (the settings' refusals are pure unit tests)",
+  "src/connection/driver-settings.ts":
+    "the driver's resolved settings read as connection settings: a zod parse and a mapping, once at start; tests/connection/driver-settings.test.ts pins each refusal",
+  "src/stores/listing-window.ts":
+    "the window of a paged listing (the cursor is a position the page gave): pure, read by the history's paging tests; no write, no claim",
   "src/stores/bundles.ts":
     "the store classes as two lists for `@Application({ providers })`: imports and arrays, no logic",
   // append-only logs and last-write stores: no once-only claim, no compare-and-set

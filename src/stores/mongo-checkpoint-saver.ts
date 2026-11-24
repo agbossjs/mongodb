@@ -114,7 +114,7 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata,
     newVersions: ChannelVersions,
   ): Promise<RunnableConfig> {
-    const { tenantId, threadId, namespace, checkpointId: parentId } = keyOf(config, "put");
+    const { tenantId, threadId, rootId, namespace, checkpointId: parentId } = keyOf(config, "put");
     const [[checkpointType, dumped], [metadataType, dumpedMetadata]] = await Promise.all([
       this.serde.dumpsTyped(withVersions(copyCheckpoint(checkpoint), newVersions)),
       this.serde.dumpsTyped(metadata),
@@ -123,7 +123,7 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     await this.#checkpoints.replaceOne(
       { _id },
       {
-        ...{ tenantId, threadId, namespace, checkpointId: checkpoint.id },
+        ...{ tenantId, threadId, rootId, namespace, checkpointId: checkpoint.id },
         parentCheckpointId: parentId ?? null,
         ...{ checkpointType, checkpoint: new Binary(dumped) },
         ...{ metadataType, metadata: new Binary(dumpedMetadata) },
@@ -135,14 +135,14 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
   }
 
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
-    const { tenantId, threadId, namespace, checkpointId } = keyOf(config, "putWrites");
+    const { tenantId, threadId, rootId, namespace, checkpointId } = keyOf(config, "putWrites");
     if (checkpointId === undefined)
       throw new Error("MongoCheckpointSaver.putWrites: the config has no checkpoint_id");
     if (writes.length === 0) return;
     const seq = await nextSequence(this.connection.db, Collections.CheckpointWrites);
     const operations = await writeOperationsOf(
       this.serde,
-      { tenantId, threadId, namespace, checkpointId },
+      { tenantId, threadId, rootId, namespace, checkpointId },
       taskId,
       seq,
       writes,
@@ -152,10 +152,16 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
     });
   }
 
-  /** The thread's pending writes, then its checkpoints: no transaction, so a thread of any size goes. */
-  async deleteThread(threadId: string): Promise<void> {
-    await this.#writes.deleteMany({ threadId });
-    await this.#checkpoints.deleteMany({ threadId });
+  /**
+   * Deletes a tree's checkpoints (agbossjs/agboss#1321d): the thread `rootExecutionId` and every
+   * thread whose stored `rootId` is it — never a range or a prefix of thread ids, so no id can reach
+   * another tree's documents (`<id>x`, `<id>0/child/…` stay). The pending writes, then the
+   * checkpoints: no transaction, so a tree of any size goes.
+   */
+  async deleteThread(rootExecutionId: string): Promise<void> {
+    const tree = { $or: [{ rootId: rootExecutionId }, { threadId: rootExecutionId }] };
+    await this.#writes.deleteMany(tree);
+    await this.#checkpoints.deleteMany(tree);
   }
 
   async #tupleOf(stored: StoredCheckpoint): Promise<CheckpointTuple> {

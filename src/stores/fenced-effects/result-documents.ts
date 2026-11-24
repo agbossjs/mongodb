@@ -1,5 +1,10 @@
-import { FencedEffectStatus, type EffectKey, type FencedEffectOutcome } from "@agboss/core";
-import { effectKeyIdentityOf, replayedFromOf, storedKeyFactsOf } from "@agboss/core/stores";
+import { IdempotencyRunStatus, type IdempotencyRunOutcome } from "@agboss/core";
+import {
+  effectKeyIdentityOf,
+  replayedFromOf,
+  storedKeyFactsOf,
+  type EffectKey,
+} from "@agboss/core/stores";
 import { z } from "zod";
 import { idOf } from "../keys.js";
 import { parsedOrUnreadable } from "../unreadable.js";
@@ -10,6 +15,8 @@ export interface ResultDocument {
   token: number;
   result: string;
   storedAt: Date;
+  /** When the result may be removed (`now + ttl` of the call), `null` for `Ttl.Forever`. */
+  expiresAt: Date | null;
   /** A business key's (#508): the fingerprint as given — `""` kept as `""`, none as `null`. */
   fingerprint?: string | null;
   /** A business key's: the step that wrote it. */
@@ -24,14 +31,14 @@ const StoredResult = z.object({
 });
 
 /** The replay of a stored document: its result, its token, the step it names (a business key's). */
-export function replayOf<TResult>(key: EffectKey, found: unknown): FencedEffectOutcome<TResult> {
+export function replayOf<TResult>(key: EffectKey, found: unknown): IdempotencyRunOutcome<TResult> {
   const stored = StoredResult.parse(found);
   const replayedFrom = replayedFromOf(key, {
     fingerprint: stored.fingerprint ?? null,
     origin: stored.origin ?? null,
   });
   return {
-    status: FencedEffectStatus.Replayed,
+    status: IdempotencyRunStatus.Replayed,
     // written by this store as the JSON of the work's result
     result: parsedOrUnreadable("fenced effect result", stored.result, {
       name: key.name,
@@ -48,6 +55,7 @@ export function resultDocumentOf(key: EffectKey, text: string, now: Date): Resul
     token: key.token,
     result: text,
     storedAt: now,
+    expiresAt: key.expiresAt,
   };
   if (key.businessKey === undefined) return stored;
   const { fingerprint, origin } = storedKeyFactsOf(key);

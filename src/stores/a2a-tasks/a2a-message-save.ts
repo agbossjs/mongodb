@@ -1,4 +1,4 @@
-import type { A2AMessageRecord } from "@agboss/core";
+import type { A2AMessageRecord } from "@agboss/core/stores";
 import type { Collection } from "mongodb";
 import { messageDocumentOf, messageOf, type A2AMessageDocument } from "./a2a-task-documents.js";
 

@@ -13,6 +13,8 @@ export {
   DEFAULT_WATCH_LIVENESS_SECONDS,
   type MongoConnectionSettings,
 } from "./connection/settings.js";
+export { MongoDriver, migrateWithDriver, type MongoDriverOptions } from "./driver.js";
+export { requireMongoTransaction } from "./connection/ambient.js";
 export { MongoTransactionReadConcern } from "./connection/concerns.js";
 export { MongoTopology } from "./connection/deployment.js";
 // what the start does with the schema (agbossjs/agboss#891): the core's, shared with @agboss/postgres
@@ -45,6 +47,8 @@ export {
 } from "./errors.js";
 export { MONGODB_DURABLE_STORES, MONGODB_STORES } from "./stores/bundles.js";
 export { MongoExecutionLeaseRepository } from "./stores/mongo-execution-lease.repository.js";
+export { MongoLeaseMarks } from "./stores/mongo-lease-marks.repository.js";
+export type { LeaseDocument } from "./stores/lease-documents.js";
 export { MongoFencedEffectRepository } from "./stores/mongo-fenced-effect.repository.js";
 export { MongoOutboundCallRepository } from "./stores/mongo-outbound-call.repository.js";
 export { MongoExecutionAuditLogRepository } from "./stores/mongo-execution-audit-log.repository.js";

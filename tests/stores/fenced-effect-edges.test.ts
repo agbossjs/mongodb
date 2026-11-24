@@ -5,8 +5,7 @@
  * cutoff and nothing newer, `hasCode` tells a server error by its code, ping.
  */
 import {
-  FencedEffectSettings,
-  FencedEffectStatus,
+  IdempotencyRunStatus,
   StoreClock,
   StoreTimeSource,
   type ExecutionLease,
@@ -52,7 +51,7 @@ async function instance() {
     clock,
     connection,
     held,
-    effects: new MongoFencedEffectRepository(connection, store, new FencedEffectSettings()),
+    effects: new MongoFencedEffectRepository(connection, store),
   };
 }
 
@@ -77,11 +76,7 @@ describe("a fenced call", () => {
         return this.runInTransaction(key, () => Promise.resolve({ ok: true }));
       }
     }
-    const open = new Open(
-      connection,
-      new StoreClock(StoreTimeSource.Test, new HandClock()),
-      new FencedEffectSettings(),
-    );
+    const open = new Open(connection, new StoreClock(StoreTimeSource.Test, new HandClock()));
     const sent = commandsOf(connection);
 
     // the check throws at the call, before a promise is made; a call it lets through is awaited, so that none is left running
@@ -107,7 +102,7 @@ describe("a fenced call", () => {
 
     const outcome = await effects.runOnce(keyOf(held, "one"), () => ({ receipt: "1" }));
 
-    expect(outcome.status).toBe(FencedEffectStatus.Ran);
+    expect(outcome.status).toBe(IdempotencyRunStatus.Ran);
     const results = sent.filter((one) => one.collection === Collections.FencedEffectResults);
     expect(results.map(nameOf)).toEqual([
       `find ${Collections.FencedEffectResults}`,
@@ -168,45 +163,46 @@ describe("the stored result", () => {
 
     const replayed = replayOf(key, { token: 1, result: '{"ok":true}' });
 
-    expect(replayed).toMatchObject({ status: FencedEffectStatus.Replayed, token: 1 });
+    expect(replayed).toMatchObject({ status: IdempotencyRunStatus.Replayed, token: 1 });
     expect(replayed).not.toHaveProperty("replayedFrom");
   });
 });
 
-describe("the retention sweep", () => {
-  it("removes the results, the marks and the key locks older than the cutoff, and keeps the newer ones", async () => {
+describe("the retention sweep (agbossjs/agboss#1317: deleteExpired by each document's expiresAt)", () => {
+  it("removes the results, the marks and the key locks whose expiry has come, keeps a later or a forever one, and counts them", async () => {
     const { connection, effects } = await instance();
-    const old = new Date("2026-01-01T00:00:00.000Z");
-    const recent = new Date("2026-03-01T00:00:00.000Z");
-    const cutoff = new Date("2026-02-01T00:00:00.000Z");
-    const results = connection.db.collection<{ _id: string; storedAt: Date }>(
-      Collections.FencedEffectResults,
-    );
-    const marks = connection.db.collection<{ _id: string; storedAt: Date }>(
-      Collections.FencedEffectMarks,
-    );
-    const locks = connection.db.collection<{ _id: string; lockedAt: Date }>(
-      Collections.FencedKeyLocks,
-    );
+    const past = new Date("2026-01-01T00:00:00.000Z");
+    const future = new Date("2026-03-01T00:00:00.000Z");
+    const now = new Date("2026-02-01T00:00:00.000Z");
+    interface Expiring {
+      _id: string;
+      expiresAt: Date | null;
+    }
+    const results = connection.db.collection<Expiring>(Collections.FencedEffectResults);
+    const marks = connection.db.collection<Expiring>(Collections.FencedEffectMarks);
+    const locks = connection.db.collection<Expiring>(Collections.FencedKeyLocks);
     await results.insertMany([
-      { _id: "r-old", storedAt: old },
-      { _id: "r-new", storedAt: recent },
+      { _id: "r-old", expiresAt: past },
+      { _id: "r-at", expiresAt: now },
+      { _id: "r-new", expiresAt: future },
+      { _id: "r-forever", expiresAt: null },
     ]);
     await marks.insertMany([
-      { _id: "m-old", storedAt: old },
-      { _id: "m-new", storedAt: recent },
+      { _id: "m-old", expiresAt: past },
+      { _id: "m-new", expiresAt: future },
+      { _id: "m-forever", expiresAt: null },
     ]);
     await locks.insertMany([
-      { _id: "l-old", lockedAt: old },
-      { _id: "l-new", lockedAt: recent },
+      { _id: "l-old", expiresAt: past },
+      { _id: "l-new", expiresAt: future },
     ]);
 
-    await effects.deleteByStoredAtBefore(cutoff);
+    expect(await effects.deleteExpired(now)).toBe(4);
 
-    const ids = async (collection: typeof results | typeof marks | typeof locks) =>
-      (await collection.find({}).toArray()).map((one) => one._id);
-    expect(await ids(results)).toEqual(["r-new"]);
-    expect(await ids(marks)).toEqual(["m-new"]);
+    const ids = async (collection: typeof results) =>
+      (await collection.find({}).sort({ _id: 1 }).toArray()).map((one) => one._id);
+    expect(await ids(results)).toEqual(["r-forever", "r-new"]);
+    expect(await ids(marks)).toEqual(["m-forever", "m-new"]);
     expect(await ids(locks)).toEqual(["l-new"]);
   });
 });
@@ -223,7 +219,6 @@ describe("ping", () => {
       const store = new MongoFencedEffectRepository(
         lost,
         new StoreClock(StoreTimeSource.Test, new HandClock()),
-        new FencedEffectSettings(),
       );
       await expect(store.ping()).rejects.toThrow();
     } finally {

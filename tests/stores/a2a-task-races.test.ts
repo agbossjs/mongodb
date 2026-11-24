@@ -1,4 +1,9 @@
-import { A2ATaskSaveStatus, A2ATaskState, type A2ATaskStatus, type NewA2ATask } from "@agboss/core";
+import {
+  A2ATaskSaveStatus,
+  A2ATaskState,
+  type A2ATaskStatus,
+  type NewA2ATask,
+} from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import { MongoA2ATaskRepository } from "../../src/index.js";
 import { testDatabase } from "../support/database.js";
@@ -44,6 +49,7 @@ async function together<T>(
 }
 
 const newTask = (taskId: string, extra: Partial<NewA2ATask> = {}): NewA2ATask => ({
+  endpoint: "orders",
   tenantId: "acme",
   taskId,
   ownerId: "alice",

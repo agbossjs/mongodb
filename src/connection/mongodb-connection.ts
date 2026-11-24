@@ -6,7 +6,7 @@ import {
   type OnDestroy,
   type OnInit,
 } from "@agboss/core";
-import { SchemaSetup } from "@agboss/core/stores";
+import { DATABASE_SETTINGS, SchemaSetup, type ResolvedSettings } from "@agboss/core/stores";
 import { assertDriverInternals, closeClientBounded } from "./close-bounded.js";
 import {
   MongoClient,
@@ -16,6 +16,7 @@ import {
   type TransactionOptions,
 } from "mongodb";
 import { MongoSettingsError } from "../errors.js";
+import { settingsOfResolved } from "./driver-settings.js";
 import {
   concernProblemsOf,
   enforcementProblemsOf,
@@ -26,6 +27,7 @@ import {
 } from "./concerns.js";
 import { supportedTopologyOf, topologyOf, type MongoTopology } from "./deployment.js";
 import { classifiedDb } from "./classified-db.js";
+import { requiredTransaction } from "./ambient.js";
 import { commitErrorOf } from "./outcome.js";
 import { sleepOn } from "./live-leases.js";
 import { checkSchema, migrateAtStart } from "./schema-version.js";
@@ -59,6 +61,19 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
 }
 
 /**
+ * The settings of a connection: the driver's resolved settings when the application names a
+ * `@DatabaseStorage` of `MongoDriver` (agbossjs/agboss#1321), else the environment's fields (until
+ * they are removed), else the settings object a script or a test gave.
+ */
+function settingsOf(
+  source: ApplicationContext | MongoConnectionSettings,
+  resolved: ResolvedSettings | undefined,
+): MongoConnectionSettings {
+  if (resolved?.kind === "mongodb") return settingsOfResolved(resolved);
+  return source instanceof ApplicationContext ? settingsOfEnvironment(source.environment) : source;
+}
+
+/**
  * The MongoDB deployment of one application instance: one `MongoClient` on the environment's
  * `mongodbUrl`, shared by every MongoDB store the application lists. Its client always writes with
  * `w=majority` on the journal and reads at `majority` from the primary; a URL that asks for less
@@ -71,7 +86,7 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
  * (`new MongoConnection({ url })`). The DI token the MongoDB stores will name in their `deps`.
  */
 @Injectable({
-  deps: [ApplicationContext, Clock],
+  deps: [ApplicationContext, Clock, DATABASE_SETTINGS],
   // checked at the application's assembly (agbossjs/agboss#511): a contract without mongodbUrl
   // fails with [environment.missing-field] before anything starts
   environmentFields: {
@@ -104,13 +119,12 @@ export class MongoConnection implements OnInit, OnDestroy {
   constructor(
     source: ApplicationContext | MongoConnectionSettings,
     private readonly clock?: Clock,
+    resolved?: ResolvedSettings,
   ) {
     // a copy: the caller changing its object after this line must not bypass the checks below, nor
     // change what the watch reads later (agbossjs/agboss#1129)
     const settings: MongoConnectionSettings = Object.freeze({
-      ...(source instanceof ApplicationContext
-        ? settingsOfEnvironment(source.environment)
-        : source),
+      ...settingsOf(source, resolved),
     });
     checkedWatchLivenessOf(settings.watchLivenessSeconds);
     rememberSettings(this, settings);
@@ -150,6 +164,15 @@ export class MongoConnection implements OnInit, OnDestroy {
 
   #hello(): Promise<unknown> {
     return this.db.admin().command({ hello: 1 });
+  }
+
+  /**
+   * The transaction of the `runOnce` the caller is inside of (agbossjs/agboss#1317c): the effect's
+   * business documents are written through it (`{ session }`) and roll back with it on any uncaught
+   * error. `IdempotencyError.OutsideTransaction` outside one.
+   */
+  requireTransaction(): MongoTransaction {
+    return requiredTransaction(this);
   }
 
   /** One `ping`: every MongoDB store's `ping()`. Rejects when the deployment does not answer. */

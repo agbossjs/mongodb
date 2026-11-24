@@ -1,7 +1,6 @@
 import { Injectable, StoreClock } from "@agboss/core";
 import {
   OutboundCallRepository,
-  OutboundCallStatus,
   pendingOutboundCallOf,
   type EffectKey,
   type OutboundCallClaim,
@@ -9,12 +8,13 @@ import {
   type OutboundCallIntent,
   type OutboundCallLease,
   type OutboundCallLeaseState,
-  type OutboundCallPage,
   type OutboundCallRecord,
   type OutboundCallState,
   type OutboundCallStatusQuery,
+  type Page,
   type StoreDescriptor,
 } from "@agboss/core/stores";
+import { OutboundCallStatus } from "@agboss/core";
 import type { Collection, Filter } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
@@ -23,11 +23,12 @@ import type { MongoTransaction } from "../connection/transaction.js";
 import { checkCancel } from "./cancel-fence.js";
 import { checkFence } from "./fence.js";
 import { fencedOrderKeysOf, inLocalOrder } from "./local-order.js";
+import { foundOf } from "./outbound-calls/outbound-call-lookup.js";
 import { leaseStateIn } from "./outbound-calls/lease-state.js";
 import {
   callIdOf,
   callRecordOf,
-  ENDING_FIELDS,
+  moveOf,
   type AsRead,
   type Change,
   type ChangeAt,
@@ -75,7 +76,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
 
   findByKey(key: EffectKey): Promise<OutboundCallRecord | undefined> {
     return this.#fenced(key, false, async ({ session }, now) => {
-      const found = await this.#calls.findOne({ _id: callIdOf(key) }, { session });
+      const found = await foundOf(this.#calls, key, session);
       // read at the store's time the fence decided by (agbossjs/agboss#658), never stored
       return found === null ? undefined : { ...callRecordOf(found), readAt: now.toISOString() };
     });
@@ -98,7 +99,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
         _id: callIdOf(key),
         ...{ seq, record, tenantId: key.tenantId, rootExecutionId: intent.rootExecutionId },
         ...{ status: record.status, attempt: record.attempt, attemptOwner: record.attemptOwner },
-        endedAt: null,
+        expiresAt: null,
       };
       const saved = await this.#calls.updateOne(
         { _id: document._id },
@@ -122,26 +123,36 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
     return this.#moved(key, expected, claimed, true);
   }
 
-  markCompleted(key: EffectKey, attemptOwner: string, result: string): Promise<boolean> {
-    const endedAt = this.clock.now();
+  markCompleted(
+    key: EffectKey,
+    attemptOwner: string,
+    result: string,
+    expiresAt: Date | null,
+  ): Promise<boolean> {
+    const endedAt = this.clock.now().toISOString();
     const status = OutboundCallStatus.Completed;
     return this.#moved(key, { status: OutboundCallStatus.Pending, attemptOwner }, () => ({
-      fields: { status, result, endedAt: endedAt.toISOString() },
-      endedAt,
+      fields: { status, result, endedAt },
+      expiresAt,
     }));
   }
 
-  markFailed(key: EffectKey, attemptOwner: string, failure: OutboundCallFailure): Promise<boolean> {
-    const endedAt = this.clock.now();
+  markFailed(
+    key: EffectKey,
+    attemptOwner: string,
+    failure: OutboundCallFailure,
+    expiresAt: Date | null,
+  ): Promise<boolean> {
+    const endedAt = this.clock.now().toISOString();
     const { name, code, message } = failure;
     const fields = {
       status: OutboundCallStatus.Failed,
       failure: { name, code, message },
-      endedAt: endedAt.toISOString(),
+      endedAt,
     };
     return this.#moved(key, { status: OutboundCallStatus.Pending, attemptOwner }, () => ({
       fields,
-      endedAt,
+      expiresAt,
     }));
   }
 
@@ -157,26 +168,32 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
    * sequence, never reused, never changed by a move — on the index `by_status`; the cursor is the
    * page's last `seq`, as text.
    */
-  async findAllByTenantIdAndStatus(query: OutboundCallStatusQuery): Promise<OutboundCallPage> {
-    const { tenantId, status, after } = query;
+  async findAllByTenantIdAndStatus(
+    query: OutboundCallStatusQuery,
+  ): Promise<Page<OutboundCallRecord>> {
+    const { tenantId, status, cursor } = query;
     const limit = pageLimitOf(query.limit);
-    const from = after === undefined ? 0 : seqOfCursor(after);
+    const from = cursor === undefined ? 0 : seqOfCursor(cursor);
     const found = await this.#calls
       .find({ tenantId, status, seq: { $gt: from } })
       .sort({ seq: 1 })
       .limit(limit + 1)
       .toArray();
     const page = found.slice(0, limit);
-    const calls = page.map(callRecordOf);
+    const items = page.map(callRecordOf);
     // more than a page was found: the page is not empty (a limit is from 1), its last `seq` the cursor
     return found.length <= limit
-      ? { calls }
-      : { calls, next: String(SeqOf.parse(page.at(-1)).seq) };
+      ? { items }
+      : { items, nextCursor: String(SeqOf.parse(page.at(-1)).seq) };
   }
 
-  async deleteByEndedAtBefore(cutoff: Date): Promise<void> {
-    // a pending intent has no end (`null`), which `$lt` never matches: it is never removed
-    await this.#calls.deleteMany({ endedAt: { $ne: null, $lt: cutoff } });
+  /**
+   * Removes the ended calls whose `expiresAt` has come (`<= now`): a call with none (`Ttl.Forever`,
+   * or still pending: `null`, which `$lte` never matches) is never removed. How many went.
+   */
+  async deleteExpired(now: Date): Promise<number> {
+    const removed = await this.#calls.deleteMany({ expiresAt: { $type: "date", $lte: now } });
+    return removed.deletedCount;
   }
 
   leaseStateOf(lease: OutboundCallLease): Promise<OutboundCallLeaseState> {
@@ -197,36 +214,8 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
    */
   #moved(key: EffectKey, from: AsRead, changeAt: ChangeAt, isSend = false): Promise<boolean> {
     return this.#fenced(key, isSend, async ({ session }, now) => {
-      const change = changeAt(now);
-      const fields = { ...change.fields, token: key.token, leaseExecutionId: key.leaseExecutionId };
-      const set = Object.fromEntries(
-        Object.entries(fields).map(([field, value]) => [`record.${field}`, value]),
-      );
-      const unset = ENDING_FIELDS.filter((field) => !(field in set));
-      const moved = await this.#calls.updateOne(
-        {
-          _id: callIdOf(key),
-          status: from.status,
-          attemptOwner: from.attemptOwner,
-          ...(from.attempt === undefined ? {} : { attempt: from.attempt }),
-        },
-        {
-          $set: {
-            ...set,
-            status: fields.status ?? from.status,
-            ...(fields.attempt === undefined ? {} : { attempt: fields.attempt }),
-            ...(fields.attemptOwner === undefined ? {} : { attemptOwner: fields.attemptOwner }),
-            endedAt: change.endedAt ?? null,
-          },
-          ...(unset.length === 0
-            ? {}
-            : {
-                // Stryker disable next-line StringLiteral: equivalent, the server ignores the value of a field of $unset
-                $unset: Object.fromEntries(unset.map((field) => [field, ""])),
-              }),
-        },
-        { session },
-      );
+      const { filter, update } = moveOf(key, from, changeAt(now));
+      const moved = await this.#calls.updateOne(filter, update, { session });
       return moved.matchedCount === 1;
     });
   }

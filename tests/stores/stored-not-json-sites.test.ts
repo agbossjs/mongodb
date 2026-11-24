@@ -55,6 +55,7 @@ const connectionOf = (document: unknown) => ({
 describe.each(TEXTS)("a stored text that is not JSON: %#", (text) => {
   it("an a2a task's status, and an a2a message's reply", async () => {
     const task = {
+      endpoint: "orders",
       tenantId: "default",
       taskId: "task-1",
       ownerId: "",
@@ -67,6 +68,7 @@ describe.each(TEXTS)("a stored text that is not JSON: %#", (text) => {
       statusAt: date,
     };
     const message = {
+      endpoint: "orders",
       tenantId: "default",
       ownerId: "",
       messageId: "message-1",
@@ -82,6 +84,7 @@ describe.each(TEXTS)("a stored text that is not JSON: %#", (text) => {
 
   it("an a2a direct message's reply", async () => {
     const document = {
+      endpoint: "orders",
       tenantId: "default",
       ownerId: "",
       messageId: "message-1",
@@ -141,7 +144,12 @@ describe.each(TEXTS)("a stored text that is not JSON: %#", (text) => {
       tenantId: "default",
       peer: "peer-1",
       idempotencyKey: "key-1",
+      tool: "charge",
+      requestHash: "h",
       createdAt: date,
+      expiresAt: date,
+      attemptId: "a-1",
+      lockedUntil: date,
       response: text,
     };
     const mesh = new MongoMeshRequestRepository(connectionOf(document) as never);

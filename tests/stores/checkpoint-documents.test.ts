@@ -56,16 +56,31 @@ describe("keyOf: the key a config names", () => {
         }),
         "get",
       ),
-    ).toEqual({ tenantId: "acme", threadId: "thread-1", namespace: "sub", checkpointId: "c-1" });
+    ).toEqual({
+      tenantId: "acme",
+      threadId: "thread-1",
+      rootId: "thread-1",
+      namespace: "sub",
+      checkpointId: "c-1",
+    });
   });
 
   it("a thread alone: the default tenant, the empty namespace, no checkpoint", () => {
     expect(keyOf(configurable({ thread_id: "t" }), "get")).toStrictEqual({
       tenantId: "default",
       threadId: "t",
+      rootId: "t",
       namespace: "",
       checkpointId: undefined,
     });
+  });
+
+  it("a tree's root is the one the config names; none named is the thread itself, never read from the shape of its id", () => {
+    expect(
+      keyOf(configurable({ thread_id: "root/child/a", root_execution_id: "root" }), "get").rootId,
+    ).toBe("root");
+    expect(keyOf(configurable({ thread_id: "root/child/a" }), "get").rootId).toBe("root/child/a");
+    expect(() => keyOf(configurable({ thread_id: "t", root_execution_id: "" }), "get")).toThrow();
   });
 
   it("an empty namespace is a namespace, and an empty tenant, thread or checkpoint id is refused", () => {

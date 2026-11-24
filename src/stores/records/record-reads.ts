@@ -1,4 +1,5 @@
 import type { ExecutionRecordStatus, Turn } from "@agboss/core";
+import type { ExecutionRecordStatusQuery, Page } from "@agboss/core/stores";
 import type { Collection, Db, Filter } from "mongodb";
 import { Collections } from "../../connection/collections.js";
 import { oldestFirst, recordsOf, seqOf, type RecordDocument } from "./record-documents.js";
@@ -67,7 +68,7 @@ export const recordsByVersion = (
 ): Promise<Turn[]> =>
   oldest(
     db,
-    { bundle: workflow, promptVersion, replayOf: null, status: { $ne: "running" } },
+    { workflow: workflow, promptVersion, replayOf: null, status: { $ne: "running" } },
     limit,
   );
 
@@ -83,7 +84,7 @@ export async function unscoredRecords(
     .aggregate([
       {
         $match: {
-          bundle: workflow,
+          workflow: workflow,
           status: "answered",
           ...(promptVersion === undefined ? {} : { promptVersion }),
         },
@@ -106,4 +107,21 @@ export async function unscoredRecords(
 
 /** The newest `limit` original answered records of a workflow, oldest first. */
 export const recentOriginalRecords = (db: Db, workflow: string, limit: number): Promise<Turn[]> =>
-  newest(db, { bundle: workflow, replayOf: null, status: "answered" }, limit);
+  newest(db, { workflow: workflow, replayOf: null, status: "answered" }, limit);
+
+/** The default size of a page of `findByStatus`, as recovery reads it. */
+const STATUS_PAGE_LIMIT = 100;
+
+/**
+ * The page of `query`: one more than the page is read, to know whether another follows; the cursor
+ * is the id of the last record of the page before.
+ */
+export async function statusPageOf(db: Db, query: ExecutionRecordStatusQuery): Promise<Page<Turn>> {
+  const limit = query.limit ?? STATUS_PAGE_LIMIT;
+  if (!Number.isSafeInteger(limit) || limit < 1)
+    throw new RangeError("a page's limit is a positive whole number");
+  const found = await recordsByStatus(db, query.status, limit + 1, query.cursor);
+  const items = found.slice(0, limit);
+  const last = items.at(-1);
+  return found.length > limit && last !== undefined ? { items, nextCursor: last.id } : { items };
+}

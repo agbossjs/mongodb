@@ -111,6 +111,7 @@ const counter = {
 
 const entry = (ledgerId: string) => ({
   caller: "clerk-agent",
+  provider: "test",
   model: "test/clerk",
   inputTokens: 0,
   outputTokens: 0,

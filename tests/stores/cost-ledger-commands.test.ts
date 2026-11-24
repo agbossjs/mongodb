@@ -35,6 +35,7 @@ const counter = (key: string): CostCounter => ({
 
 const entry = (ledgerId: string, index = 0): LedgerEntry => ({
   caller: "clerk-agent",
+  provider: "test",
   model: "test/clerk",
   inputTokens: 0,
   outputTokens: 0,
@@ -111,7 +112,7 @@ describe("agbossjs/agboss#1213: the cost ledger's save", () => {
     await ledger.saveAll([counter("again")], [entry("again:0")]);
 
     expect(log.map(nameOf)).toEqual([`find ${ENTRIES}`, `update ${ENTRIES}`]);
-    expect(await ledger.findSpentByCounter(counter("again"))).toBe(0.125);
+    expect((await ledger.findUsageByCounter(counter("again"))).spent).toBe(0.125);
   });
 
   it("an entry given twice in one save is upserted once and counted once", async () => {
@@ -120,7 +121,7 @@ describe("agbossjs/agboss#1213: the cost ledger's save", () => {
     await ledger.saveAll([counter("twice")], [entry("twice:0"), entry("twice:0")]);
 
     expect(log.map(nameOf)).toEqual([`find ${ENTRIES}`, `update ${ENTRIES}`, `update ${COUNTERS}`]);
-    expect(await ledger.findSpentByCounter(counter("twice"))).toBe(0.125);
+    expect((await ledger.findUsageByCounter(counter("twice"))).spent).toBe(0.125);
   });
 
   it("an entry made before the mark looks for its record in the transaction: held it adds nothing, else it is refused", async () => {
@@ -132,7 +133,7 @@ describe("agbossjs/agboss#1213: the cost ledger's save", () => {
     await ledger.saveAll([counter("old")], [entry("held:0")]);
     expect(log.map(nameOf)).toEqual([`find ${ENTRIES}`, `find ${ENTRIES}`]);
     expect(log.every((one) => one.inTransaction)).toBe(true);
-    expect(await ledger.findSpentByCounter(counter("old"))).toBe(0);
+    expect((await ledger.findUsageByCounter(counter("old"))).spent).toBe(0);
 
     await expect(ledger.saveAll([counter("old")], [entry("lost:0")])).rejects.toMatchObject({
       code: "cost-ledger.entry-expired",
@@ -143,10 +144,10 @@ describe("agbossjs/agboss#1213: the cost ledger's save", () => {
     const { ledger } = watched();
     const bogus = Object.assign(counter("bogus"), { scope: "no-such-scope" });
 
-    await expect(ledger.findSpentByCounter(bogus)).rejects.toThrow();
+    await expect(ledger.findUsageByCounter(bogus)).rejects.toThrow();
     await expect(ledger.saveAll([bogus], [entry("bogus:0")])).rejects.toThrow();
-    await expect(ledger.saveMaxSpend(bogus, usd(1))).rejects.toThrow();
-    await expect(ledger.findMaxSpendByAccount(bogus)).rejects.toThrow();
+    await expect(ledger.saveLimit(bogus, { maxSpend: usd(1) })).rejects.toThrow();
+    await expect(ledger.findLimitByAccount(bogus)).rejects.toThrow();
 
     await ledger.saveAll([counter("named")], [entry("named:0")]);
     const stored = await connectionTo(database.url())

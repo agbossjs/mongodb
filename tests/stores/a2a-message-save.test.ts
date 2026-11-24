@@ -14,6 +14,7 @@ import { connectionTo } from "../support/stores.js";
 const database = testDatabase();
 
 const MESSAGE = {
+  endpoint: "orders",
   tenantId: "default",
   ownerId: "alice",
   messageId: "m-1",

@@ -1,4 +1,5 @@
 import type { Db } from "mongodb";
+import { usd } from "@agboss/core/units";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { idOf } from "../keys.js";
@@ -45,7 +46,7 @@ export async function versionScoresOf(db: Db, workflow: string): Promise<Version
   const found = await db
     .collection(Collections.ExecutionRecords)
     .aggregate([
-      { $match: { bundle: workflow, status: { $ne: "running" } } },
+      { $match: { workflow: workflow, status: { $ne: "running" } } },
       {
         $lookup: {
           from: Collections.ExecutionScores,
@@ -74,7 +75,7 @@ export async function versionScoresOf(db: Db, workflow: string): Promise<Version
       turns: version.records,
       scored: version.scored,
       meanScore: version.scored === 0 ? null : version.total / version.scored,
-      costUsd: version.costUsd,
+      costUsd: usd(version.costUsd),
     };
   });
 }

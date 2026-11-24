@@ -7,8 +7,7 @@
  */
 import {
   ExecutionCancelFencedError,
-  FencedEffectSettings,
-  FencedEffectStatus,
+  IdempotencyRunStatus,
   StoreClock,
   StoreTimeSource,
   type ExecutionLease,
@@ -51,7 +50,7 @@ async function instance(instanceId: string, store: StoreClock) {
       store,
       new TestApplicationContext({}, instanceId),
     ),
-    effects: new MongoFencedEffectRepository(connection, store, new FencedEffectSettings()),
+    effects: new MongoFencedEffectRepository(connection, store),
     calls: new MongoOutboundCallRepository(connection, store),
   };
 }
@@ -169,8 +168,8 @@ describe("agbossjs/agboss#1117: the mark is a field of the tree's lease document
     await clock.advance(hours(48));
     await one.leases.retire(lease);
 
-    await one.effects.deleteByStoredAtBefore(new Date(clock.now().getTime() + hours(24)));
-    await one.calls.deleteByEndedAtBefore(new Date(clock.now().getTime() + hours(24)));
+    await one.effects.deleteExpired(new Date(clock.now().getTime() + hours(24)));
+    await one.calls.deleteExpired(new Date(clock.now().getTime() + hours(24)));
 
     expect(await documentOf(one.connection, "kept")).toMatchObject({
       cancelRequestedAt: expect.any(Date) as Date,
@@ -206,7 +205,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     const written = await write;
     await cancel;
 
-    expect(written.status).toBe(FencedEffectStatus.Ran);
+    expect(written.status).toBe(IdempotencyRunStatus.Ran);
     const later = await rejection(one.effects.runOnce(keyOf(lease, "later"), () => ({ r: 2 })));
     expect(later).toBeInstanceOf(ExecutionCancelFencedError);
   });
@@ -246,7 +245,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
 
     const written = await one.effects.runOnce(keyOf(child, "charge", "root-s"), () => ({ r: 1 }));
 
-    expect(written.status).toBe(FencedEffectStatus.Ran);
+    expect(written.status).toBe(IdempotencyRunStatus.Ran);
     expect(await documentOf(one.connection, "root-s")).toEqual({
       tenantId: TENANT,
       rootExecutionId: "root-s",
@@ -288,12 +287,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     const { store } = clockOf();
     const one = await instance("instance-1", store);
     const two = await instance("instance-2", store);
-    const reading = new CancelCheckEffects(
-      one.connection,
-      store,
-      readOnly,
-      new FencedEffectSettings(),
-    );
+    const reading = new CancelCheckEffects(one.connection, store, readOnly);
     const child = leased(await one.leases.acquire(TENANT, "child-r1", LEASE));
 
     const answeredInside = await childInsideAndCancel(reading, two.leases, child);
@@ -305,12 +299,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     const { store } = clockOf();
     const one = await instance("instance-1", store);
     const two = await instance("instance-2", store);
-    const outside = new CancelCheckEffects(
-      one.connection,
-      store,
-      outsideTransaction,
-      new FencedEffectSettings(),
-    );
+    const outside = new CancelCheckEffects(one.connection, store, outsideTransaction);
     const child = leased(await one.leases.acquire(TENANT, "child-r1", LEASE));
 
     const answeredInside = await childInsideAndCancel(outside, two.leases, child);
@@ -391,7 +380,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
 
     expect(isBlocked).toBe(true);
     expect(isMarkedInside).toBe(false);
-    expect(written.status).toBe(FencedEffectStatus.Ran);
+    expect(written.status).toBe(IdempotencyRunStatus.Ran);
     expect(await two.leases.isCancelRequested(tree("root-h"))).toBe(true);
     const later = await rejection(
       one.effects.runOnce(keyOf(child, "later", "root-h"), () => ({ r: 2 })),
@@ -403,12 +392,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     const { store } = clockOf();
     const one = await instance("instance-1", store);
     const two = await instance("instance-2", store);
-    const reading = new CancelCheckEffects(
-      one.connection,
-      store,
-      readOnly,
-      new FencedEffectSettings(),
-    );
+    const reading = new CancelCheckEffects(one.connection, store, readOnly);
 
     const { isBlocked, isMarkedInside } = await rootHeldChildAndCancel(reading, one, two);
 

@@ -1,4 +1,5 @@
-import { A2ATaskState, type A2ATaskStatus, type NewA2ATask } from "@agboss/core";
+import { usd } from "@agboss/core/units";
+import { A2ATaskState, type A2ATaskStatus, type NewA2ATask } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import { Collections, MongoA2ATaskRepository } from "../../src/index.js";
 import { testDatabase } from "../support/database.js";
@@ -19,6 +20,7 @@ const HASH = `sha256:${"ab".repeat(32)}`;
 const tasksOn = () => new MongoA2ATaskRepository(connectionTo(database.url()));
 
 const newTask = (taskId: string, extra: Partial<NewA2ATask> = {}): NewA2ATask => ({
+  endpoint: "orders",
   tenantId: "acme",
   taskId,
   ownerId: "alice",
@@ -49,7 +51,7 @@ describe("agbossjs/agboss#810: the mesh's fields of an A2A task on MongoDB", () 
       pendingPauses: [],
       finish: "charged-workflow-finish",
       output: { chargeId: "ch-1" },
-      spentUsd: 0.000123,
+      spentUsd: usd(0.000123),
     };
     await a.saveIfAbsent(
       newTask("trusted", { callerPeer: "orders-application", meshBodyHash: HASH }),
@@ -63,7 +65,12 @@ describe("agbossjs/agboss#810: the mesh's fields of an A2A task on MongoDB", () 
       version: 2,
     });
     expect((await b.findById(keyOf("refused")))?.status).toEqual(rejected);
-    const listed = await b.list({ tenantId: "acme", ownerId: "alice", pageSize: 10 });
+    const listed = await b.list({
+      endpoint: "orders",
+      tenantId: "acme",
+      ownerId: "alice",
+      pageSize: 10,
+    });
     expect(listed.tasks.find((task) => task.taskId === "trusted")?.meshBodyHash).toBe(HASH);
   });
 

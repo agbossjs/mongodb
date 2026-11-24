@@ -75,7 +75,7 @@ describe("agbossjs/agboss#1213: the sent mark's plan", () => {
 
 describe("agbossjs/agboss#1213: a reassignment's plan", () => {
   const plan = (before: PauseRecord) =>
-    reassignChange(before, { pauseId: "p-r", assignee: "alice" }, new Set(), AT, AUDIT);
+    reassignChange(before, { pauseId: "p-r", assignees: ["alice"] }, new Set(), AT, AUDIT);
 
   it.each([
     ["no deadline", {}],

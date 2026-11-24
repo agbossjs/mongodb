@@ -1,14 +1,14 @@
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import {
-  ExecutionFencedError,
+  ExecutionError,
   type ExecutionLeaseRepository,
-  type EffectKey,
   type FencedEffectRepository,
 } from "@agboss/core";
+import { type EffectKey } from "@agboss/core/stores";
 import { seconds } from "@agboss/core/units";
 import { setTimeout as wait } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
-import type { MongoTransaction } from "../../src/index.js";
+import type { MongoConnection } from "../../src/index.js";
 
 /**
  * agbossjs/agboss#527 — the takeover inside a zombie's open fenced transaction (the fenced-effect
@@ -22,8 +22,10 @@ import type { MongoTransaction } from "../../src/index.js";
 
 /** Two instances' stores on one database, on one hand-moved store clock. */
 export interface FenceRaceInstances {
+  /** The first instance's connection: the work's business rows go through its `requireTransaction()`. */
+  readonly connection: MongoConnection;
   readonly first: {
-    readonly effects: FencedEffectRepository<MongoTransaction>;
+    readonly effects: FencedEffectRepository;
     readonly leases: ExecutionLeaseRepository;
   };
   readonly second: { readonly leases: ExecutionLeaseRepository };
@@ -37,7 +39,7 @@ const LEASE = seconds(30);
 export function fenceRaceCases(name: string, build: () => Promise<FenceRaceInstances>): void {
   describe(`fence races (${name})`, () => {
     it("a take while the zombie's fenced transaction is open waits for it, or the zombie is refused — never a write after the take", async () => {
-      const { first, second, advance, committed } = await build();
+      const { connection, first, second, advance, committed } = await build();
       const lease = await first.leases.acquire("default", "zombie-1", LEASE);
       if (lease === undefined) throw new Error("the first take was refused");
       await advance(LEASE - 1);
@@ -51,7 +53,8 @@ export function fenceRaceCases(name: string, build: () => Promise<FenceRaceInsta
       });
       let takenDuringWork = false;
       let taking: Promise<unknown> | undefined;
-      const write = first.effects.runOnce(key, async ({ db, session }) => {
+      const write = first.effects.runOnce(key, async () => {
+        const { db, session } = connection.requireTransaction();
         await db.collection("fence_race_rows").insertOne({ row: "zombie" }, { session });
         // the lease ends, and the other instance takes it while this transaction is open
         await advance(2);
@@ -62,7 +65,7 @@ export function fenceRaceCases(name: string, build: () => Promise<FenceRaceInsta
       });
       const outcome = await write.then(
         () => "landed",
-        (error: unknown) => (error instanceof ExecutionFencedError ? "refused" : error),
+        (error: unknown) => (error instanceof ExecutionError.Fenced ? "refused" : error),
       );
       await taking;
 

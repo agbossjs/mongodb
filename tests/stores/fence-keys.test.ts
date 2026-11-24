@@ -5,12 +5,7 @@
  * (`fenceChecks` counts up: a no-op update is not locked); the scope's mark is raised in the
  * transaction and says when; a business key's lock counts and says when.
  */
-import {
-  FencedEffectSettings,
-  StoreClock,
-  StoreTimeSource,
-  type ExecutionLease,
-} from "@agboss/core";
+import { StoreClock, StoreTimeSource, type ExecutionLease } from "@agboss/core";
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { hours } from "@agboss/core/units";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +44,7 @@ async function instance() {
       store,
       new TestApplicationContext({}, "instance-1"),
     ),
-    effects: new MongoFencedEffectRepository(connection, store, new FencedEffectSettings()),
+    effects: new MongoFencedEffectRepository(connection, store),
   };
 }
 

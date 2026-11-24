@@ -38,20 +38,27 @@ const pendingWith = (field: string): Document => ({
   [field]: { $type: "date" },
 });
 
+/** The index `deleteExpired` walks: the documents whose `expiresAt` is a date. */
+const expiryIndex = (): IndexDescription =>
+  index("by_expiry", ascending("expiresAt"), false, { expiresAt: { $type: "date" } });
+
 /**
  * The secondary indexes of each collection (its `_id` is the primary key), each list made by a call: a mutant of
  * one that throws is then a failing test, which kills it, not an error of every test file's import, which
  * Stryker leaves out of the score (agbossjs/mongodb#103).
  */
 const INDEXES: Readonly<Partial<Record<CollectionName, () => readonly IndexDescription[]>>> = {
-  [Collections.FencedEffectMarks]: () => [index("by_stored_at", ascending("storedAt"))],
+  // `deleteExpired` (#1317): the rows with a date; `null` is `Ttl.Forever`, never removed
+  [Collections.FencedEffectMarks]: () => [expiryIndex()],
+  [Collections.FencedKeyLocks]: () => [expiryIndex()],
   // the sweep's prune of the ledger's entries (agbossjs/agboss#771)
   [Collections.CostEntries]: () => [index("by_made_at", ascending("madeAt"))],
-  [Collections.FencedEffectResults]: () => [index("by_stored_at", ascending("storedAt"))],
+  [Collections.FencedEffectResults]: () => [expiryIndex()],
   [Collections.OutboundCalls]: () => [
     index("by_tree", ascending("tenantId", "rootExecutionId", "seq")),
     index("by_status", ascending("tenantId", "status", "seq")),
-    index("by_ended_at", ascending("endedAt")),
+    // `deleteExpired`: an ended call's `expiresAt` (a date; none for a pending call or `Ttl.Forever`)
+    index("by_expiry", ascending("expiresAt"), false, { expiresAt: { $type: "date" } }),
   ],
   [Collections.ExecutionAuditLog]: () => [
     index("by_tree", ascending("tenantId", "rootExecutionId", "occurredAt", "_id")),
@@ -63,12 +70,18 @@ const INDEXES: Readonly<Partial<Record<CollectionName, () => readonly IndexDescr
     // agbossjs/agboss#808: a run's record by its id (findByTenantIdAndRunId)
     index("by_run", ascending("tenantId", "runId", "seq")),
     index("by_status", ascending("status", "seq")),
-    index("by_version", ascending("bundle", "promptVersion", "seq")),
-    index("by_workflow", ascending("bundle", "seq")),
+    index("by_version", ascending("workflow", "promptVersion", "seq")),
+    index("by_workflow", ascending("workflow", "seq")),
+  ],
+  [Collections.ThreadStatusTransitions]: () => [
+    index("by_thread", ascending("tenantId", "threadId", "seq"), true),
+  ],
+  [Collections.Threads]: () => [
+    index("idle", ascending("workflow", "lastActiveAt"), false, { isSwept: false }),
   ],
   [Collections.ExecutionScores]: () => [index("by_record", ascending("recordId"))],
   [Collections.ExecutionSummaries]: () => [
-    index("by_thread", ascending("tenantId", "threadId", "compaction", "toSeq")),
+    index("by_thread", ascending("tenantId", "threadId", "memory", "toSeq")),
   ],
   [Collections.PauseAnswers]: () => [
     index("by_tree", ascending("tenantId", "rootExecutionId", "askedAt", "seq")),
@@ -109,30 +122,34 @@ const INDEXES: Readonly<Partial<Record<CollectionName, () => readonly IndexDescr
     index("by_start", ascending("startedAt", "executionId")),
     index("by_ended_at", ascending("endedAt")),
   ],
-  [Collections.MeshRequests]: () => [index("by_created_at", ascending("createdAt"))],
-  // agbossjs/agboss#824: ListTasks (a caller's tasks, newest status first) and the retention sweep
+  [Collections.MeshRequests]: () => [index("by_expiry", ascending("expiresAt"))],
+  // agbossjs/agboss#824: ListTasks (a caller's tasks, newest status first) and the retention sweep;
+  // each row names its `endpoint` (#1320)
   [Collections.A2ATasks]: () => [
-    index("by_owner", { tenantId: 1, ownerId: 1, statusAt: -1, taskId: -1 }),
-    index("by_finished", ascending("state", "statusAt")),
+    index("by_owner", { endpoint: 1, tenantId: 1, ownerId: 1, statusAt: -1, taskId: -1 }),
+    index("by_endpoint", ascending("endpoint", "state", "statusAt")),
   ],
   [Collections.A2AMessages]: () => [
     index("by_task", ascending("tenantId", "taskId")),
-    // agbossjs/agboss#860: the sweep's direct claims (task id "") older than the cutoff
-    index("by_claim", ascending("taskId", "savedAt")),
+    // the sweep's orphans and direct claims (task id "") of an endpoint older than its cutoff
+    index("by_endpoint", ascending("endpoint", "taskId", "savedAt")),
   ],
-  // agbossjs/agboss#860: the lost attempts in flight, and the retention sweep
+  // agbossjs/agboss#860: the lost attempts in flight, and the per-endpoint retention sweep (#1320)
   [Collections.A2ADirectMessages]: () => [
     index("by_in_flight", ascending("state", "expiresAt")),
-    index("by_created_at", ascending("createdAt")),
+    index("by_endpoint", ascending("endpoint", "state", "completedAt")),
   ],
   [Collections.Checkpoints]: () => [
     index("by_thread", { threadId: 1, namespace: 1, checkpointId: -1 }),
     index("by_checkpoint", { checkpointId: -1 }),
     // agbossjs/agboss#962: a thread's newest checkpoint by step, then id: one index walk
     index("latest_by_step", { threadId: 1, namespace: 1, step: -1, checkpointId: -1 }),
+    // #1321d: a tree's checkpoints by the root execution id stored with each
+    index("by_root", ascending("rootId")),
   ],
   [Collections.CheckpointWrites]: () => [
     index("by_checkpoint", ascending("threadId", "namespace", "checkpointId", "seq", "position")),
+    index("by_root", ascending("rootId")),
   ],
 };
 

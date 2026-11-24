@@ -1,4 +1,5 @@
-import { A2ATaskState, PauseKind, type NewA2ATask } from "@agboss/core";
+import { PauseKind } from "@agboss/core";
+import { A2ATaskState, type NewA2ATask } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import { MongoA2ATaskRepository } from "../../src/index.js";
 import { testDatabase } from "../support/database.js";
@@ -14,13 +15,14 @@ const NINE = new Date("2026-01-05T09:00:00.000Z");
 describe("agbossjs/agboss#960: an unknown key inside a pending pause (MongoDB)", () => {
   it("survives a round trip, beside the keys the pause knows", async () => {
     const tasks = new MongoA2ATaskRepository(connectionTo(database.url()));
-    const pause = { pauseId: "p-1", kind: PauseKind.Approval, ask: { q: 1 }, futureKey: "kept?" };
+    const pause = { pauseId: "p-1", kind: PauseKind.Approval, input: { q: 1 }, futureKey: "kept?" };
     const status = {
       state: A2ATaskState.InputRequired,
       pendingPauses: [pause],
       futureTop: 1,
     };
     const task: NewA2ATask = {
+      endpoint: "orders",
       tenantId: "default",
       taskId: "t-p",
       ownerId: "alice",

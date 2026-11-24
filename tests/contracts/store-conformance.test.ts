@@ -1,3 +1,4 @@
+import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { RecordingLogger } from "../support/recording-logger.js";
 import { RandomIdGenerator } from "@agboss/core";
 import { storeConformance, StoreCapability } from "@agboss/core/testing/contracts";
@@ -17,7 +18,6 @@ import {
   MongoOutboundCallRepository,
   MongoPausedExecutionRepository,
   MongoRateLimitRepository,
-  type MongoTransaction,
 } from "../../src/index.js";
 import { SHARDS } from "../../scripts/mutation-shards.mjs";
 import { emptyAll, testDatabase } from "../support/database.js";
@@ -59,7 +59,7 @@ function leftOutOfShard(): readonly (typeof FENCING_STORES)[number][] {
   return FENCING_STORES.filter((key) => !wanted.includes(key));
 }
 
-storeConformance<MongoTransaction>({
+storeConformance({
   name: "MongoDB",
   without: leftOutOfShard(),
   // agbossjs/agboss#533, #590: every schedule of two instances 4 steps deep, 50 seeded walks of
@@ -69,7 +69,10 @@ storeConformance<MongoTransaction>({
   stores: storesOfShard({
     // agbossjs/agboss#962: `latestByStep` is one indexed read, its ties by code point (#1115)
     checkpointSaver: {
-      ...mongoStore(database, (connection) => new MongoCheckpointSaver(connection)),
+      ...mongoStore<BaseCheckpointSaver>(
+        database,
+        (connection) => new MongoCheckpointSaver(connection),
+      ),
       capabilities: [StoreCapability.LatestByStep],
     },
     // agbossjs/agboss#831: the queue has a watch (LISTEN / a change stream / pub/sub): declared

@@ -8,13 +8,7 @@
  *   the store is handed a `StoreClock` whose host clock throws, so a single read of host time for
  *   a lease — what a store reading the removed `isDatabaseTime` did silently — fails the case.
  */
-import {
-  ExecutionFencedError,
-  FencedEffectSettings,
-  StoreClock,
-  StoreTimeSource,
-  type ExecutionLease,
-} from "@agboss/core";
+import { ExecutionError, StoreClock, StoreTimeSource, type ExecutionLease } from "@agboss/core";
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { seconds } from "@agboss/core/units";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -141,7 +135,6 @@ describe("#847: a 0.1.0 lease document (leaseEpoch) is read by its token", () =>
     const effects = new MongoFencedEffectRepository(
       await instanceConnection(database, "instance-1"),
       clock,
-      new FencedEffectSettings(),
     );
     const keyAt = (token: number, step: number) =>
       effectKeyForTesting({
@@ -154,7 +147,7 @@ describe("#847: a 0.1.0 lease document (leaseEpoch) is read by its token", () =>
     ).resolves.toBeDefined();
     await expect(
       effects.runOnce(keyAt(3, 2), () => Promise.resolve({ receipt: "stale" })),
-    ).rejects.toBeInstanceOf(ExecutionFencedError);
+    ).rejects.toBeInstanceOf(ExecutionError.Fenced);
   });
 
   it("a new tree's document has token only", async () => {

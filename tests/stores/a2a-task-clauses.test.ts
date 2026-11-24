@@ -3,7 +3,7 @@ import {
   A2ATaskState,
   InvalidA2APageTokenError,
   type NewA2ATask,
-} from "@agboss/core";
+} from "@agboss/core/stores";
 import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { ClientSession, Collection, FindCursor } from "mongodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +33,7 @@ const tasksOn = () => new MongoA2ATaskRepository(connection());
 const collection = (name: string) => connection().db.collection(name);
 
 const newTask = (taskId: string, extra: Partial<NewA2ATask> = {}): NewA2ATask => ({
+  endpoint: "orders",
   tenantId: "acme",
   taskId,
   ownerId: "alice",
@@ -51,6 +52,7 @@ const collectionOf = (context: unknown): string | undefined =>
 
 const keyOf = (taskId: string) => ({ tenantId: "acme", taskId });
 const messageKeyOf = (taskId: string) => ({
+  endpoint: "orders",
   tenantId: "acme",
   ownerId: "alice",
   messageId: `m-${taskId}`,
@@ -263,7 +265,7 @@ describe("agbossjs/mongodb#105: the page of list", () => {
       NINE,
     );
   }
-  const query = { tenantId: "paged", ownerId: "alice" } as const;
+  const query = { endpoint: "orders", tenantId: "paged", ownerId: "alice" } as const;
 
   it("lists newest first, ties by task id descending, page after page", async () => {
     const tasks = tasksOn();
@@ -350,6 +352,7 @@ describe("agbossjs/mongodb#105: the orphan sweep reads in bounded batches, by _i
     await collection(Collections.A2AMessages).deleteMany({});
     for (let n = 1; n <= 5; n += 1)
       await tasks.saveMessageIfAbsent({
+        endpoint: "orders",
         tenantId: "acme",
         ownerId: "alice",
         messageId: `m-${String(n)}`,
@@ -359,7 +362,7 @@ describe("agbossjs/mongodb#105: the orphan sweep reads in bounded batches, by _i
       });
     const find = vi.spyOn(Collection.prototype, "find");
 
-    const removed = await sweptOrphanMessagesBefore(connected.db, at(20), 2);
+    const removed = await sweptOrphanMessagesBefore(connected.db, "orders", at(20), 2);
 
     expect(removed).toBe(5);
     const reads = find.mock.calls.filter(

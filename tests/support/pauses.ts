@@ -17,11 +17,20 @@ export const pauseOf = (pauseId: string, stepKey = `run-1:${pauseId}:1`): PauseR
   step: "clerk-agent",
   channel: "refund-approval-channel",
   answerer: PauseAnswerer.Channel,
-  ask: { callId: "call-1", tool: "charge", arguments: { text: "10 USD" }, summary: "charge" },
+  input: { text: "10 USD" },
+  toolCall: { callId: "call-1", tool: "charge", summary: "charge" },
+  trail: [
+    {
+      action: "opened",
+      at: "2026-01-05T09:00:00.000Z",
+      target: "refund-approval-channel",
+      channel: "refund-approval-channel",
+    },
+  ],
   status: PauseStatus.Pending,
   isSent: false,
   askedAt: "2026-01-05T09:00:00.000Z",
 });
 
 export const NINE = new Date("2026-01-05T09:00:00.000Z");
-export const ANSWER = { decision: { approved: true }, answeredBy: "manager-17" };
+export const ANSWER = { decision: { approved: true }, actor: { id: "manager-17" } };

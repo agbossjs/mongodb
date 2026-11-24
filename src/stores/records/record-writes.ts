@@ -1,100 +1,108 @@
 import { randomUUID } from "node:crypto";
 import type {
   ExecutionRecordStatus,
-  NewThread,
   NewTurn,
   PauseAnswerRecord,
   Turn,
   TurnOutcome,
 } from "@agboss/core";
-import type { Db } from "mongodb";
+import type { ClientSession, Db } from "mongodb";
+import type { StatusContext } from "@agboss/core/stores";
+import type { MongoConnection } from "../../connection/mongodb-connection.js";
+import { appendRecordStatus } from "../status-log.js";
+import { threadsOf } from "./record-threads.js";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
-import { DUPLICATE_KEY, hasCode, idOf } from "../keys.js";
+import { idOf } from "../keys.js";
 import { nextSequence } from "../sequence.js";
 import type { RecordDocument } from "./record-documents.js";
 
 /** Threads, appended records, their completion (unconditional or compare-and-set) and the pause log. */
 
-interface ThreadDocument {
-  _id: string;
-  tenantId: string;
-  threadId: string;
-  workflow: string;
-  owner: string | null;
-  createdAt: Date;
-}
-
-const Owner = z.object({ owner: z.string().nullable() });
 const PauseAnswerText = z.object({ record: z.string() });
+const ThreadOf = z.object({ tenantId: z.string(), threadId: z.string() });
 
 /**
- * A new thread: `true` when this insert made it, `false` when the tenant has the id already — the
- * first insert keeps it (and its owner), its `_id` unique.
+ * A write to a thread's record is its activity (what a memory's `ttl` counts from, #1303), and
+ * locks the thread's document for the transaction: a sweep of the thread conflicts with it.
  */
-export async function createThread(
+async function touched(
   db: Db,
-  thread: NewThread,
-  id: string,
+  session: ClientSession,
+  thread: { readonly tenantId: string; readonly threadId: string },
   now: Date,
 ): Promise<boolean> {
-  try {
-    await db.collection<ThreadDocument>(Collections.Threads).insertOne({
-      _id: idOf(thread.tenantId, id),
-      tenantId: thread.tenantId,
-      threadId: id,
-      workflow: thread.workflow,
-      owner: thread.ownerId ?? null,
-      createdAt: now,
-    });
-    return true;
-  } catch (error) {
-    if (hasCode(error, DUPLICATE_KEY)) return false;
-    throw error;
-  }
+  const done = await threadsOf(db).updateOne(
+    { _id: idOf(thread.tenantId, thread.threadId), isSwept: false },
+    { $set: { lastActiveAt: now } },
+    { session },
+  );
+  return done.matchedCount === 1;
 }
 
-/** The thread's owner (`owner: undefined`: created without one); `undefined` when there is no such thread. */
-export async function threadOwnerOf(
-  db: Db,
-  workflow: string,
-  tenantId: string,
-  threadId: string,
-): Promise<{ readonly owner: string | undefined } | undefined> {
-  const found = await db
-    .collection<ThreadDocument>(Collections.Threads)
-    .findOne({ _id: idOf(tenantId, threadId), workflow });
-  if (found === null) return undefined;
-  return { owner: Owner.parse(found).owner ?? undefined };
-}
-
-/** Appends a record: a new id, the `Clock`'s time, its place the next number of the records' sequence. */
-export async function appendRecord(db: Db, record: NewTurn, now: Date): Promise<Turn> {
+/**
+ * Appends a record in one transaction with its thread's activity and its status-history document
+ * (#1341d): a new id, the `Clock`'s time, its place the next number of the records' sequence (drawn
+ * before the transaction). A swept thread (#1303c) takes no record until its owner creates it again.
+ */
+export async function appendRecord(
+  connection: MongoConnection,
+  record: NewTurn,
+  write: { readonly now: Date; readonly context?: StatusContext | undefined },
+): Promise<Turn> {
+  const { now } = write;
   const stored: Turn = { ...record, id: randomUUID(), createdAt: now.toISOString() };
-  const seq = await nextSequence(db, Collections.ExecutionRecords);
+  const seq = await nextSequence(connection.db, Collections.ExecutionRecords);
   const { id, createdAt, ...fields } = stored;
-  await db
-    .collection<RecordDocument>(Collections.ExecutionRecords)
-    .insertOne({ ...fields, _id: id, seq, createdAt: new Date(createdAt) });
+  await connection.inTransaction(async ({ db, session }) => {
+    if (!(await touched(db, session, stored, now)))
+      throw new Error("the thread was swept: its owner restarts it by creating it again");
+    await db
+      .collection<RecordDocument>(Collections.ExecutionRecords)
+      .insertOne({ ...fields, _id: id, seq, createdAt: new Date(createdAt) }, { session });
+    await appendRecordStatus(db, session, stored, {
+      status: stored.status,
+      context: write.context,
+      at: now,
+    });
+  });
   return stored;
 }
 
-/** Writes the outcome; with `expected`, only while the record's status is it — one update, atomic. */
+/**
+ * Writes the outcome, the thread's activity and its status document in one transaction; with
+ * `expected`, only while the record's status is it — one compare-and-set update, atomic.
+ */
 export async function completeRecord(
-  db: Db,
+  connection: MongoConnection,
   id: string,
   outcome: TurnOutcome,
-  expected?: ExecutionRecordStatus,
+  write: {
+    readonly now: Date;
+    readonly expected?: ExecutionRecordStatus | undefined;
+    readonly context?: StatusContext | undefined;
+  },
 ): Promise<boolean> {
   const { replyWith, status, stopReason, route, steps, costUsd } = outcome;
-  // `status: expected` filters only when there is one: the client leaves out an undefined field (`ignoreUndefined`)
-  const completed = await db
-    .collection<RecordDocument>(Collections.ExecutionRecords)
-    .updateOne(
-      { _id: id, status: expected },
-      { $set: { replyWith, status, stopReason, route: [...route], steps: [...steps], costUsd } },
-    );
-  return completed.matchedCount === 1;
+  return connection.inTransaction(async ({ db, session }) => {
+    // `status: expected` filters only when there is one: the client leaves out an undefined field (`ignoreUndefined`)
+    const completed = await db
+      .collection<RecordDocument>(Collections.ExecutionRecords)
+      .findOneAndUpdate(
+        { _id: id, status: write.expected },
+        { $set: { replyWith, status, stopReason, route: [...route], steps: [...steps], costUsd } },
+        { session, returnDocument: "after", projection: { tenantId: 1, threadId: 1 } },
+      );
+    if (completed === null) return false;
+    const thread = ThreadOf.parse(completed);
+    await touched(db, session, thread, write.now);
+    await appendRecordStatus(db, session, thread, {
+      status,
+      context: write.context,
+      at: write.now,
+    });
+    return true;
+  });
 }
 
 /**

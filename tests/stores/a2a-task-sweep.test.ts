@@ -1,4 +1,4 @@
-import { A2ATaskSaveStatus, A2ATaskState, type NewA2ATask } from "@agboss/core";
+import { A2ATaskSaveStatus, A2ATaskState, type NewA2ATask } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import { MongoA2ATaskRepository } from "../../src/index.js";
 import {
@@ -19,6 +19,7 @@ const NINE = new Date("2026-01-05T09:00:00.000Z");
 const at = (minutes: number): Date => new Date(NINE.getTime() + minutes * 60_000);
 
 const newTask = (n: number): NewA2ATask => ({
+  endpoint: "orders",
   tenantId: "default",
   taskId: `t-${String(n)}`,
   ownerId: "alice",
@@ -43,15 +44,15 @@ describe("agbossjs/agboss#824: the MongoDB A2A task sweep", () => {
       await tasks.compareAndSetStatus(newTask(n), 1, { state, pendingPauses: [] }, done);
     }
 
-    const batches = await sweptTerminalBefore(connection.db, at(20), 2);
+    const batches = await sweptTerminalBefore(connection.db, "orders", at(20), 2);
 
-    expect(batches).toBe(3);
+    expect(batches).toBe(5);
     for (let n = 1; n <= 7; n += 1) {
       const kept = n > 5;
       expect((await tasks.findById(newTask(n))) !== undefined).toBe(kept);
       expect((await tasks.findByMessage(newTask(n))) !== undefined).toBe(kept);
     }
-    expect(await sweptTerminalBefore(connection.db, at(20), 2)).toBe(0);
+    expect(await sweptTerminalBefore(connection.db, "orders", at(20), 2)).toBe(0);
   });
 
   it("agbossjs/agboss#960 AC1: removes the messages whose task is gone, batch by batch, by their age", async () => {
@@ -59,6 +60,7 @@ describe("agbossjs/agboss#824: the MongoDB A2A task sweep", () => {
     const tasks = new MongoA2ATaskRepository(connection);
     await tasks.saveIfAbsent(newTask(1));
     const followUp = (n: number, taskId: string, savedAt: Date) => ({
+      endpoint: "orders",
       tenantId: "default",
       ownerId: "alice",
       messageId: `m-orphan-${String(n)}`,
@@ -76,8 +78,8 @@ describe("agbossjs/agboss#824: the MongoDB A2A task sweep", () => {
     const claim = followUp(8, "", at(1));
     await tasks.saveMessageIfAbsent(claim);
 
-    expect(await sweptOrphanMessagesBefore(connection.db, at(5), 2)).toBe(0);
-    expect(await sweptOrphanMessagesBefore(connection.db, at(20), 2)).toBe(5);
+    expect(await sweptOrphanMessagesBefore(connection.db, "orders", at(5), 2)).toBe(0);
+    expect(await sweptOrphanMessagesBefore(connection.db, "orders", at(20), 2)).toBe(5);
 
     for (let n = 1; n <= 5; n += 1)
       expect(await tasks.findByMessage(followUp(n, "t-gone", at(5)))).toBeUndefined();

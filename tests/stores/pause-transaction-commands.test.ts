@@ -123,7 +123,7 @@ describe("agbossjs/agboss#1213: a pause transaction's operations are in it", () 
     await store.reassignByTenantIdAndPauseId(
       "default",
       "p",
-      { pauseId: "p-r", assignee: "alice" },
+      { pauseId: "p-r", assignees: ["alice"] },
       LATER,
       AUDIT,
     );
@@ -150,7 +150,7 @@ async function retentionRows(): Promise<void> {
   await store.reassignByTenantIdAndPauseId(
     "default",
     "p1",
-    { pauseId: "p2", assignee: "a" },
+    { pauseId: "p2", assignees: ["a"] },
     NINE,
     NO_RECIPIENTS,
   );

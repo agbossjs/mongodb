@@ -2,13 +2,13 @@ import {
   A2ATaskState,
   InvalidA2APageTokenError,
   isTerminalA2ATaskState,
-  PauseKind,
   type A2AMessageKey,
   type A2AMessageRecord,
   type A2ATaskKey,
   type A2ATaskRecord,
-  type A2ATaskStatus,
-} from "@agboss/core";
+} from "@agboss/core/stores";
+import { PauseKind } from "@agboss/core";
+import { usd } from "@agboss/core/units";
 import { z } from "zod";
 import { idOf } from "../keys.js";
 import { parsedOrUnreadable } from "../unreadable.js";
@@ -21,6 +21,8 @@ import { parsedOrUnreadable } from "../unreadable.js";
 
 export interface A2ATaskDocument {
   _id: string;
+  /** The `@A2AEndpoint` that accepted the task: whose `ttl.tasks` it is kept for (#1320). */
+  endpoint: string;
   tenantId: string;
   taskId: string;
   /** `""` for none, which no owner's id is (agbossjs/agboss#589). */
@@ -39,6 +41,7 @@ export interface A2ATaskDocument {
 
 export interface A2AMessageDocument {
   _id: string;
+  endpoint: string;
   tenantId: string;
   ownerId: string;
   messageId: string;
@@ -69,18 +72,29 @@ const Status = z.looseObject({
   state: z.enum(A2ATaskState),
   message: z.string().optional(),
   pendingPauses: z.array(
-    z.looseObject({ pauseId: z.string().optional(), kind: z.enum(PauseKind), ask: z.unknown() }),
+    z.looseObject({
+      pauseId: z.string().optional(),
+      kind: z.enum(PauseKind),
+      input: z.unknown(),
+      toolCall: z.unknown().optional(),
+    }),
   ),
   finish: z.string().optional(),
   output: z.unknown().optional(),
   errorCode: z.string().optional(),
   // agbossjs/agboss#810: a mesh limit's facts (REJECTED), the execution's spend (COMPLETED)
   errorDetails: z.unknown().optional(),
-  spentUsd: z.number().nonnegative().optional(),
-  cancelRequestedAt: z.iso.datetime().optional(),
+  spentUsd: z.number().nonnegative().transform(usd).optional(),
+  spentTokens: z.number().int().nonnegative().optional(),
+  // read back as the Date it was written from (a status holds a Date, stored as its ISO text)
+  cancelRequestedAt: z.iso
+    .datetime()
+    .transform((text) => new Date(text))
+    .optional(),
 });
 
 const StoredTask = z.object({
+  endpoint: z.string(),
   tenantId: z.string(),
   taskId: z.string(),
   ownerId: z.string(),
@@ -96,6 +110,7 @@ const StoredTask = z.object({
 });
 
 const StoredMessage = z.object({
+  endpoint: z.string(),
   tenantId: z.string(),
   ownerId: z.string(),
   messageId: z.string(),
@@ -107,6 +122,7 @@ const StoredMessage = z.object({
 
 export const taskDocumentOf = (task: A2ATaskRecord): A2ATaskDocument => ({
   _id: taskIdOf(task),
+  endpoint: task.endpoint,
   tenantId: task.tenantId,
   taskId: task.taskId,
   ownerId: ownerColumnOf(task.ownerId),
@@ -123,6 +139,7 @@ export const taskDocumentOf = (task: A2ATaskRecord): A2ATaskDocument => ({
 
 export const messageDocumentOf = (message: A2AMessageRecord): A2AMessageDocument => ({
   _id: messageIdOf(message),
+  endpoint: message.endpoint,
   tenantId: message.tenantId,
   ownerId: ownerColumnOf(message.ownerId),
   messageId: message.messageId,
@@ -138,12 +155,13 @@ export const replyTextOf = (reply: unknown): string =>
 
 export function taskOf(document: unknown): A2ATaskRecord {
   const stored = StoredTask.parse(document);
-  const status: A2ATaskStatus = Status.parse(
+  const status = Status.parse(
     parsedOrUnreadable("a2a task status", stored.status, { taskId: stored.taskId }),
   );
   if (status.state !== stored.state)
     throw new Error(`agboss_a2a_tasks ${stored.taskId}: its state and its status disagree`);
   return {
+    endpoint: stored.endpoint,
     tenantId: stored.tenantId,
     taskId: stored.taskId,
     ownerId: ownerOf(stored.ownerId),
@@ -161,6 +179,7 @@ export function taskOf(document: unknown): A2ATaskRecord {
 export function messageOf(document: unknown): A2AMessageRecord {
   const stored = StoredMessage.parse(document);
   return {
+    endpoint: stored.endpoint,
     tenantId: stored.tenantId,
     ownerId: ownerOf(stored.ownerId),
     messageId: stored.messageId,

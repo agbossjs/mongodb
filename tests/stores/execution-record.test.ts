@@ -1,3 +1,4 @@
+import { usd } from "@agboss/core/units";
 import { pauseAnswerRecordOfValue, StoreOutcomeUnknownError } from "@agboss/core/stores";
 import {
   ComponentKind,
@@ -110,7 +111,7 @@ const answerOf = (stepKey: string, askedAt: string): PauseAnswerRecord =>
     },
     role: "refund-approval",
     answerer: PauseAnswerer.Channel,
-    answeredBy: "manager-17",
+    actor: { id: "manager-17" },
     resolution: PauseResolution.Replied,
     askedAt,
     resolvedAt: "2026-01-05T10:00:00.000Z",
@@ -165,12 +166,19 @@ describe("MongoExecutionRecordRepository", () => {
     const { ids } = await threadWith(records, [Paused]);
     const [id = ""] = ids;
 
-    await records.complete(id, outcomeOf(Answered, { costUsd: 0.5, route: ["start", "finish"] }));
+    await records.complete(
+      id,
+      outcomeOf(Answered, { costUsd: usd(0.5), route: ["start", "finish"] }),
+    );
     const late = await records.completeIfStatus(id, Paused, outcomeOf(Failed));
     const [stored] = await records.byIds([id]);
 
     expect(late).toBe(false);
-    expect(stored).toMatchObject({ status: "answered", costUsd: 0.5, route: ["start", "finish"] });
+    expect(stored).toMatchObject({
+      status: "answered",
+      costUsd: usd(0.5),
+      route: ["start", "finish"],
+    });
   });
 
   it("the paused -> running mark of an answer, written with no lease on several instances at once: exactly one lands", async () => {
@@ -185,7 +193,7 @@ describe("MongoExecutionRecordRepository", () => {
       });
       const running = stores.map(async (store, index) => {
         await go;
-        return store.completeIfStatus(id, Paused, outcomeOf(Running, { costUsd: index + 1 }));
+        return store.completeIfStatus(id, Paused, outcomeOf(Running, { costUsd: usd(index + 1) }));
       });
       release();
 
@@ -197,7 +205,7 @@ describe("MongoExecutionRecordRepository", () => {
       expect(stored?.costUsd).toBe(marks.indexOf(true) + 1);
       // the answer that lost finds the record already moved: a second mark from paused never lands
       expect(
-        await stores[1]?.completeIfStatus(id, Paused, outcomeOf(Running, { costUsd: 9 })),
+        await stores[1]?.completeIfStatus(id, Paused, outcomeOf(Running, { costUsd: usd(9) })),
       ).toBe(false);
     }
   });
@@ -352,7 +360,8 @@ describe("MongoExecutionRecordRepository", () => {
     const records = recordsOn(database.url());
     const { ids } = await threadWith(records, [Failed, Running, Failed, Failed]);
 
-    const failed = await records.findByStatus(Failed, 10, ids[0]);
+    const failed = (await records.findByStatus({ status: Failed, limit: 10, cursor: ids[0] }))
+      .items;
 
     expect(failed.map((record) => record.id)).toEqual([ids[2], ids[3]]);
   });
@@ -360,10 +369,10 @@ describe("MongoExecutionRecordRepository", () => {
   it("byVersion: originals of a prompt version, a running one and a replay left out", async () => {
     const records = recordsOn(database.url());
     const { ids } = await threadWith(records, [Answered, Running, Failed], {
-      bundle: "version-workflow",
+      workflow: "version-workflow",
     });
-    await threadWith(records, [Answered], { bundle: "version-workflow", replayOf: ids[0] });
-    await threadWith(records, [Answered], { bundle: "version-workflow", promptVersion: "p2" });
+    await threadWith(records, [Answered], { workflow: "version-workflow", replayOf: ids[0] });
+    await threadWith(records, [Answered], { workflow: "version-workflow", promptVersion: "p2" });
 
     const originals = await records.byVersion("version-workflow", "p1", 10);
 
@@ -374,9 +383,9 @@ describe("MongoExecutionRecordRepository", () => {
   it("scores: unscored answered records, the mean of a set, the summary per prompt version", async () => {
     const records = recordsOn(database.url());
     const { ids } = await threadWith(records, [Answered, Answered, Failed, Running], {
-      bundle: "scored-workflow",
+      workflow: "scored-workflow",
     });
-    await threadWith(records, [Answered], { bundle: "scored-workflow", promptVersion: "p2" });
+    await threadWith(records, [Answered], { workflow: "scored-workflow", promptVersion: "p2" });
     const [first = "", second = ""] = ids;
 
     await records.saveScore(first, "judge", 0.8);
@@ -437,7 +446,7 @@ describe("MongoExecutionRecordRepository", () => {
   it("recentOriginals: the newest original answered records, oldest first", async () => {
     const records = recordsOn(database.url());
     const { ids } = await threadWith(records, [Answered, Failed, Answered, Answered], {
-      bundle: "recent-workflow",
+      workflow: "recent-workflow",
     });
 
     const recent = await records.recentOriginals("recent-workflow", 2);
@@ -453,16 +462,16 @@ describe("MongoExecutionRecordRepository", () => {
     const summary = await records.addSummary({
       tenantId: "default",
       threadId,
-      bundle: "desk-workflow",
-      compaction: "rolling",
+      workflow: "desk-workflow",
+      memory: "rolling",
       fromTurnId: one,
       toTurnId: two,
       turns: 2,
       text: "asked about order 7",
-      costUsd: 0.002,
+      costUsd: usd(0.002),
     });
 
-    expect(summary).toMatchObject({ id: expect.any(String), compaction: "rolling", turns: 2 });
+    expect(summary).toMatchObject({ id: expect.any(String), memory: "rolling", turns: 2 });
     expect((await records.uncovered("default", threadId, "rolling")).map((r) => r.id)).toEqual([
       three,
       four,
@@ -478,17 +487,17 @@ describe("MongoExecutionRecordRepository", () => {
   it("summaries: the compaction's newest ones, oldest first, and their count", async () => {
     const records = recordsOn(database.url());
     const { threadId, ids } = await threadWith(records, [Answered, Answered, Answered]);
-    const summarise = (from: number, to: number, compaction = "rolling") =>
+    const summarise = (from: number, to: number, memory = "rolling") =>
       records.addSummary({
         tenantId: "default",
         threadId,
-        bundle: "desk-workflow",
-        compaction,
+        workflow: "desk-workflow",
+        memory,
         fromTurnId: ids[from] ?? "",
         toTurnId: ids[to] ?? "",
         turns: to - from + 1,
         text: `turns ${String(from)}-${String(to)}`,
-        costUsd: 0.001,
+        costUsd: usd(0.001),
       });
     await summarise(0, 0);
     await summarise(1, 1);
@@ -511,7 +520,7 @@ describe("MongoExecutionRecordRepository", () => {
     await records.savePauseAnswer("default", "root-log", earlier);
     await records.savePauseAnswer("default", "root-log", {
       ...earlier,
-      answeredBy: "someone else",
+      actor: { id: "someone else" },
     });
 
     const log = await records.findPauseAnswersByTenantIdAndRootExecutionId("default", "root-log");

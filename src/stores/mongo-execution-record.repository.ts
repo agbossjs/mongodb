@@ -12,17 +12,27 @@ import {
   type NewTurn,
   type PauseAnswerRecord,
   type Summary,
+  type ThreadStatusTransition,
   type Turn,
   type TurnOutcome,
   type VersionScore,
 } from "@agboss/core";
-import { idGeneratorNameOf } from "@agboss/core/stores";
+import {
+  idGeneratorNameOf,
+  type EndedTree,
+  type ExecutionRecordStatusQuery,
+  type Page,
+  type StatusContext,
+} from "@agboss/core/stores";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { pauseAnswerOfJson } from "./framework-json.js";
-import * as memory from "./records/record-memory.js";
+import * as memories from "./records/record-memory.js";
 import * as reads from "./records/record-reads.js";
 import * as scores from "./records/record-scores.js";
+import { deleteIdleThreads } from "./records/record-idle.js";
+import * as threads from "./records/record-threads.js";
 import * as writes from "./records/record-writes.js";
+import { forgottenStatus, historyOf } from "./status-log.js";
 
 /** How many minted ids a new thread tries before it gives up (agbossjs/agboss#550). */
 const MINTED_THREAD_TRIES = 100;
@@ -62,12 +72,12 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
    */
   async createThread(thread: NewThread): Promise<string> {
     if (thread.threadId !== undefined) {
-      await writes.createThread(this.connection.db, thread, thread.threadId, this.clock.now());
+      await threads.createOwnThread(this.connection.db, thread, thread.threadId, this.clock.now());
       return thread.threadId;
     }
     for (let tries = 0; tries < MINTED_THREAD_TRIES; tries += 1) {
       const id = this.idGenerator.newThreadId();
-      if (await writes.createThread(this.connection.db, thread, id, this.clock.now())) return id;
+      if (await threads.createThread(this.connection.db, thread, id, this.clock.now())) return id;
     }
     // agbossjs/agboss#613: the core's typed refusal, naming the project's generator class
     throw new ThreadIdsExhaustedError({
@@ -82,21 +92,35 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     workflow: string,
     tenantId: string,
     threadId: string,
-  ): Promise<{ readonly owner: string | undefined } | undefined> {
-    return writes.threadOwnerOf(this.connection.db, workflow, tenantId, threadId);
+  ): Promise<{ readonly owner: string | undefined; readonly isSwept?: true } | undefined> {
+    return threads.threadOwnerOf(this.connection.db, workflow, tenantId, threadId);
   }
-  append(record: NewTurn): Promise<Turn> {
-    return writes.appendRecord(this.connection.db, record, this.clock.now());
+  append(record: NewTurn, context?: StatusContext): Promise<Turn> {
+    return writes.appendRecord(this.connection, record, { now: this.clock.now(), context });
   }
-  async complete(id: string, outcome: TurnOutcome): Promise<void> {
-    await writes.completeRecord(this.connection.db, id, outcome);
+  async complete(id: string, outcome: TurnOutcome, context?: StatusContext): Promise<void> {
+    await writes.completeRecord(this.connection, id, outcome, { now: this.clock.now(), context });
   }
   completeIfStatus(
     id: string,
     expected: ExecutionRecordStatus,
     outcome: TurnOutcome,
+    context?: StatusContext,
   ): Promise<boolean> {
-    return writes.completeRecord(this.connection.db, id, outcome, expected);
+    return writes.completeRecord(this.connection, id, outcome, {
+      now: this.clock.now(),
+      expected,
+      context,
+    });
+  }
+  statusHistory(tenantId: string, threadId: string): Promise<readonly ThreadStatusTransition[]> {
+    return historyOf(this.connection.db, { tenantId, threadId });
+  }
+  forgetStatusHistory(tenantId: string, threadId: string): Promise<void> {
+    return forgottenStatus(this.connection.db, { tenantId, threadId });
+  }
+  deleteIdleThreads(cutoffs: ReadonlyMap<string, Date>, isEnded: EndedTree): Promise<number> {
+    return deleteIdleThreads(this.connection, cutoffs, isEnded);
   }
   lastTurns(tenantId: string, threadId: string, limit: number): Promise<Turn[]> {
     return reads.lastRecordsOf(this.connection.db, tenantId, threadId, limit);
@@ -107,8 +131,8 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   byIds(ids: readonly string[]): Promise<Turn[]> {
     return reads.recordsByIds(this.connection.db, ids);
   }
-  findByStatus(status: ExecutionRecordStatus, limit: number, after?: string): Promise<Turn[]> {
-    return reads.recordsByStatus(this.connection.db, status, limit, after);
+  findByStatus(query: ExecutionRecordStatusQuery): Promise<Page<Turn>> {
+    return reads.statusPageOf(this.connection.db, query);
   }
   byVersion(workflow: string, promptVersion: string, limit: number): Promise<Turn[]> {
     return reads.recordsByVersion(this.connection.db, workflow, promptVersion, limit);
@@ -140,28 +164,28 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
   recentOriginals(workflow: string, limit: number): Promise<Turn[]> {
     return reads.recentOriginalRecords(this.connection.db, workflow, limit);
   }
-  uncovered(tenantId: string, threadId: string, compaction: string): Promise<Turn[]> {
-    return memory.uncoveredRecords(this.connection.db, tenantId, threadId, compaction);
+  uncovered(tenantId: string, threadId: string, memory: string): Promise<Turn[]> {
+    return memories.uncoveredRecords(this.connection.db, tenantId, threadId, memory);
   }
   before(tenantId: string, threadId: string, turnId: string, limit: number): Promise<Turn[]> {
-    return memory.recordsBefore(this.connection.db, tenantId, threadId, turnId, limit);
+    return memories.recordsBefore(this.connection.db, tenantId, threadId, turnId, limit);
   }
   turnNumber(tenantId: string, threadId: string, turnId: string): Promise<number> {
-    return memory.turnNumberOf(this.connection.db, tenantId, threadId, turnId);
+    return memories.turnNumberOf(this.connection.db, tenantId, threadId, turnId);
   }
   addSummary(summary: NewSummary): Promise<Summary> {
-    return memory.addSummary(this.connection.db, summary, this.clock.now());
+    return memories.addSummary(this.connection.db, summary, this.clock.now());
   }
   latestSummaries(
     tenantId: string,
     threadId: string,
-    compaction: string,
+    memory: string,
     limit: number,
   ): Promise<Summary[]> {
-    return memory.latestSummariesOf(this.connection.db, tenantId, threadId, compaction, limit);
+    return memories.latestSummariesOf(this.connection.db, tenantId, threadId, memory, limit);
   }
-  summaryCount(tenantId: string, threadId: string, compaction: string): Promise<number> {
-    return memory.summaryCountOf(this.connection.db, tenantId, threadId, compaction);
+  summaryCount(tenantId: string, threadId: string, memory: string): Promise<number> {
+    return memories.summaryCountOf(this.connection.db, tenantId, threadId, memory);
   }
   savePauseAnswer(
     tenantId: string,

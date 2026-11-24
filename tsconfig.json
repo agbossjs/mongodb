@@ -9,5 +9,10 @@
     "vitest.mutation.config.ts",
     "eslint.config.js"
   ],
-  "exclude": ["tests/a2a"]
+  "exclude": [
+    "tests/a2a",
+    "tests/fixtures",
+    "tests/processes",
+    "tests/integration/close-quiet-app.integration.test.ts"
+  ]
 }

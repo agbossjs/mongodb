@@ -1,10 +1,11 @@
-import { ExecutionFencedError, type EffectKey, type StoreClock } from "@agboss/core";
-import type { ClientSession, Db } from "mongodb";
+import { fencedRefusalOf, type StoreClock } from "@agboss/core";
+import type { EffectKey } from "@agboss/core/stores";
+import type { ClientSession, Db, Document } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
 import { treeIdOf } from "./keys.js";
 import { TokenFields, tokenOf } from "./lease-documents.js";
-import { storeNowOf } from "./store-time.js";
+import { literal, storeNowOf } from "./store-time.js";
 
 /**
  * The fencing checks of the fenced stores (#500, agbossjs/agboss#505, #508) — the fenced effect and
@@ -34,6 +35,25 @@ const CheckedLease = z
     released: stored.released,
     checkedAt: stored.checkedAt,
   }));
+
+/**
+ * The expiry a scope's mark or a key's lock keeps (an update pipeline's expression): the latest of
+ * every key's written under it — never (`null`, `Ttl.Forever`) over any date, a later date over an
+ * earlier one — so a short ttl never truncates the mark a longer one relies on.
+ */
+export function latestExpiry(expiresAt: Date | null): Document | null {
+  if (expiresAt === null) return null;
+  const stored = { $type: "$expiresAt" };
+  return {
+    $switch: {
+      branches: [
+        { case: { $eq: [stored, "missing"] }, then: literal(expiresAt) },
+        { case: { $eq: [stored, "null"] }, then: null },
+      ],
+      default: { $max: ["$expiresAt", literal(expiresAt)] },
+    },
+  };
+}
 
 const Mark = z.object({ highestToken: z.number().int() });
 
@@ -79,19 +99,27 @@ export async function checkFence(
 ): Promise<Date> {
   const { scopeKey, token } = key;
   const lease = await lockedLeaseOf(db, session, key.tenantId, key.leaseExecutionId, clock);
-  const refused = (observedToken: number | undefined): ExecutionFencedError =>
-    ExecutionFencedError.of({ scopeKey, token, observedToken });
+  const refused = (observedToken: number | undefined) =>
+    fencedRefusalOf({ scopeKey, token, observedToken });
   if (lease === undefined) throw refused(undefined);
   if (lease.released || lease.token !== token) throw refused(lease.token);
   // live while expiresAt > now, by the store's time read in this transaction (#534, #533)
   if (lease.expiresAt.getTime() <= lease.checkedAt.getTime()) throw refused(lease.token);
   const mark = await db
-    .collection<{ _id: string; highestToken: number; storedAt: Date }>(
+    .collection<{ _id: string; highestToken: number; storedAt: Date; expiresAt: Date | null }>(
       Collections.FencedEffectMarks,
     )
     .findOneAndUpdate(
       { _id: scopeKey },
-      { $max: { highestToken: token }, $set: { storedAt: clock.now() } },
+      [
+        {
+          $set: {
+            highestToken: { $max: [{ $ifNull: ["$highestToken", 0] }, token] },
+            storedAt: clock.now(),
+            expiresAt: latestExpiry(key.expiresAt),
+          },
+        },
+      ],
       { upsert: true, returnDocument: "after", session },
     );
   const { highestToken } = Mark.parse(mark);
@@ -110,13 +138,23 @@ export async function lockKey(
   db: Db,
   session: ClientSession,
   identity: string,
-  now: Date,
+  write: { readonly now: Date; readonly expiresAt: Date | null },
 ): Promise<void> {
   await db
-    .collection<{ _id: string; locks: number; lockedAt: Date }>(Collections.FencedKeyLocks)
+    .collection<{ _id: string; locks: number; lockedAt: Date; expiresAt: Date | null }>(
+      Collections.FencedKeyLocks,
+    )
     .updateOne(
       { _id: identity },
-      { $inc: { locks: 1 }, $set: { lockedAt: now } },
+      [
+        {
+          $set: {
+            locks: { $add: [{ $ifNull: ["$locks", 0] }, 1] },
+            lockedAt: write.now,
+            expiresAt: latestExpiry(write.expiresAt),
+          },
+        },
+      ],
       { upsert: true, session },
     );
 }

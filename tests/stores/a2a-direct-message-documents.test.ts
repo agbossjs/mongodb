@@ -1,3 +1,4 @@
+import { usd } from "@agboss/core/units";
 /**
  * agbossjs/mongodb#103/#104: the direct message's document and its reading, on records and documents
  * given by hand (no server): which optional fields are written and read, when the state and the reply
@@ -14,9 +15,10 @@ import {
 
 const NINE = new Date("2026-01-05T09:00:00.000Z");
 const LATER = new Date("2026-01-05T09:00:30.000Z");
-const REPLY = { finish: "quote-workflow-finish", output: { text: "ok" }, spentUsd: 0.01 };
+const REPLY = { finish: "quote-workflow-finish", output: { text: "ok" }, spentUsd: usd(0.01) };
 
 const record = (extra: Partial<A2ADirectMessageRecord> = {}): A2ADirectMessageRecord => ({
+  endpoint: "orders",
   tenantId: "acme",
   ownerId: "alice",
   messageId: "m-1",
@@ -44,6 +46,7 @@ describe("directDocumentOf: an optional field is written when the record has it,
         "callsModel",
         "contextId",
         "createdAt",
+        "endpoint",
         "expiresAt",
         "messageId",
         "ownerId",

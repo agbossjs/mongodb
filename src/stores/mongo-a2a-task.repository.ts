@@ -1,7 +1,6 @@
 import {
   A2ATaskRepository,
   A2ATaskSaveStatus,
-  Injectable,
   type A2AMessageKey,
   type A2AMessageRecord,
   type A2ATaskKey,
@@ -11,8 +10,8 @@ import {
   type A2ATaskSave,
   type A2ATaskStatus,
   type NewA2ATask,
-  type StoreDescriptor,
-} from "@agboss/core";
+} from "@agboss/core/stores";
+import { Injectable, type StoreDescriptor } from "@agboss/core";
 import type { ClientSession, Collection, Db } from "mongodb";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
@@ -59,7 +58,7 @@ const messagesOf = (db: Db): Collection<A2AMessageDocument> =>
  *   `saveReplyIfAbsent` one update of a message without a reply.
  * - `list` reads the page and its count (`countDocuments`) in two commands: a task saved in
  *   between moves the count by one, as the next page would show it.
- * - `deleteTerminalByStatusAtBefore` removes the finished tasks in bounded batches, outside a
+ * - `deleteExpired` removes the finished tasks in bounded batches, outside a
  *   transaction (a backlog of any size outlives no transaction's lifetime): each batch's tasks, then
  *   their messages. A terminal status never changes, so a batch read is still due when deleted; a
  *   crash between the two leaves messages whose task is gone, as does a follow-up saved while its
@@ -138,9 +137,19 @@ export class MongoA2ATaskRepository extends A2ATaskRepository {
     return pageOf(tasksOf(this.connection.db), query);
   }
 
-  async deleteTerminalByStatusAtBefore(cutoff: Date): Promise<void> {
-    await sweptTerminalBefore(this.connection.db, cutoff);
-    await sweptOrphanMessagesBefore(this.connection.db, cutoff);
+  /**
+   * The recovery sweep, endpoint by endpoint (#807, #960, #1320): the endpoint's finished tasks whose
+   * status changed before its cutoff with their messages, then every message of the endpoint whose
+   * task is gone and whose `savedAt` is before it. A direct message's claim is never one. How many
+   * tasks went.
+   */
+  async deleteExpired(cutoffsByEndpoint: ReadonlyMap<string, Date>): Promise<number> {
+    let removed = 0;
+    for (const [endpoint, cutoff] of cutoffsByEndpoint) {
+      removed += await sweptTerminalBefore(this.connection.db, endpoint, cutoff);
+      await sweptOrphanMessagesBefore(this.connection.db, endpoint, cutoff);
+    }
+    return removed;
   }
 }
 
@@ -162,6 +171,7 @@ async function acceptedIn(db: Db, session: ClientSession, task: NewA2ATask): Pro
   if ((await tasksOf(db).countDocuments({ _id: taskIdOf(task) }, { session, limit: 1 })) > 0)
     return { status: A2ATaskSaveStatus.TaskIdTaken };
   const record: A2ATaskRecord = {
+    endpoint: task.endpoint,
     tenantId: task.tenantId,
     taskId: task.taskId,
     ownerId: task.ownerId,

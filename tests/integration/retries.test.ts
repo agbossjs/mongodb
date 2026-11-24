@@ -5,13 +5,8 @@
  * its reply lost. Each is retried by the driver, and each must leave exactly one effect.
  */
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
-import {
-  FencedEffectSettings,
-  FencedEffectStatus,
-  StoreClock,
-  StoreTimeSource,
-  type EffectKey,
-} from "@agboss/core";
+import { IdempotencyRunStatus, StoreClock, StoreTimeSource } from "@agboss/core";
+import { type EffectKey } from "@agboss/core/stores";
 import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
 import { minutes } from "@agboss/core/units";
 import { MongoClient, type Document } from "mongodb";
@@ -99,24 +94,18 @@ const chargesOf = (root: string): Promise<number> =>
 describe("a fenced effect's transaction on an error the driver retries", () => {
   it("a transient error (a write conflict) runs the work again in a new transaction: one charge, Ran", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "transient-1", minutes(1));
-    const effects = new MongoFencedEffectRepository(
-      connection,
-      serverClock(),
-      new FencedEffectSettings(),
-    );
+    const effects = new MongoFencedEffectRepository(connection, serverClock());
     await failNext(["insert"], { errorCode: 112, errorLabels: ["TransientTransactionError"] });
     let runs = 0;
 
-    const outcome = await effects.runOnce(
-      keyOf("transient-1", lease?.token ?? 0),
-      async ({ db, session }) => {
-        runs += 1;
-        await db.collection("retry_charges").insertOne({ root: "transient-1" }, { session });
-        return { receipt: "r1" };
-      },
-    );
+    const outcome = await effects.runOnce(keyOf("transient-1", lease?.token ?? 0), async () => {
+      const { db, session } = connection.requireTransaction();
+      runs += 1;
+      await db.collection("retry_charges").insertOne({ root: "transient-1" }, { session });
+      return { receipt: "r1" };
+    });
 
-    expect(outcome).toMatchObject({ status: FencedEffectStatus.Ran, result: { receipt: "r1" } });
+    expect(outcome).toMatchObject({ status: IdempotencyRunStatus.Ran, result: { receipt: "r1" } });
     // the first attempt was aborted: its insert never committed
     expect(runs).toBe(2);
     expect(await chargesOf("transient-1")).toBe(1);
@@ -124,26 +113,20 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
 
   it("a commit applied but answered with an error (unknown outcome) is committed again, never run again: one charge", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-1", minutes(1));
-    const effects = new MongoFencedEffectRepository(
-      connection,
-      serverClock(),
-      new FencedEffectSettings(),
-    );
+    const effects = new MongoFencedEffectRepository(connection, serverClock());
     await failNext(["commitTransaction"], {
       writeConcernError: { code: 91, errmsg: "Replication is being shut down" },
     });
     let runs = 0;
 
-    const outcome = await effects.runOnce(
-      keyOf("unknown-1", lease?.token ?? 0),
-      async ({ db, session }) => {
-        runs += 1;
-        await db.collection("retry_charges").insertOne({ root: "unknown-1" }, { session });
-        return { receipt: "r1" };
-      },
-    );
+    const outcome = await effects.runOnce(keyOf("unknown-1", lease?.token ?? 0), async () => {
+      const { db, session } = connection.requireTransaction();
+      runs += 1;
+      await db.collection("retry_charges").insertOne({ root: "unknown-1" }, { session });
+      return { receipt: "r1" };
+    });
 
-    expect(outcome.status).toBe(FencedEffectStatus.Ran);
+    expect(outcome.status).toBe(IdempotencyRunStatus.Ran);
     expect(runs).toBe(1);
     expect(await chargesOf("unknown-1")).toBe(1);
   });
@@ -151,21 +134,15 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
   it("a commit that keeps failing rejects; the next call replays what the first one committed", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-2", minutes(1));
     const key = keyOf("unknown-2", lease?.token ?? 0);
-    const effects = new MongoFencedEffectRepository(
-      connection,
-      serverClock(),
-      new FencedEffectSettings(),
-    );
+    const effects = new MongoFencedEffectRepository(connection, serverClock());
     // applied every time, answered with a non-retryable error: the caller cannot tell it committed
     await failNext(["commitTransaction"], {
       writeConcernError: { code: 100, errmsg: "unsatisfiable" },
     });
-    const charge = async ({
-      db,
-      session,
-    }: Parameters<Parameters<typeof effects.runOnce>[1]>[0]): Promise<{
+    const charge = async (): Promise<{
       receipt: string;
     }> => {
+      const { db, session } = connection.requireTransaction();
       await db.collection("retry_charges").insertOne({ root: "unknown-2" }, { session });
       return { receipt: "r1" };
     };
@@ -173,7 +150,10 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
     await expect(effects.runOnce(key, charge)).rejects.toThrow();
     const again = await effects.runOnce(key, charge);
 
-    expect(again).toMatchObject({ status: FencedEffectStatus.Replayed, result: { receipt: "r1" } });
+    expect(again).toMatchObject({
+      status: IdempotencyRunStatus.Replayed,
+      result: { receipt: "r1" },
+    });
     expect(await chargesOf("unknown-2")).toBe(1);
   });
 });
@@ -182,11 +162,7 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
   it("a commit whose retry fails too is StoreOutcomeUnknownError (Transport), the work run once; the next call replays the charge", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-3", minutes(1));
     const key = keyOf("unknown-3", lease?.token ?? 0);
-    const effects = new MongoFencedEffectRepository(
-      connection,
-      serverClock(),
-      new FencedEffectSettings(),
-    );
+    const effects = new MongoFencedEffectRepository(connection, serverClock());
     // applied both times (the commit and its retry), answered with a retryable error both times
     await failNext(
       ["commitTransaction"],
@@ -194,12 +170,10 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
       2,
     );
     let runs = 0;
-    const charge = async ({
-      db,
-      session,
-    }: Parameters<Parameters<typeof effects.runOnce>[1]>[0]): Promise<{
+    const charge = async (): Promise<{
       receipt: string;
     }> => {
+      const { db, session } = connection.requireTransaction();
       runs += 1;
       await db.collection("retry_charges").insertOne({ root: "unknown-3" }, { session });
       return { receipt: "r1" };
@@ -214,21 +188,21 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
       source: StoreOutcomeSource.Transport,
     });
     expect(runs).toBe(1);
-    expect(again).toMatchObject({ status: FencedEffectStatus.Replayed, result: { receipt: "r1" } });
+    expect(again).toMatchObject({
+      status: IdempotencyRunStatus.Replayed,
+      result: { receipt: "r1" },
+    });
     expect(await chargesOf("unknown-3")).toBe(1);
   });
 
   it("a commit whose connection is cut twice (no answer at all) is StoreOutcomeUnknownError too", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-4", minutes(1));
-    const effects = new MongoFencedEffectRepository(
-      connection,
-      serverClock(),
-      new FencedEffectSettings(),
-    );
+    const effects = new MongoFencedEffectRepository(connection, serverClock());
     await failNext(["commitTransaction"], { closeConnection: true }, 2);
 
     const failure: unknown = await effects
-      .runOnce(keyOf("unknown-4", lease?.token ?? 0), async ({ db, session }) => {
+      .runOnce(keyOf("unknown-4", lease?.token ?? 0), async () => {
+        const { db, session } = connection.requireTransaction();
         await db.collection("retry_charges").insertOne({ root: "unknown-4" }, { session });
         return { receipt: "r1" };
       })
@@ -239,11 +213,7 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
 
   it("an error the work throws, or a write conflict, is no unknown outcome: it is rethrown as it is, or the work runs again", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "known-1", minutes(1));
-    const effects = new MongoFencedEffectRepository(
-      connection,
-      serverClock(),
-      new FencedEffectSettings(),
-    );
+    const effects = new MongoFencedEffectRepository(connection, serverClock());
 
     const failure: unknown = await effects
       .runOnce(keyOf("known-1", lease?.token ?? 0), () => Promise.reject(new TypeError("no")))

@@ -61,7 +61,7 @@ describe("agbossjs/agboss#81: the claim's order is its sort's", () => {
         claimed.push((await queue.claimFirstByStatusQueuedOrderByDepthDesc())?.executionId ?? "-");
       expect(claimed).toEqual(["c", "b", "a"]);
     } finally {
-      await rawQueue().createIndex({ status: 1, depth: -1, queuedAt: 1 }, { name: "by_claim" }, {});
+      await rawQueue().createIndex({ status: 1, depth: -1, queuedAt: 1 }, { name: "by_claim" });
     }
   });
 });

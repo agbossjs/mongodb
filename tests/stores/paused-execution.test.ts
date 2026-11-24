@@ -3,7 +3,6 @@ import {
   PauseAnswerer,
   PauseKind,
   PauseResolution,
-  questionAskOf,
   PauseStatus,
   type PauseRecord,
 } from "@agboss/core";
@@ -42,7 +41,16 @@ const pauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
   step: "clerk-agent",
   channel: "refund-approval-channel",
   answerer: PauseAnswerer.Channel,
-  ask: { callId: "call-1", tool: "charge", arguments: { text: "10 USD" }, summary: "charge" },
+  input: { text: "10 USD" },
+  toolCall: { callId: "call-1", tool: "charge", summary: "charge" },
+  trail: [
+    {
+      action: "opened",
+      at: "2026-01-05T09:00:00.000Z",
+      target: "refund-approval-channel",
+      channel: "refund-approval-channel",
+    },
+  ],
   status: PauseStatus.Pending,
   isSent: false,
   askedAt: "2026-01-05T09:00:00.000Z",
@@ -61,7 +69,7 @@ const questionPauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
     promptHash: undefined,
     schemaHash: "ddb0c5dd",
   },
-  ask: questionAskOf({ name: "box-1" }),
+  input: { name: "box-1" },
 });
 
 /** Rewrites the stored record of `pauseId` with `edit` — a document no store write makes. */
@@ -88,17 +96,17 @@ describe("MongoPausedExecutionRepository", () => {
     await other.resolveByTenantIdAndPauseId(
       "default",
       "p-question",
-      { decision: { verdict: "yes" }, answeredBy: undefined },
+      { decision: { verdict: "yes" }, actor: undefined },
       NINE,
       NO_RECIPIENTS,
     );
 
     expect(await other.findAllByTenantIdAndRootExecutionId("default", "run-1")).toEqual([
-      expect.objectContaining({ pauseId: "p-question", ask: { name: "box-1" } }),
+      expect.objectContaining({ pauseId: "p-question", input: { name: "box-1" } }),
     ]);
     expect(await pausesOn().findByTenantIdAndPauseId("default", "p-question")).toMatchObject({
       component: { kind: ComponentKind.Question },
-      ask: { name: "box-1" },
+      input: { name: "box-1" },
       status: PauseStatus.Resolved,
       resolution: PauseResolution.Replied,
       answer: { decision: { verdict: "yes" } },
@@ -148,7 +156,7 @@ describe("MongoPausedExecutionRepository", () => {
 
     expect(await pauses.findByTenantIdAndPauseId("default", "p-kept")).toMatchObject({
       kind: PauseKind.Question,
-      ask: { name: "box-1" },
+      input: { name: "box-1" },
     });
   });
 

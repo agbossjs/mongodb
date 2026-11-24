@@ -102,25 +102,52 @@ assemble (`[a2a.message-store-not-shared]`).
 
 **One backend.** The lease, fenced-effect and outbound-call stores declare
 `static store = { backend: "mongodb" }` (agbossjs/agboss#526, #825): list the three together. A
-component injects the application's `FencedEffects` (agbossjs/agboss#890), never this store's class. A
-fenced effect's work gets the transaction — `{ session, db }` — and writes its business documents
-**with the session**; a write without it is outside the guarantee:
+component injects the application's `Idempotency` (agbossjs/agboss#1317: never this store's class
+— the store is the application's, listed in its `providers`). `runOnce`'s `execute` is handed no
+transaction: a repository writes through the connection's `requireTransaction()` — this transaction,
+`{ session, db }`, rolled back with the effect on any uncaught error — and writes its business
+documents **with the session**; a write without it is outside the guarantee:
 
 <!-- snippet-context
-import { effectKeyOf, type ExecutionContext, type FencedEffects } from "@agboss/core";
-import type { MongoTransaction } from "@agboss/mongodb";
-declare const fencedEffects: FencedEffects;
-declare const executionContext: ExecutionContext;
+import { Idempotency } from "@agboss/core";
+import { hours } from "@agboss/core/units";
+import type { MongoConnection } from "@agboss/mongodb";
+declare const idempotency: Idempotency;
+declare const connection: MongoConnection;
 declare const orderId: string;
 declare const amount: number;
 -->
 
 ```ts
-await fencedEffects.runOnce(effectKeyOf(executionContext, "charge"), async ({ db, session }: MongoTransaction) => {
-  await db.collection("charges").insertOne({ orderId, amount }, { session });
-  return { receipt: orderId };
+await idempotency.runOnce({
+  name: "charge",
+  ttl: hours(24),
+  execute: async () => {
+    const { db, session } = connection.requireTransaction();
+    await db.collection("charges").insertOne({ orderId, amount }, { session });
+    return { receipt: orderId };
+  },
 });
 ```
+
+`requireMongoTransaction()` gives the same transaction to a repository that holds no connection of
+its own. Every result, every scope's mark and every business key's lock carries the `expiresAt` its
+`ttl` set (a scope's mark keeps the latest of its keys, never before a key that never expires); the
+recovery sweep's `deleteExpired(now)` removes what is due.
+
+**The marks of a tree are fields of its lease document** (agbossjs/agboss#1341): the cancel
+(`cancelRequestedAt`), the stop (`stopRequestedAt`, `stopMode`), the external pause
+(`isExternallyPaused`, `externalPauseReason`, `externalPauseMode`) and the fence an `Immediate` pause
+raises (`fencedThroughToken`). Each is ONE update the server runs on the document as it is — an
+update pipeline, monotone in the update itself: a stop's and a pause's mode only escalate
+(`immediate` stays `immediate` whichever of two concurrent requests arrives last), the fence only
+rises (`$max`) and is never cleared, the cancel is never unset, the first request's time is kept. A
+mark that carries a thread's status entry writes both in one transaction
+(`agboss_thread_status_transitions`); a standalone `mongod` without transactions fails closed at
+start. The fenced stores read the marks from the tree's ROOT document, a child's key too:
+`ExecutionPauseFencedError`, `ExecutionStopFencedError`, `ExecutionCancelFencedError`. The lease
+store also mirrors a cluster's lease (`syncClusterLease`, `endClusterLease`, `mirroredLeaseOf`): the
+document is the authority.
 
 ## 2. The environment
 

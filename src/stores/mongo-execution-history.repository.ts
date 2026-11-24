@@ -1,14 +1,11 @@
-import {
-  ExecutionHistoryRepository,
-  Injectable,
-  type ExecutionHistoryPage,
-  type ExecutionHistoryRecord,
-} from "@agboss/core";
+import { ExecutionHistoryRepository, Injectable, type ExecutionHistoryRecord } from "@agboss/core";
+import type { ExecutionHistoryQuery, Page, TenantExecutionHistoryQuery } from "@agboss/core/stores";
 import type { Collection, Filter } from "mongodb";
 import { Collections } from "../connection/collections.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { historyRecordOf } from "./history/history-documents.js";
 import { idOf } from "./keys.js";
+import { listingWindowOf, pageOfWindow, type ListingWindow } from "./listing-window.js";
 
 /** One kept root execution: its record as JSON text beside the fields it is found by. */
 export interface HistoryDocument {
@@ -82,36 +79,39 @@ export class MongoExecutionHistoryRepository extends ExecutionHistoryRepository 
     return this.#where({ tenantId, threadId });
   }
 
-  findAllByTenantIdAndStartedAtBetween(
-    tenantId: string,
-    from: Date,
-    to: Date,
-    page: ExecutionHistoryPage,
-  ): Promise<ExecutionHistoryRecord[]> {
-    return this.#where({ tenantId, startedAt: { $gte: from, $lt: to } }, page);
+  async findAllByTenantIdAndStartedAtBetween(
+    query: TenantExecutionHistoryQuery,
+  ): Promise<Page<ExecutionHistoryRecord>> {
+    const window = listingWindowOf(query);
+    const found = await this.#where(
+      { tenantId: query.tenantId, startedAt: { $gte: query.from, $lt: query.to } },
+      window,
+    );
+    return pageOfWindow(found, window);
   }
 
-  findAllByStartedAtBetween(
-    from: Date,
-    to: Date,
-    page: ExecutionHistoryPage,
-  ): Promise<ExecutionHistoryRecord[]> {
-    return this.#where({ startedAt: { $gte: from, $lt: to } }, page);
+  async findAllByStartedAtBetween(
+    query: ExecutionHistoryQuery,
+  ): Promise<Page<ExecutionHistoryRecord>> {
+    const window = listingWindowOf(query);
+    const found = await this.#where({ startedAt: { $gte: query.from, $lt: query.to } }, window);
+    return pageOfWindow(found, window);
   }
 
-  async deleteByEndedAtBefore(cutoff: Date): Promise<void> {
-    await this.#history.deleteMany({ endedAt: { $ne: null, $lt: cutoff } });
+  /** Removes the ended records that ended before `cutoff`; how many went. */
+  async deleteExpired(cutoff: Date): Promise<number> {
+    const removed = await this.#history.deleteMany({ endedAt: { $ne: null, $lt: cutoff } });
+    return removed.deletedCount;
   }
 
   /** The records whose document matches `filter`, oldest start first; a page of them when given. */
   async #where(
     filter: Filter<HistoryDocument>,
-    page?: ExecutionHistoryPage,
+    page?: ListingWindow,
   ): Promise<ExecutionHistoryRecord[]> {
-    // `limit(0)` is no limit to MongoDB: a page of none is none
-    if (page?.limit === 0) return [];
     const cursor = this.#history.find(filter).sort({ startedAt: 1, executionId: 1 });
-    const paged = page === undefined ? cursor : cursor.skip(page.offset).limit(page.limit);
+    // one more than the page, to know whether another follows (a window's limit is from 1)
+    const paged = page === undefined ? cursor : cursor.skip(page.offset).limit(page.limit + 1);
     return (await paged.toArray()).map(historyRecordOf);
   }
 }

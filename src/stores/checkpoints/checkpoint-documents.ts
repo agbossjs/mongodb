@@ -27,6 +27,11 @@ export interface CheckpointDocument {
   namespace: string;
   checkpointId: string;
   parentCheckpointId: string | null;
+  /**
+   * The root execution id of the tree this checkpoint belongs to (agbossjs/agboss#1321d): what
+   * `deleteThread` finds a tree's threads by — never a range or a prefix of thread ids.
+   */
+  rootId: string;
   checkpointType: string;
   checkpoint: Binary;
   metadataType: string;
@@ -49,6 +54,8 @@ export interface WriteDocument {
   _id: string;
   tenantId: string;
   threadId: string;
+  /** The root execution id of the tree the write belongs to (#1321d). */
+  rootId: string;
   namespace: string;
   checkpointId: string;
   taskId: string;
@@ -93,6 +100,8 @@ export const StoredWrite = z.object({
 export interface CheckpointKey {
   readonly tenantId: string;
   readonly threadId: string;
+  /** The tree's root execution id (`configurable.root_execution_id`, which the framework sets for every run; a thread that names none is its own root — never inferred from the shape of its id). */
+  readonly rootId: string;
   readonly namespace: string;
   readonly checkpointId: string | undefined;
 }
@@ -102,6 +111,7 @@ const Configurable = z.object({
   thread_id: z.string().min(1).optional(),
   checkpoint_ns: z.string().optional(),
   checkpoint_id: z.string().min(1).optional(),
+  root_execution_id: z.string().min(1).optional(),
 });
 
 /** The key a config names; a missing `thread_id` fails, naming the field. */
@@ -114,6 +124,7 @@ export function keyOf(config: RunnableConfig, operation: string): CheckpointKey 
   return {
     tenantId: configurable.tenant_id ?? "default",
     threadId: configurable.thread_id,
+    rootId: configurable.root_execution_id ?? configurable.thread_id,
     namespace: configurable.checkpoint_ns ?? "",
     checkpointId: configurable.checkpoint_id,
   };

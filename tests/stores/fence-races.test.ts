@@ -1,4 +1,3 @@
-import { FencedEffectSettings } from "@agboss/core";
 import { MongoExecutionLeaseRepository, MongoFencedEffectRepository } from "../../src/index.js";
 import { fenceRaceCases } from "../contracts/fence-races.js";
 import { HandClock } from "../contracts/lease-races.js";
@@ -15,8 +14,9 @@ fenceRaceCases("MongoDB", async () => {
   const one = await instanceConnection(database, "instance-1");
   const two = await instanceConnection(database, "instance-2");
   return {
+    connection: one,
     first: {
-      effects: new MongoFencedEffectRepository(one, clock, new FencedEffectSettings()),
+      effects: new MongoFencedEffectRepository(one, clock),
       leases: new MongoExecutionLeaseRepository(
         one,
         clock,

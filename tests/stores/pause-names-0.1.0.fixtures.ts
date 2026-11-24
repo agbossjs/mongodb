@@ -85,8 +85,3 @@ export function leafOf(tree: RecordTree): RecordTree {
   if (leaf === undefined) throw new TypeError("the fixture has a child's child");
   return leaf;
 }
-
-/** A paused run in the shape 0.1.0 wrote it (`paused-run-0.1.0.json`). */
-export const oldPausedRun: Record<string, unknown> = JSON.parse(
-  readFileSync(new URL("./paused-run-0.1.0.json", import.meta.url), "utf8"),
-);
