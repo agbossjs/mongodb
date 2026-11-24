@@ -9,7 +9,6 @@ import {
   type LeaseWait,
   type Sleep,
 } from "./live-leases.js";
-import { fillPauseChannels } from "./pause-channels.js";
 import { ensureSchema, existingCollectionsOf, requireSimpleCollation } from "./schema.js";
 
 /**
@@ -28,21 +27,14 @@ export interface MongoMigration {
 }
 
 /**
- * The package's migrations, in order. Version 1: every collection, index and the ledger's mark.
- * Version 2 (agbossjs/agboss#962): the checkpoints' `latest_by_step` index; a checkpoint written
- * before has no `step` until the first read of its thread gives it one. Version 3 (#938): the
- * pauses' deadline indexes, the notices' collection, the pauses' `channel`. Version 4
- * (agbossjs/agboss#909, #1117): a tree's cancel mark is the field `cancelRequestedAt` of its lease
- * document (a seed document, token 0, when the cancel comes first), and the pauses' partial index
- * `reassigned_unsent` (#946); no collection — an
- * older build must not run on it, as it would not read the mark.
+ * The package's migrations, in order. Version 1 is the 0.1.1 baseline (agbossjs/agboss#1321c): every
+ * collection and index, the ledger's mark, the checkpoints' `latest_by_step` index, the pauses'
+ * deadline indexes and notices' collection, and a tree's cancel mark as the field
+ * `cancelRequestedAt` of its lease document — what versions 1-4 of 0.1.0 made, squashed. 0.1.0 has
+ * no users and no 0.1.0 database is migrated. Each store train that changes the schema adds the next
+ * version, numbered when the train is cut; none is reserved ahead.
  */
-export const MIGRATIONS: readonly MongoMigration[] = [
-  { version: 1, name: "stores" },
-  { version: 2, name: "checkpoint_latest_by_step" },
-  { version: 3, name: "pause-deadlines-and-notices" },
-  { version: 4, name: "execution-cancel-mark" },
-];
+export const MIGRATIONS: readonly MongoMigration[] = [{ version: 1, name: "baseline_0_1_1" }];
 
 /** The schema version this package needs: its newest migration's. */
 export const SCHEMA_VERSION = Math.max(...MIGRATIONS.map((migration) => migration.version));
@@ -147,7 +139,6 @@ export async function migrateSchema(
     await refuseLiveLeases(db);
   await ensureSchema(db);
   signal?.throwIfAborted();
-  if ((from ?? 0) < 3) await fillPauseChannels(db, signal);
   await raiseVersion(db);
   const applied = MIGRATIONS.filter((migration) => migration.version > (from ?? 0));
   return { from, applied };

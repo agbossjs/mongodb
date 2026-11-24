@@ -7,16 +7,6 @@ const Record = z.object({ record: z.string() });
 const Channel = z.object({ channel: z.string() });
 
 /**
- * Migration 2 (#938): a pause written under schema 1 has no `channel` field (the tenant's pages
- * filter on it), so it is set from the pause's `record` JSON. A cursor over the documents that lack
- * it, one `updateOne` each — idempotent, and two concurrent runs write the same value. `signal`
- * stops it between documents; the version is raised only after it, so a stopped run is run again.
- */
-export async function fillPauseChannels(db: Db, signal?: AbortSignal): Promise<void> {
-  await fillMissingChannels(db, {}, signal);
-}
-
-/**
  * The pauses of `scope` that lack `channel` get it from their record. The migration runs it over
  * every pause; a channel-filtered page runs it over its tenant's before it reads (agbossjs/agboss#1104,
  * as `latestByStep` gives a checkpoint its `step`): an instance of the previous version that is

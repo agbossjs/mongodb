@@ -8,7 +8,7 @@ import { NO_RECIPIENTS, PauseNoticeKind, type PauseRecipients } from "@agboss/co
 import { VirtualClock } from "@agboss/core/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
-import { fillPauseChannels } from "../../src/connection/pause-channels.js";
+import { fillMissingChannels } from "../../src/connection/pause-channels.js";
 import { pauseIdOf, type PauseDocument } from "../../src/stores/paused/pause-documents.js";
 import { commandsOf, nameOf, type Sent } from "../support/command-log.js";
 import { emptyAll, testDatabase } from "../support/database.js";
@@ -224,7 +224,7 @@ describe("agbossjs/agboss#1213: the channel heal reads the record only", () => {
     const connection = connectionTo(database.url());
     const sent = commandsOf(connection);
 
-    await fillPauseChannels(connection.db);
+    await fillMissingChannels(connection.db, {});
 
     expect(sent[0]?.command).toMatchObject({
       filter: { channel: null },

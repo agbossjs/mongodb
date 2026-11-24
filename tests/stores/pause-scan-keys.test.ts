@@ -15,7 +15,7 @@ import { PauseStatus } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
 import type { Db, Document } from "mongodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fillPauseChannels } from "../../src/connection/pause-channels.js";
+import { fillMissingChannels } from "../../src/connection/pause-channels.js";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
 import { commandsOf } from "../support/command-log.js";
@@ -164,7 +164,7 @@ describe("agbossjs/agboss#81: the channel of a pause that lacks it", () => {
     await withoutChannel("first", "channel-a", 1);
     await withoutChannel("second", "channel-b", 2);
 
-    await fillPauseChannels(dbOf());
+    await fillMissingChannels(dbOf(), {});
 
     expect((await channelOf("first"))?.channel).toBe("channel-a");
     expect((await channelOf("second"))?.channel).toBe("channel-b");
@@ -197,7 +197,7 @@ describe("agbossjs/agboss#81: the channel of a pause that lacks it", () => {
       },
     });
 
-    await fillPauseChannels(racing);
+    await fillMissingChannels(racing, {});
 
     expect((await channelOf("raced"))?.channel).toBe("channel-set-meanwhile");
     expect((await channelOf("after"))?.channel).toBe("channel-b");

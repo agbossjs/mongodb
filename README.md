@@ -147,9 +147,9 @@ then checks the schema. A failed start closes the client; the next `onInit` trie
 ## 3. The schema: versioned, migrated explicitly
 
 The stores' collections (with the **simple collation**), their indexes and the ledger's pruning mark
-are the schema, version 4, recorded in `agboss_schema` (`{ _id: "agboss", version }`,
-agbossjs/agboss#891; version 3 is the pause store of #938, version 4 the cancel mark on the lease
-document of #909). It is migrated explicitly, like `@agboss/postgres`'s.
+are the schema, version 1 (the 0.1.1 baseline, agbossjs/agboss#1321c: 0.1.0's versions 1-4 squashed;
+no 0.1.0 database is migrated), recorded in `agboss_schema` (`{ _id: "agboss", version }`,
+agbossjs/agboss#891). It is migrated explicitly, like `@agboss/postgres`'s.
 
 **An upgrade that changes the schema is: stop every instance of the old version, run `migrate`, start
 the new version** (agbossjs/agboss#1104, ADR-0034). There is no rolling upgrade across a schema
@@ -162,7 +162,7 @@ the old version to zero, run the Job, then deploy the new version.
 
 ```sh
 npx agboss-mongodb migrate [--database <name>] [--allow-live-leases]   # with MONGODB_URL set in the environment (a Secret in the Job); the database: --database, else MONGODB_DATABASE, else the URL's, else agboss
-# applied 0001_stores … 0004_execution-cancel-mark (agboss) — a second run: nothing to apply: agboss is at version 4
+# applied 0001_baseline_0_1_1 (agboss) — a second run: nothing to apply: agboss is at version 1
 ```
 
 or `migrateMongodb({ url, database?, allowLiveLeases?, signal? })` from a script. `--url <url>` works

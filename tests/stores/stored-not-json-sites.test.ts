@@ -9,7 +9,7 @@ import { inspect } from "node:util";
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
-import { fillPauseChannels } from "../../src/connection/pause-channels.js";
+import { fillMissingChannels } from "../../src/connection/pause-channels.js";
 import { directMessageOf } from "../../src/stores/a2a-direct-messages/a2a-direct-message-documents.js";
 import { messageOf, taskOf } from "../../src/stores/a2a-tasks/a2a-task-documents.js";
 import { auditEventOf } from "../../src/stores/audit-log/audit-event-documents.js";
@@ -162,6 +162,6 @@ describe.each(TEXTS)("a stored text that is not JSON: %#", (text) => {
     };
     const db = { collection: () => ({ find: () => cursor, updateOne: () => Promise.resolve() }) };
 
-    await refused(() => fillPauseChannels(db as never), "pause", "");
+    await refused(() => fillMissingChannels(db as never, {}), "pause", "");
   });
 });

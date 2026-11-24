@@ -1,7 +1,6 @@
 /**
  * agbossjs/mongodb#103 (acceptance Q: survivors of the migrations shard that its bound read as
- * Timeouts): the version is read from its own document only, and the pauses' channels are filled
- * by the migration to schema 3 — for a database never migrated, at 1 or 2 — and by no other run.
+ * Timeouts): the version is read from its own document only.
  */
 import { MongoClient, type Db } from "mongodb";
 import { afterAll, describe, expect, it } from "vitest";
@@ -31,24 +30,6 @@ afterAll(async () => {
   for (const name of made) await dropDatabase(name);
 });
 
-/** A pause written before schema 3: no `channel` field, its channel in its record. */
-async function pauseWithoutChannel(db: Db): Promise<void> {
-  await db.collection<{ _id: string }>(Collections.Pauses).insertOne({
-    _id: "default:p1",
-    ...{ tenantId: "default", pauseId: "p1", rootExecutionId: "run-1", stepKey: "run-1:a:1" },
-    ...{ seq: 1, status: "pending", isSent: true, resolvedAt: null, closing: null },
-    record: JSON.stringify({ channel: "refund-channel" }),
-  } as never);
-}
-
-const channelOf = async (db: Db): Promise<unknown> =>
-  (await db.collection(Collections.Pauses).findOne({ pauseId: "p1" }))?.channel;
-
-const setVersion = (db: Db, version: number) =>
-  db
-    .collection<{ _id: string; version: number }>(Collections.SchemaVersion)
-    .insertOne({ _id: SCHEMA_DOCUMENT_ID, version });
-
 describe("the version is the one document's", () => {
   it("another document of the collection is no version: a database that was never migrated says so", async () => {
     const db = freshDb();
@@ -67,40 +48,6 @@ describe("the version is the one document's", () => {
 
     expect(await appliedVersionOf(db)).toBe(2);
   });
-});
-
-describe("the pauses' channels are filled by the migration to schema 3, and by no other", () => {
-  it("a database never migrated: its pause gets its channel", async () => {
-    const db = freshDb();
-    await pauseWithoutChannel(db);
-
-    await migrateSchema(db);
-
-    expect(await channelOf(db)).toBe("refund-channel");
-  });
-
-  it.each([1, 2])("a database at version %i: its pause gets its channel", async (version) => {
-    const db = freshDb();
-    await pauseWithoutChannel(db);
-    await setVersion(db, version);
-
-    await migrateSchema(db, { allowLiveLeases: true });
-
-    expect(await channelOf(db)).toBe("refund-channel");
-  });
-
-  it.each([3, 4])(
-    "a database at version %i has been through it: a pause without a channel is left as it is",
-    async (version) => {
-      const db = freshDb();
-      await pauseWithoutChannel(db);
-      await setVersion(db, version);
-
-      await migrateSchema(db, { allowLiveLeases: true });
-
-      expect(await channelOf(db)).toBeUndefined();
-    },
-  );
 });
 
 describe("the version document says when it was written", () => {

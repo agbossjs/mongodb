@@ -34,8 +34,8 @@ describe("agbossjs/mongodb#99: a run that reaches the server prints what it did"
 
     expect(firstCode).toBe(ExitCode.Ok);
     expect(first.errors).toEqual([]);
-    expect(first.lines.length).toBeGreaterThanOrEqual(4);
-    expect(first.lines[0]).toBe(`applied 0001_stores (${database})`);
+    expect(first.lines).toHaveLength(1);
+    expect(first.lines[0]).toBe(`applied 0001_baseline_0_1_1 (${database})`);
     first.lines.forEach((line, index) => {
       expect(line).toMatch(
         new RegExp(

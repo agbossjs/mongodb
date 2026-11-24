@@ -8,7 +8,7 @@ import { StoredNamesUnreadableError, PauseNoticeKind } from "@agboss/core/stores
 import { VirtualClock } from "@agboss/core/testing";
 import { MongoServerError, type Db } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
-import { fillPauseChannels } from "../../src/connection/pause-channels.js";
+import { fillMissingChannels } from "../../src/connection/pause-channels.js";
 import { Collections, MongoConnection, MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
 import {
@@ -140,7 +140,7 @@ describe("agbossjs/agboss#1213: a text that is no JSON names its row by its ids"
       { $set: { record: "{nope" }, $unset: { channel: "" } },
     );
 
-    const refused = fillPauseChannels(dbOf());
+    const refused = fillMissingChannels(dbOf(), {});
 
     await expect(refused).rejects.toBeInstanceOf(StoredNamesUnreadableError);
     await expect(refused).rejects.toThrowError(
