@@ -216,12 +216,12 @@ describe("agbossjs/agboss#81: a reassignment's replacement", () => {
 });
 
 describe("agbossjs/agboss#81: the fields a pause document keeps beside its record", () => {
-  it("a new pause is stored with its channel, its tenant, its tree and its step", async () => {
+  it("a new pause is stored with its target, its tenant, its tree and its step", async () => {
     await storeOn().findOrCreateByStepKey(pauseOf("fresh"));
 
     expect(await rowOf("fresh")).toMatchObject({
       ...{ tenantId: "default", rootExecutionId: "run-1", stepKey: "run-1:fresh:1" },
-      ...{ pauseId: "fresh", channel: "refund-approval-channel", status: PauseStatus.Pending },
+      ...{ pauseId: "fresh", target: "refund-tool-approval", status: PauseStatus.Pending },
     });
   });
 
@@ -236,7 +236,7 @@ describe("agbossjs/agboss#81: the fields a pause document keeps beside its recor
 
     expect(await rowOf("inserted")).toMatchObject({
       ...{ tenantId: "default", rootExecutionId: "run-1", stepKey: "run-1:inserted:1" },
-      ...{ pauseId: "inserted", channel: "refund-approval-channel" },
+      ...{ pauseId: "inserted", target: "refund-tool-approval" },
     });
   });
 });

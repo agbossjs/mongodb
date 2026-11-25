@@ -13,14 +13,12 @@
  */
 import { PauseStatus } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
-import type { Db, Document } from "mongodb";
+import type { Document } from "mongodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fillMissingChannels } from "../../src/connection/pause-channels.js";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
-import { idOf } from "../../src/stores/keys.js";
 import { commandsOf } from "../support/command-log.js";
 import { emptyAll, testDatabase } from "../support/database.js";
-import { NINE, pauseOf } from "../support/pauses.js";
+import { NINE } from "../support/pauses.js";
 import { insertMailboxRow, insertPauseRow, insertTakenRow } from "../support/pause-rows.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -38,12 +36,6 @@ beforeEach(() => emptyAll(database.url()));
 const storeOn = () =>
   new MongoPausedExecutionRepository(connectionTo(database.url()), new VirtualClock());
 const dbOf = () => connectionTo(database.url()).db;
-/** `target[key]`, a method bound to `target`. */
-function boundMember(target: object, key: string | symbol): unknown {
-  const value: unknown = Reflect.get(target, key);
-  return typeof value === "function" ? value.bind(target) : value;
-}
-
 const idsOf = (pauses: readonly { readonly tenantId: string; readonly pauseId: string }[]) =>
   pauses.map((one) => `${one.tenantId}/${one.pauseId}`);
 
@@ -145,61 +137,5 @@ describe("agbossjs/agboss#81: a reminder", () => {
     expect(
       await store.remindByTenantIdAndPauseId("default", "answered", DUE, { listeners: [] }),
     ).toBe(false);
-  });
-});
-
-describe("agbossjs/agboss#81: the channel of a pause that lacks it", () => {
-  const withoutChannel = async (id: string, channel: string, seq: number): Promise<void> => {
-    await insertPauseRow(dbOf(), id, seq, { ...pauseOf(id), channel }, { channel: undefined });
-    await dbOf()
-      .collection<{ _id: string }>(Collections.Pauses)
-      .updateOne({ _id: idOf("default", id) }, { $unset: { channel: "" } });
-  };
-  const channelOf = (id: string) =>
-    dbOf()
-      .collection<{ _id: string; channel?: string | null }>(Collections.Pauses)
-      .findOne({ _id: idOf("default", id) }, { projection: { channel: 1 } });
-
-  it("is read from its own record: each pause gets its own", async () => {
-    await withoutChannel("first", "channel-a", 1);
-    await withoutChannel("second", "channel-b", 2);
-
-    await fillMissingChannels(dbOf(), {});
-
-    expect((await channelOf("first"))?.channel).toBe("channel-a");
-    expect((await channelOf("second"))?.channel).toBe("channel-b");
-  });
-
-  it("is never set over a channel another run set since it was read, nor on another pause", async () => {
-    await withoutChannel("raced", "channel-a", 1);
-    await withoutChannel("after", "channel-b", 2);
-    const real = dbOf();
-    const racing = new Proxy(real, {
-      get(target, key) {
-        if (key !== "collection") return boundMember(target, key);
-        return (...args: Parameters<Db["collection"]>) => {
-          const collection = target.collection<{ _id: string }>(...args);
-          return new Proxy(collection, {
-            get(inner, name) {
-              if (name !== "find") return boundMember(inner, name);
-              return async function* (...findArgs: Parameters<typeof inner.find>) {
-                const stale = await inner.find(...findArgs).toArray();
-                // another instance gave the first a channel after this one read it
-                await inner.updateOne(
-                  { _id: idOf("default", "raced") },
-                  { $set: { channel: "channel-set-meanwhile" } },
-                );
-                yield* stale;
-              };
-            },
-          });
-        };
-      },
-    });
-
-    await fillMissingChannels(racing, {});
-
-    expect((await channelOf("raced"))?.channel).toBe("channel-set-meanwhile");
-    expect((await channelOf("after"))?.channel).toBe("channel-b");
   });
 });

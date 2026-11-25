@@ -46,6 +46,11 @@ const StoredNotice = z.object({
   closedAt: z.string().optional(),
   expiresAt: z.string().optional(),
   previousExpiresAt: z.string().optional(),
+  assignees: z.array(z.string()).optional(),
+  previousAssignees: z.array(z.string()).optional(),
+  previousTarget: z.string().optional(),
+  previousChannel: z.string().optional(),
+  previousExternalRef: z.string().optional(),
   launch: z.string().optional(),
   errorCode: z.string().optional(),
 });
@@ -89,9 +94,11 @@ const orElse = (field: string, fallback: unknown): Document => ({
 
 /** The notice as an expression: its texts as literals, its time a Date, its `seq` the next place. */
 function noticeExpression(planned: PlannedNotice): Document {
-  const fields = Object.entries(planned.notice).flatMap(([key, value]) =>
-    typeof value === "string" ? [[key, literal(value)] as const] : [],
-  );
+  const fields = Object.entries(planned.notice).flatMap(([key, value]) => {
+    if (typeof value === "string") return [[key, literal(value)] as const];
+    // a list of texts (the assignees): a literal too, no text of it is a field path
+    return Array.isArray(value) ? [[key, { $literal: value }] as const] : [];
+  });
   const writtenAt = new Date(planned.notice.writtenAt);
   const seq = { $add: [{ $size: NOTICES }, 1] };
   return { ...Object.fromEntries(fields), writtenAt, seq };

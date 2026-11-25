@@ -1,19 +1,12 @@
 /**
- * agbossjs/agboss#1213: the plans of the sent mark (`pause-marks.ts`), of a reassignment
- * (`reassignChange`) and the reading of a record a version before kinds wrote (`pause-kind.ts`).
+ * agbossjs/agboss#1213: the plans of the sent mark (`pause-marks.ts`) and of a reassignment
+ * (`reassignChange`, to a replacement or in place).
  */
-import {
-  ComponentKind,
-  PauseKind,
-  PauseResolution,
-  PauseStatus,
-  type PauseRecord,
-} from "@agboss/core";
+import { PauseResolution, PauseStatus, type PauseRecord } from "@agboss/core";
 import { PauseNoticeKind, type PauseRecipients } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
-import { pauseFieldsOfVersion } from "../../src/stores/paused/pause-kind.js";
 import { markSentChange } from "../../src/stores/paused/pause-marks.js";
-import { reassignChange } from "../../src/stores/paused/pause-reassign.js";
+import { reassignChange } from "../../src/stores/paused/pause-reassign-plan.js";
 import { ANSWER, NINE, pauseOf } from "../support/pauses.js";
 
 const AUDIT: PauseRecipients = { listeners: ["audit"] };
@@ -107,32 +100,51 @@ describe("agbossjs/agboss#1213: a reassignment's plan", () => {
   });
 });
 
-describe("agbossjs/agboss#1213: a record written before kinds", () => {
-  const OLD = { agent: "clerk", pauseId: "p" };
+describe("agbossjs/agboss#1307: a reassignment in place", () => {
+  const inPlace = (before: PauseRecord, change: Record<string, unknown>) =>
+    reassignChange(before, { assignees: ["alice"], ...change }, new Set(), AT, AUDIT);
 
-  it("a record that has a kind, or no agent text, is read as written", () => {
-    const withKind = { ...OLD, kind: PauseKind.Question };
-    const noAgent = { pauseId: "p" };
-    const numeric = { pauseId: "p", agent: 5 };
+  it("keeps the pause: its id, status and step key stay, a `reassigned` entry is added, no replacement is made", () => {
+    const before = { ...pauseOf("p"), isSent: true };
 
-    expect(pauseFieldsOfVersion(withKind)).toBe(withKind);
-    expect(pauseFieldsOfVersion(noAgent)).toBe(noAgent);
-    expect(pauseFieldsOfVersion(numeric)).toBe(numeric);
+    const change = inPlace(before, { actor: { id: "boss" }, reason: "on leave" });
+
+    expect(change?.inserted).toBeUndefined();
+    expect(change?.pause).toMatchObject({
+      pauseId: "p",
+      status: PauseStatus.Pending,
+      stepKey: before.stepKey,
+      assignees: ["alice"],
+    });
+    expect(change?.pause.trail.at(-1)).toMatchObject({
+      action: "reassigned",
+      actor: { id: "boss" },
+      reason: "on leave",
+      assignees: ["alice"],
+    });
+    expect(change?.notices.map((one) => one.notice.kind)).toEqual([PauseNoticeKind.Reassigned]);
   });
 
-  it("an agent's record is read by the rule it was written under: a question role is a question, else an approval", () => {
-    const question = { ...OLD, component: { kind: ComponentKind.Question } };
+  it("an unsent pause tells nobody", () => {
+    expect(inPlace(pauseOf("p"), {})?.notices).toEqual([]);
+  });
 
-    expect(pauseFieldsOfVersion(question)).toStrictEqual({
-      pauseId: "p",
-      component: { kind: ComponentKind.Question },
-      step: "clerk",
-      kind: PauseKind.Question,
-    });
-    for (const component of [undefined, null, "question", { kind: ComponentKind.Agent }])
-      expect(pauseFieldsOfVersion({ ...OLD, component })).toMatchObject({
-        step: "clerk",
-        kind: PauseKind.Approval,
-      });
+  it("is refused at `maxReassignments`, and when the pause is not as it was seen", () => {
+    const once = inPlace(pauseOf("p"), {})?.pause;
+    if (once === undefined) throw new Error("the first reassignment applies");
+
+    expect(inPlace(once, { maxReassignments: 1 })).toBeUndefined();
+    expect(inPlace(once, { maxReassignments: 2 })).toBeDefined();
+    expect(inPlace(once, { seen: { trailLength: 1 } })).toBeUndefined();
+    expect(inPlace(once, { seen: { trailLength: 2, assignees: ["alice"] } })).toBeDefined();
+  });
+
+  it("an expiry's reassignment (`due`) applies only to a pause whose deadline is over, and sets the new deadline", () => {
+    const due = { expiresAt: "2026-01-05T12:00:00.000Z" };
+
+    expect(inPlace({ ...pauseOf("p"), expiresAt: LATER }, { due })).toBeUndefined();
+    expect(inPlace({ ...pauseOf("p"), expiresAt: EARLIER }, { due })?.pause.expiresAt).toBe(
+      due.expiresAt,
+    );
   });
 });

@@ -95,7 +95,7 @@ import { OutboundCallRepository } from '@agboss/core/stores';
 import { OutboundCallState } from '@agboss/core/stores';
 import { OutboundCallStatusQuery } from '@agboss/core/stores';
 import { Page } from '@agboss/core/stores';
-import { PauseAnswer } from '@agboss/core';
+import type { PauseAnswer } from '@agboss/core/stores';
 import { PauseAnswerRecord } from '@agboss/core';
 import { PauseCancellation } from '@agboss/core';
 import type { PauseDeadlineChange } from '@agboss/core/stores';
@@ -110,9 +110,9 @@ import type { PauseNoticeCounts } from '@agboss/core/stores';
 import type { PauseNoticeFacts } from '@agboss/core/stores';
 import type { PauseNoticeKind } from '@agboss/core/stores';
 import type { PausePage } from '@agboss/core/stores';
+import type { PauseReassignmentChange } from '@agboss/core/stores';
 import type { PauseRecipients } from '@agboss/core/stores';
 import { PauseRecord } from '@agboss/core';
-import type { PauseReplacement } from '@agboss/core/stores';
 import { PauseRequest } from '@agboss/core';
 import type { PauseScanAfter } from '@agboss/core/stores';
 import { PauseStatus } from '@agboss/core';
@@ -542,6 +542,8 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
     // (undocumented)
     completeIfStatus(id: string, expected: ExecutionRecordStatus, outcome: TurnOutcome, context?: StatusContext): Promise<boolean>;
     // (undocumented)
+    completeUnlessInterrupted(id: string, outcome: TurnOutcome, context?: StatusContext): Promise<boolean>;
+    // (undocumented)
     configSnapshots(workflow: string, version: string): Promise<ConfigSnapshot[]>;
     createThread(thread: NewThread): Promise<string>;
     // (undocumented)
@@ -812,12 +814,12 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     findByTenantIdAndRootExecutionIdAndStepKey(tenantId: string, rootExecutionId: string, stepKey: string): Promise<PauseRecord | undefined>;
     // (undocumented)
     findOrCreateByStepKey(pause: PauseRecord): Promise<PauseRecord>;
-    markSentByTenantIdAndPauseId(tenantId: string, pauseId: string, recipients: PauseRecipients): Promise<boolean>;
+    markSentByTenantIdAndPauseId(tenantId: string, pauseId: string, recipients: PauseRecipients, externalRef?: string): Promise<boolean>;
     // (undocumented)
     markTakenByTenantIdAndPauseId(tenantId: string, pauseId: string): Promise<void>;
     noticeOnceByTenantIdAndPauseId(tenantId: string, pauseId: string, kind: PauseNoticeKind, facts: PauseNoticeFacts, at: Date, recipients: PauseRecipients): Promise<boolean>;
     // (undocumented)
-    reassignByTenantIdAndPauseId(tenantId: string, pauseId: string, replacement: PauseReplacement, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
+    reassignByTenantIdAndPauseId(tenantId: string, pauseId: string, replacement: PauseReassignmentChange, at: Date, recipients: PauseRecipients): Promise<PauseRecord | undefined>;
     // (undocumented)
     remindByTenantIdAndPauseId(tenantId: string, pauseId: string, at: Date, recipients: PauseRecipients): Promise<boolean>;
     // (undocumented)
@@ -941,8 +943,6 @@ export interface PauseChange {
 export interface PauseDocument {
     // (undocumented)
     askedAt?: Date;
-    // (undocumented)
-    channel: string;
     closing: string | null;
     // (undocumented)
     expiresAt: Date | null;
@@ -970,6 +970,8 @@ export interface PauseDocument {
     status: PauseStatus;
     // (undocumented)
     stepKey: string;
+    // (undocumented)
+    target: string;
     // (undocumented)
     tenantId: string;
 }
@@ -1119,6 +1121,7 @@ export { SchemaSetup }
 // src/stores/mongo-execution-record.repository.ts - (ae-undocumented) Missing documentation for "append".
 // src/stores/mongo-execution-record.repository.ts - (ae-undocumented) Missing documentation for "complete".
 // src/stores/mongo-execution-record.repository.ts - (ae-undocumented) Missing documentation for "completeIfStatus".
+// src/stores/mongo-execution-record.repository.ts - (ae-undocumented) Missing documentation for "completeUnlessInterrupted".
 // src/stores/mongo-execution-record.repository.ts - (ae-undocumented) Missing documentation for "statusHistory".
 // src/stores/mongo-execution-record.repository.ts - (ae-undocumented) Missing documentation for "forgetStatusHistory".
 // src/stores/mongo-execution-record.repository.ts - (ae-undocumented) Missing documentation for "deleteIdleThreads".
@@ -1212,7 +1215,7 @@ export { SchemaSetup }
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "status".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "isSent".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "resolvedAt".
-// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "channel".
+// src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "target".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "expiresAt".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "remindAt".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "expiryBound".

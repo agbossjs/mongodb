@@ -4,7 +4,6 @@ import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { pauseRecordOf } from "../framework-json.js";
 import { parsedOrUnreadable } from "../unreadable.js";
-import { pauseFieldsOfVersion } from "./pause-kind.js";
 import { DUPLICATE_KEY, hasCode, idOf } from "../keys.js";
 import { nextSequence } from "../sequence.js";
 
@@ -14,7 +13,7 @@ import { nextSequence } from "../sequence.js";
  * record as the framework made it is JSON text; what changes after — `status`, `isSent`, the
  * closing (resolution, its time, the answer) and the deadline fields — are fields of their own,
  * laid over the record when read: `expiresAt`, `remindAt` and `resolvedAt` are BSON Dates (the
- * indexes' and the scans' keys), `channel` is copied out for the tenant's pages. A document of
+ * indexes' and the scans' keys), `target` is copied out for the tenant's pages. A document of
  * schema version 1 has no deadline fields: its record's are read (it has none).
  */
 export interface PauseDocument {
@@ -27,7 +26,7 @@ export interface PauseDocument {
   status: PauseStatus;
   isSent: boolean;
   resolvedAt: Date | null;
-  channel: string;
+  target: string;
   expiresAt: Date | null;
   remindAt: Date | null;
   expiryBound: string | null;
@@ -93,9 +92,7 @@ export function pauseOfDocument(found: unknown): PauseRecord {
   const ids = Ids.parse(found);
   const closing =
     stored.closing === null ? {} : Fields.parse(parsedOrUnreadable("pause", stored.closing, ids));
-  const created = pauseFieldsOfVersion(
-    Fields.parse(parsedOrUnreadable("pause", stored.record, ids)),
-  );
+  const created = Fields.parse(parsedOrUnreadable("pause", stored.record, ids));
   const record: Record<string, unknown> = {
     ...created,
     ...closing,
@@ -137,6 +134,22 @@ export function fieldsOf(pause: PauseRecord): PauseFields {
   };
 }
 
+/**
+ * What a change of `before` into `after` writes: the fields of its status, closing and deadlines,
+ * and — when its chain of custody or its pool of assignees changed (a deadline moved, a reassignment,
+ * the channel's reference), which the created record holds — the record itself, whole.
+ */
+export function writtenFieldsOf(
+  before: PauseRecord,
+  after: PauseRecord,
+): PauseFields & { readonly record?: string } {
+  const isRecordChanged =
+    after.trail !== before.trail ||
+    after.assignees !== before.assignees ||
+    after.externalRef !== before.externalRef;
+  return isRecordChanged ? { ...fieldsOf(after), record: JSON.stringify(after) } : fieldsOf(after);
+}
+
 /** `pause` inserted as a new document of the pauses (#946: a reassignment's replacement), in `session`. */
 export async function insertPause(
   db: Db,
@@ -150,7 +163,7 @@ export async function insertPause(
     stepKey: pause.stepKey,
     pauseId: pause.pauseId,
     seq: await nextSequence(db, Collections.Pauses),
-    channel: pause.channel,
+    target: pause.target,
     record: JSON.stringify(pause),
     ...fieldsOf(pause),
     ...(pause.reassignedFrom === undefined
@@ -173,7 +186,7 @@ export async function findOrCreatePause(db: Db, pause: PauseRecord): Promise<Pau
     ...step,
     pauseId: pause.pauseId,
     seq: await nextSequence(db, Collections.Pauses),
-    channel: pause.channel,
+    target: pause.target,
     record: JSON.stringify(pause),
     ...fieldsOf(pause),
   };

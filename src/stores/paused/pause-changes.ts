@@ -3,9 +3,9 @@ import {
   PauseResolution,
   PauseStatus,
   type ExpiryProblem,
-  type PauseAnswer,
   type PauseCancellation,
   type PauseRecord,
+  type PauseTrailRecord,
 } from "@agboss/core";
 import {
   closedAtOf,
@@ -13,6 +13,7 @@ import {
   PauseExpiryBound,
   PauseNoticeKind,
   recipientKeysOf,
+  type PauseAnswer,
   type PauseExpiry,
   type PauseDeadlineChange,
   type PauseNotice,
@@ -181,9 +182,29 @@ export function closeUntakenChange(
   return { pause: after, notices: before.isSent ? untakenNotices(resolution, at, recipients) : [] };
 }
 
+/** The entry a deadline change adds to the chain of custody: who moved it, when, to what. */
+function timeoutChangedEntryOf(
+  pause: PauseRecord,
+  extension: PauseDeadlineChange,
+  at: Date,
+): PauseTrailRecord {
+  return {
+    action: "timeout-changed",
+    at: at.toISOString(),
+    ...(extension.actor === undefined ? {} : { actor: extension.actor }),
+    target: pause.target,
+    ...(pause.channel === undefined ? {} : { channel: pause.channel }),
+    ...(pause.assignees === undefined ? {} : { assignees: pause.assignees }),
+    expiresAt: extension.expiresAt,
+    ...(pause.externalRef === undefined ? {} : { externalRef: pause.externalRef }),
+  };
+}
+
 /**
  * A pending pause's deadline moved to a later one, never to a past time (the guard decides the
- * rest: pending, the deadline the caller read still stored, after `at`, earlier than the new one).
+ * rest: pending, the deadline the caller read still stored, after `at`, earlier than the new one),
+ * and never past `maxExtensions` `timeout-changed` entries of its chain of custody — which the
+ * change records. This restates the core's `extendChange`, which the stores entry does not export.
  */
 export function extendChange(
   before: PauseRecord,
@@ -192,11 +213,14 @@ export function extendChange(
   recipients: PauseRecipients,
 ): PauseChange | undefined {
   if (before.expiresAt === undefined || extension.expiresAt <= at.toISOString()) return undefined;
+  const changes = before.trail.filter((entry) => entry.action === "timeout-changed").length;
+  if (extension.maxExtensions !== undefined && changes >= extension.maxExtensions) return undefined;
   const after = {
     ...before,
     expiresAt: extension.expiresAt,
     expiryBound: PauseExpiryBound.Pause,
     remindAt: extension.remindAt,
+    trail: [...before.trail, timeoutChangedEntryOf(before, extension, at)],
   };
   const facts = { expiresAt: extension.expiresAt, previousExpiresAt: before.expiresAt };
   return { pause: after, notices: noticesOf(recipients, PauseNoticeKind.Extended, at, facts) };

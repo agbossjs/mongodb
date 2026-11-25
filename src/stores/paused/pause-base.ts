@@ -12,7 +12,12 @@ import type { MongoTransaction } from "../../connection/transaction.js";
 import { pausedRunJsonOf, pausedRunOfJson } from "../framework-json.js";
 import { idOf } from "../keys.js";
 import type { PauseChange, PlannedNotice } from "./pause-changes.js";
-import { fieldsOf, pauseIdOf, pauseOfDocument, type PauseDocument } from "./pause-documents.js";
+import {
+  pauseIdOf,
+  pauseOfDocument,
+  writtenFieldsOf,
+  type PauseDocument,
+} from "./pause-documents.js";
 import { PAUSE_GUARDS, type PauseGuards } from "./pause-guards.js";
 import { appendNotice } from "./pause-mailboxes.js";
 
@@ -83,11 +88,12 @@ export abstract class MongoPauseBase extends PausedExecutionRepository {
       const pauses = db.collection<PauseDocument>(Collections.Pauses);
       const _id = pauseIdOf(tenantId, pauseId);
       const found = await pauses.findOne({ _id }, { session });
-      const change = found === null ? undefined : plan(pauseOfDocument(found));
-      if (change === undefined) return undefined;
+      const before = found === null ? undefined : pauseOfDocument(found);
+      const change = before === undefined ? undefined : plan(before);
+      if (before === undefined || change === undefined) return undefined;
       const recorded = await pauses.updateOne(
         { _id, ...guard },
-        { $set: fieldsOf(change.pause) },
+        { $set: writtenFieldsOf(before, change.pause) },
         { session },
       );
       if (recorded.matchedCount === 0) return undefined;

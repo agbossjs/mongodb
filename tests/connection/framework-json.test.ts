@@ -2,13 +2,7 @@
  * agbossjs/agboss#1213: the framework's JSON records a store keeps — a pause read back by the core,
  * a paused run whose non-finite numbers JSON cannot hold are tagged and restored.
  */
-import {
-  PauseAnswerer,
-  PauseKind,
-  PauseStatus,
-  type PausedExecution,
-  type PauseRecord,
-} from "@agboss/core";
+import { type PausedExecution, type PauseRecord } from "@agboss/core";
 import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import {
@@ -18,6 +12,7 @@ import {
   pauseRecordOf,
 } from "../../src/stores/framework-json.js";
 import { answerOf } from "../support/pause-answers.js";
+import { pauseOf } from "../support/pauses.js";
 import { pausedRunOf } from "../support/paused-run.js";
 
 // read in a test, not at the import: a mutant of the reading that fails here must fail a test, which kills it,
@@ -28,36 +23,7 @@ const run = (extra: Partial<PausedExecution["run"]>): PausedExecution["run"] => 
   ...extra,
 });
 
-const pause: PauseRecord = {
-  pauseId: "pause-1",
-  tenantId: "default",
-  threadId: "thread-1",
-  rootExecutionId: "run-1",
-  executionId: "run-1",
-  workflow: "order-workflow",
-  stepKey: "step-1",
-  nodeId: "clerk-agent",
-  visitNumber: 1,
-  itemIndex: undefined,
-  copyNumber: 1,
-  kind: PauseKind.Approval,
-  step: "clerk-agent",
-  channel: "refund-approval-channel",
-  answerer: PauseAnswerer.Channel,
-  input: { text: "10 USD" },
-  toolCall: { callId: "call-1", tool: "charge", summary: "charge" },
-  trail: [
-    {
-      action: "opened",
-      at: "2026-01-05T09:00:00.000Z",
-      target: "refund-approval-channel",
-      channel: "refund-approval-channel",
-    },
-  ],
-  status: PauseStatus.Pending,
-  isSent: false,
-  askedAt: "2026-01-05T09:00:00.000Z",
-};
+const pause: PauseRecord = pauseOf("pause-1", "step-1");
 
 describe("pauseRecordOf", () => {
   it("reads the record a document keeps, whole", () => {

@@ -65,7 +65,7 @@ export function tenantFilter(tenantId: string, filter: PauseFilter): Filter<Paus
   return {
     tenantId,
     status: { $in: [...filter.statuses] },
-    ...(filter.channel === undefined ? {} : { channel: filter.channel }),
+    ...(filter.target === undefined ? {} : { target: filter.target }),
     ...(filter.expiresBefore === undefined ? {} : { expiresAt: { $lt: filter.expiresBefore } }),
   };
 }

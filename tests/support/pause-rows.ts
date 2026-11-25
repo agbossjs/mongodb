@@ -35,7 +35,7 @@ export async function insertPauseRow(
     rootExecutionId: record.rootExecutionId,
     stepKey: record.stepKey,
     seq,
-    channel: record.channel,
+    target: record.target,
     record: JSON.stringify(record),
     ...fieldsOf(record),
     ...extra,
@@ -91,7 +91,7 @@ export async function insertTakenRows(db: Db, count: number, resolvedAt: string)
       rootExecutionId: record.rootExecutionId,
       stepKey: record.stepKey,
       seq: seq + 1,
-      channel: record.channel,
+      target: record.target,
       record: JSON.stringify(record),
       ...fieldsOf(record),
     };

@@ -68,7 +68,6 @@ export const SHARDS = {
     mutate: [
       "src/stores/mongo-paused-execution.repository.ts",
       "src/stores/paused/*.ts",
-      "src/connection/pause-channels.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{pause*,paused*}.test.ts"],
     contracts: ["pausedExecution"],
@@ -134,6 +133,7 @@ export const SHARDS = {
     mutate: [
       "src/stores/mongo-execution-record.repository.ts",
       "src/stores/records/record-writes.ts",
+      "src/stores/records/record-interrupt.ts",
       "src/stores/records/record-threads.ts",
       "src/stores/records/record-idle.ts",
     ],

@@ -5,33 +5,25 @@ import {
   BudgetPeriod,
   BudgetScope,
   ChildPlacement,
+  DatabaseStorage,
+  EmptyEnvironment,
   ExecutionContext,
   listOf,
+  onStart,
+  secret,
+  toWorkflow,
+  Ttl,
   Workflow,
   WorkflowFinish,
   WorkflowStart,
+  type ActionHandler,
   type BudgetHandler,
-  type Produced,
+  type InputOf,
+  type OutputOf,
 } from "@agboss/core";
 import { Text } from "@agboss/core/dto";
-import { usd, type Usd } from "@agboss/core/units";
-import {
-  MongoChildExecutionQueueRepository,
-  MongoConnection,
-  MongoCostLedgerRepository,
-  MongoExecutionAuditLogRepository,
-  MongoExecutionHistoryRepository,
-  MongoExecutionLeaseRepository,
-  MongoExecutionRecordRepository,
-  MongoExecutionTreeRepository,
-  MongoFencedEffectRepository,
-  MongoOutboundCallRepository,
-  MongoPausedExecutionRepository,
-  MongoRateLimitRepository,
-  MongoCheckpointSaver,
-} from "../../../src/index.js";
-import { start } from "./untyped-flow.js";
-import { StopEnvironment } from "./environments/stop.contract.js";
+import { hours, usd, type Usd } from "@agboss/core/units";
+import { MongoDriver } from "../../../src/index.js";
 
 /**
  * agbossjs/agboss#954 — an application of the stop tests: a recount whose items run as children on
@@ -44,7 +36,7 @@ export class ItemDto {
   name!: string;
 }
 
-export class SummaryDto {
+export class StopSummaryDto {
   @Text({ prompt: "what was done" })
   text!: string;
 }
@@ -57,14 +49,14 @@ export class SummaryDto {
   output: ItemDto,
   deps: [ExecutionContext],
 })
-export class StopHoldAction {
+export class StopHoldAction implements ActionHandler<StopHoldAction> {
   constructor(private readonly executionContext: ExecutionContext) {}
 
-  execute(input: { readonly item: Produced<ItemDto, unknown> }): Promise<ItemDto> {
+  execute(input: InputOf<StopHoldAction>): Promise<OutputOf<StopHoldAction>> {
     const { signal } = this.executionContext;
     return new Promise((_, reject) => {
       signal.addEventListener("abort", () => {
-        reject(new Error(`${input.item.value.name} stopped`));
+        reject(new Error(`${input.item.name} stopped`));
       });
     });
   }
@@ -79,13 +71,9 @@ export class StopItemFinish {}
 @Workflow({
   name: "stop-item-workflow",
   version: "1.0.0",
-  flow: [
-    start(StopItemStart)
-      .returns(ItemDto)
-      .toAction(StopHoldAction)
-      .returns(ItemDto)
-      .toFinish(StopItemFinish),
-  ],
+  historyTtl: Ttl.Forever,
+  placement: ChildPlacement.AnyWorker,
+  flow: [onStart(StopItemStart).toAction(StopHoldAction).toFinish(StopItemFinish)],
 })
 export class StopItemWorkflow {}
 
@@ -96,32 +84,35 @@ export class StopItemWorkflow {}
 })
 export class StopBatchStart {}
 
+@Action({
+  name: "stop-summary-action",
+  description: "Names what was checked",
+  input: { results: listOf(ItemDto) },
+  output: StopSummaryDto,
+})
+export class StopSummaryAction implements ActionHandler<StopSummaryAction> {
+  execute(input: InputOf<StopSummaryAction>): Promise<OutputOf<StopSummaryAction>> {
+    return Promise.resolve({ text: input.results.map((result) => result.name).join(", ") });
+  }
+}
+
 @WorkflowFinish({
   name: "stop-batch-workflow-finish",
   description: "What was checked",
-  input: { results: listOf(ItemDto) },
-  output: SummaryDto,
+  output: StopSummaryDto,
 })
-export class StopBatchFinish {
-  finish(input: { readonly results: readonly Produced<ItemDto, unknown>[] }): SummaryDto {
-    return { text: input.results.map((result) => result.value.name).join(", ") };
-  }
-}
+export class StopBatchFinish {}
 
 @Workflow({
   name: "stop-batch-workflow",
   version: "1.0.0",
-  maxConcurrentExecutions: 30,
+  historyTtl: Ttl.Forever,
+  executionLimits: { maxConcurrency: 30 },
   flow: [
-    start(StopBatchStart)
-      .returns(listOf(ItemDto))
-      .toParallelWorkflows(StopItemWorkflow, {
-        maxConcurrency: 4,
-        maxItems: 4,
-        placement: ChildPlacement.AnyInstance,
-      })
+    onStart(StopBatchStart)
+      .forEachItem(toWorkflow(StopItemWorkflow), { takeFirst: 4, maxConcurrency: 4 })
       .join()
-      .returns(listOf(ItemDto))
+      .toAction(StopSummaryAction)
       .toFinish(StopBatchFinish),
   ],
 })
@@ -152,27 +143,22 @@ export class StopExecutionBudget implements BudgetHandler {
   }
 }
 
-/** Every store on MongoDB; the child workers and the queue's change stream run on any instance. */
+/** Every store on MongoDB, the child workers and the queue's change stream on any instance. */
+@DatabaseStorage({
+  name: "stop-database-storage",
+  description: "The stop tests' MongoDB replica set",
+  driver: MongoDriver({ url: secret("AGBOSS_STOP_DATABASE_URL"), database: "agboss_stop" }),
+  auditLogTtl: hours(24),
+  ledgerEntriesTtl: hours(24),
+})
+export class StopDatabaseStorage {}
+
 @Application({
   name: "stop-application",
   version: "1.0.0",
-  environment: StopEnvironment,
+  environment: EmptyEnvironment,
+  storage: StopDatabaseStorage,
   workflows: [StopBatchWorkflow, StopItemWorkflow],
   budgets: [StopApplicationBudget, StopTenantBudget, StopExecutionBudget],
-  providers: [
-    MongoConnection,
-    MongoCheckpointSaver,
-    MongoChildExecutionQueueRepository,
-    MongoCostLedgerRepository,
-    MongoExecutionHistoryRepository,
-    MongoExecutionAuditLogRepository,
-    MongoExecutionLeaseRepository,
-    MongoExecutionRecordRepository,
-    MongoExecutionTreeRepository,
-    MongoFencedEffectRepository,
-    MongoOutboundCallRepository,
-    MongoPausedExecutionRepository,
-    MongoRateLimitRepository,
-  ],
 })
 export class StopApplication {}

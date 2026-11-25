@@ -1,51 +1,48 @@
 /**
  * agbossjs/agboss#824 — an application served over A2A on MongoDB alone, for the two-instance test:
- * one start that finishes with its message, every store it needs on the replica set, and an observer
- * that counts the executions every instance starts.
+ * one start that finishes with its message, every store it needs on the replica set (its
+ * `@DatabaseStorage`), and an observer that counts the executions every instance starts.
  */
 import {
   Application,
   Budget,
   BudgetPeriod,
   BudgetScope,
-  Injectable,
+  DatabaseStorage,
+  HttpAuthenticator,
+  HttpAuthResult,
+  Observer,
+  onStart,
+  secret,
+  Ttl,
   Workflow,
   WorkflowFinish,
   WorkflowStart,
-  start,
   type BudgetHandler,
   type ExecutionStartEvent,
-  type OnExecutionStart,
 } from "@agboss/core";
-import { A2ACallerResolution, A2AExpose, type A2ACallerResolver } from "@agboss/core/a2a";
+import { A2AEndpoint } from "@agboss/core/a2a";
 import { WorkflowStartTextDto } from "@agboss/core/dto";
-import { usd, type Usd } from "@agboss/core/units";
-import {
-  MongoA2ATaskRepository,
-  MongoCheckpointSaver,
-  MongoConnection,
-  MongoExecutionLeaseRepository,
-  MongoExecutionRecordRepository,
-  MongoExecutionTreeRepository,
-  MongoPausedExecutionRepository,
-} from "../../src/index.js";
+import { hours, minutes, usd, type Usd } from "@agboss/core/units";
+import { MongoDriver } from "../../src/index.js";
 import { A2AEnvironment } from "./environments/app.environment.js";
+import { StopBatchWorkflow, StopItemWorkflow } from "../fixtures/stop/stop.application.js";
 
 /** The executions every instance of the test started, by execution id. */
 export const started: string[] = [];
 
-@Injectable()
-export class StartCounter implements OnExecutionStart {
+@Observer()
+export class StartCounter {
   onExecutionStart(event: ExecutionStartEvent): void {
     started.push(event.executionId);
   }
 }
 
 /** Every caller is alice. */
-@Injectable()
-export class AliceCallerResolver implements A2ACallerResolver<typeof EchoWorkflowStart> {
-  resolveCaller(): A2ACallerResolution<typeof EchoWorkflowStart> {
-    return A2ACallerResolution.resolved({ ownerId: "alice" });
+@HttpAuthenticator({ name: "alice-http-authenticator", description: "Every caller is alice" })
+export class AliceAuthenticator {
+  authenticate(): HttpAuthResult {
+    return HttpAuthResult.authenticated({ ownerId: "alice" });
   }
 }
 
@@ -66,17 +63,19 @@ export class EchoWorkflowFinish {}
 @Workflow({
   name: "echo-workflow",
   version: "1.0.0",
-  flow: [start(EchoWorkflowStart).returns(WorkflowStartTextDto).toFinish(EchoWorkflowFinish)],
+  historyTtl: Ttl.Forever,
+  flow: [onStart(EchoWorkflowStart).toFinish(EchoWorkflowFinish)],
 })
 export class EchoWorkflow {}
 
-@A2AExpose({
-  name: "echo-a2a-expose",
+@A2AEndpoint({
+  name: "echo-a2a-endpoint",
   version: "1.0.0",
   description: "Echoes a message",
-  exports: [EchoWorkflowStart],
+  ttl: { tasks: hours(24), messages: minutes(15) },
+  skills: [{ start: EchoWorkflowStart, tags: ["echo"] }],
 })
-export class EchoA2AExpose {}
+export class EchoA2AEndpoint {}
 
 @Budget({
   name: "echo-application-budget",
@@ -103,23 +102,32 @@ export class EchoExecutionBudget implements BudgetHandler {
   }
 }
 
+/**
+ * Every row on the test's replica set: the URL its test sets in the variable before an instance
+ * starts (the environment contract names the same variable for the bundles' providers).
+ */
+@DatabaseStorage({
+  name: "echo-database-storage",
+  description: "The two-instance A2A test's MongoDB replica set",
+  driver: MongoDriver({ url: secret("AGBOSS_A2A_TEST_MONGODB_URL") }),
+  auditLogTtl: hours(24),
+  ledgerEntriesTtl: hours(24),
+})
+export class EchoDatabaseStorage {}
+
 @Application({
   name: "echo-application",
   version: "1.0.0",
   environment: A2AEnvironment,
+  storage: EchoDatabaseStorage,
   workflows: [EchoWorkflow],
   observers: [StartCounter],
-  exposes: [EchoA2AExpose],
+  endpoints: [EchoA2AEndpoint],
   budgets: [EchoApplicationBudget, EchoTenantBudget, EchoExecutionBudget],
-  providers: [
-    AliceCallerResolver,
-    MongoConnection,
-    MongoA2ATaskRepository,
-    MongoCheckpointSaver,
-    MongoExecutionLeaseRepository,
-    MongoExecutionRecordRepository,
-    MongoExecutionTreeRepository,
-    MongoPausedExecutionRepository,
-  ],
+  providers: [AliceAuthenticator],
 })
 export class EchoApplication {}
+
+// `agboss check` types the workflows the application module exports (.agboss/types.d.ts), the
+// stop tests' (`tests/fixtures/stop/`) included
+export { StopBatchWorkflow, StopItemWorkflow };

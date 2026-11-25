@@ -1,7 +1,6 @@
 import {
   PauseResolution,
   PauseStatus,
-  type PauseAnswer,
   type PauseCancellation,
   type PauseRecord,
 } from "@agboss/core";
@@ -10,8 +9,9 @@ import type {
   PauseDeadlineChange,
   PauseNoticeFacts,
   PauseNoticeKind,
+  PauseAnswer,
+  PauseReassignmentChange,
   PauseRecipients,
-  PauseReplacement,
   PauseUntakenResolution,
 } from "@agboss/core/stores";
 import { MongoPauseBase } from "./pause-base.js";
@@ -23,8 +23,8 @@ import {
   remindChange,
   resolveChange,
 } from "./pause-changes.js";
-import { findOrCreatePause, pauseIdOf, pauseOfDocument, fieldsOf } from "./pause-documents.js";
-import { markSentChange } from "./pause-marks.js";
+import { findOrCreatePause, pauseIdOf, pauseOfDocument } from "./pause-documents.js";
+import { markSentIn } from "./pause-sent.js";
 import { noticeOnceIn } from "./pause-once.js";
 import { reassignIn, type PauseParts } from "./pause-reassign.js";
 
@@ -68,26 +68,9 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     tenantId: string,
     pauseId: string,
     recipients: PauseRecipients,
+    externalRef?: string,
   ): Promise<boolean> {
-    return this.connection.inTransaction(async (transaction) => {
-      const { session } = transaction;
-      const found = await this.pauses.findOne({ _id: pauseIdOf(tenantId, pauseId) }, { session });
-      if (found === null) return false;
-      const change = markSentChange(pauseOfDocument(found), recipients);
-      if (!found.isSent) {
-        const sent = { _id: found._id, isSent: false };
-        const marked = await this.pauses.updateOne(
-          sent,
-          { $set: fieldsOf(change.pause) },
-          { session },
-        );
-        // one snapshot with the read: a miss is the driver's conflict, so this fails closed (a test
-        // makes it miss: pause-sent-mark.test.ts)
-        if (marked.matchedCount !== 1) throw new Error("the sent mark matched no pause");
-        await this.appendNotices(transaction, change.pause, change.notices);
-      }
-      return change.pause.status === PauseStatus.Pending;
-    });
+    return markSentIn(this.#parts(), { tenantId, pauseId }, recipients, externalRef);
   }
 
   resolveByTenantIdAndPauseId(
@@ -177,7 +160,7 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
   reassignByTenantIdAndPauseId(
     tenantId: string,
     pauseId: string,
-    replacement: PauseReplacement,
+    replacement: PauseReassignmentChange,
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {

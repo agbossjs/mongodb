@@ -12,7 +12,12 @@ import { createApp, type App } from "@agboss/core";
 import { a2aHttpListener } from "@agboss/core/a2a";
 import { afterEach, describe, expect, it } from "vitest";
 import { testDatabase } from "../support/database.js";
-import { AliceCallerResolver, EchoA2AExpose, EchoApplication, started } from "./a2a.application.js";
+import {
+  AliceAuthenticator,
+  EchoA2AEndpoint,
+  EchoApplication,
+  started,
+} from "./a2a.application.js";
 
 const database = testDatabase();
 const opened: { readonly app: App; readonly server: Server }[] = [];
@@ -34,8 +39,8 @@ async function instance(): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
   served.listener = a2aHttpListener(app, {
-    expose: EchoA2AExpose,
-    callerResolver: AliceCallerResolver,
+    endpoint: EchoA2AEndpoint,
+    authenticator: AliceAuthenticator,
     publicUrl: url,
   });
   opened.push({ app, server });

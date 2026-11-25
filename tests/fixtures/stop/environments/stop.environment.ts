@@ -1,9 +1,7 @@
-import { secret } from "@agboss/core";
-import type { StopEnvironment } from "./stop.contract.js";
+import type { EmptyEnvironment } from "@agboss/core";
 
-/** The stop tests' replica set (the test names it) and its database. */
-export const environment: StopEnvironment = {
-  mongodbUrl: secret("AGBOSS_STOP_DATABASE_URL"),
-  mongodbDatabase: "agboss_stop",
-  openRouterApiKey: secret("AGBOSS_STOP_OPENROUTER_KEY"),
-};
+/**
+ * The stop tests' application settings: none — its database (`AGBOSS_STOP_DATABASE_URL`, named by
+ * the test) is a reference its storage reads from the process when it starts.
+ */
+export const environment: EmptyEnvironment = {};

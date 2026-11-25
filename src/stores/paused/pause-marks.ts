@@ -15,18 +15,71 @@ function instantOf(text: string | undefined): Date {
   return Number.isNaN(instant.getTime()) ? new Date(0) : instant;
 }
 
+/** The pause once its channel was asked: `isSent`, and the reference the channel's system gave it, also on its newest chain-of-custody entry. */
+export function sentPause(pause: PauseRecord, externalRef: string | undefined): PauseRecord {
+  if (externalRef === undefined) return { ...pause, isSent: true };
+  const last = pause.trail.at(-1);
+  return {
+    ...pause,
+    isSent: true,
+    externalRef,
+    trail: [...pause.trail.slice(0, -1), ...(last === undefined ? [] : [{ ...last, externalRef }])],
+  };
+}
+
+/**
+ * The notices of a pause whose channel was just asked: `opened` to the listeners; for a replacement a
+ * reassignment made, `reassigned` to the listeners instead (its channel was sent it, the old pause's
+ * channel was told `closed`), naming what it moved from — the entry before its own in the chain.
+ */
+function openingNotices(
+  pause: PauseRecord,
+  sent: PauseRecord,
+  recipients: PauseRecipients,
+): readonly PlannedNotice[] {
+  const asked = instantOf(pause.askedAt);
+  if (pause.reassignedFrom === undefined)
+    return noticesOf(
+      recipients,
+      PauseNoticeKind.Opened,
+      asked,
+      pause.expiresAt === undefined ? {} : { expiresAt: pause.expiresAt },
+    );
+  const before = pause.trail.at(-2);
+  return noticesOf(
+    { listeners: recipients.listeners },
+    PauseNoticeKind.Reassigned,
+    asked,
+    definedOf({
+      expiresAt: pause.expiresAt,
+      previousExpiresAt: before?.expiresAt,
+      assignees: sent.assignees,
+      previousAssignees: before?.assignees,
+      previousTarget: before?.target,
+      previousChannel: before?.channel,
+      previousExternalRef: before?.externalRef,
+    }),
+  );
+}
+
+/** The fields that are set: an undefined fact is no key in the notice's JSON. */
+const definedOf = (facts: Readonly<Record<string, unknown>>): PauseNoticeFacts =>
+  Object.fromEntries(Object.entries(facts).filter(([, value]) => value !== undefined));
+
 /**
  * The channel was asked (rule 2): `isSent` whatever the status, and — only when it was not yet —
  * `opened` to the listeners, then, when the pause closed meanwhile, its `closed` to the channel and
  * the listeners, then its `answerNotTaken` when its answer was closed untaken (I8). The notices
  * carry the times the record knows (`askedAt`, `resolvedAt` / `expiresAt`): `markSent` has no `at`.
  */
-export function markSentChange(pause: PauseRecord, recipients: PauseRecipients): PauseChange {
+export function markSentChange(
+  pause: PauseRecord,
+  recipients: PauseRecipients,
+  externalRef?: string,
+): PauseChange {
   if (pause.isSent) return { pause, notices: [] };
-  const expiry = pause.expiresAt === undefined ? {} : { expiresAt: pause.expiresAt };
-  const asked = instantOf(pause.askedAt);
-  const opened = noticesOf(recipients, PauseNoticeKind.Opened, asked, expiry);
-  const sent = { ...pause, isSent: true };
+  const sent = sentPause(pause, externalRef);
+  const opened = openingNotices(pause, sent, recipients);
   if (pause.status === PauseStatus.Pending) return { pause: sent, notices: opened };
   const first = pause.closedFirst ?? pause;
   const closedAt = instantOf(first.resolvedAt ?? pause.askedAt);

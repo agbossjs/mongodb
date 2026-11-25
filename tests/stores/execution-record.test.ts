@@ -1,9 +1,12 @@
 import { usd } from "@agboss/core/units";
-import { pauseAnswerRecordOfValue, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import {
+  pauseAnswerRecordOfValue,
+  PauseRespondent,
+  StoreOutcomeUnknownError,
+} from "@agboss/core/stores";
 import {
   ComponentKind,
   ExecutionRecordStatus,
-  PauseAnswerer,
   RandomIdGenerator,
   PauseResolution,
   type PauseAnswerRecord,
@@ -109,13 +112,23 @@ const answerOf = (stepKey: string, askedAt: string): PauseAnswerRecord =>
       toolLoopIteration: 2,
       validationAttempts: 0,
     },
-    role: "refund-approval",
-    answerer: PauseAnswerer.Channel,
+    target: "refund-tool-approval",
+    channel: "refund-approval-channel",
+    respondent: PauseRespondent.Delegate,
     actor: { id: "manager-17" },
     resolution: PauseResolution.Replied,
     askedAt,
     resolvedAt: "2026-01-05T10:00:00.000Z",
     decision: { approved: true },
+    input: { text: "10 USD" },
+    trail: [
+      {
+        action: "opened",
+        at: askedAt,
+        target: "refund-tool-approval",
+        channel: "refund-approval-channel",
+      },
+    ],
   });
 
 describe("MongoExecutionRecordRepository", () => {

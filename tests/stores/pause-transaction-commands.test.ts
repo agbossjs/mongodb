@@ -8,7 +8,6 @@ import { NO_RECIPIENTS, PauseNoticeKind, type PauseRecipients } from "@agboss/co
 import { VirtualClock } from "@agboss/core/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
-import { fillMissingChannels } from "../../src/connection/pause-channels.js";
 import { pauseIdOf, type PauseDocument } from "../../src/stores/paused/pause-documents.js";
 import { commandsOf, nameOf, type Sent } from "../support/command-log.js";
 import { emptyAll, testDatabase } from "../support/database.js";
@@ -211,27 +210,5 @@ describe("agbossjs/agboss#1213: the retention's transaction", () => {
     expect(page.pauses.map((one) => one.pauseId)).toEqual(["a"]);
     // one read of the pauses, one of their mailboxes, one of their replacements: no second batch
     expect(log.map(nameOf)).toEqual([`find ${PAUSES}`, `find ${BOXES}`, `find ${PAUSES}`]);
-  });
-});
-
-describe("agbossjs/agboss#1213: the channel heal reads the record only", () => {
-  it("it asks for the pauses that lack a channel, and for their record", async () => {
-    await storeOn().findOrCreateByStepKey(pauseOf("p"));
-    const { db } = connectionTo(database.url());
-    await db
-      .collection(Collections.Pauses)
-      .updateOne({ pauseId: "p" }, { $unset: { channel: "" } });
-    const connection = connectionTo(database.url());
-    const sent = commandsOf(connection);
-
-    await fillMissingChannels(connection.db, {});
-
-    expect(sent[0]?.command).toMatchObject({
-      filter: { channel: null },
-      projection: { record: 1 },
-    });
-    expect(await db.collection(Collections.Pauses).distinct("channel")).toEqual([
-      "refund-approval-channel",
-    ]);
   });
 });

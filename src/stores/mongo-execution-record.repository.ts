@@ -26,6 +26,7 @@ import {
 } from "@agboss/core/stores";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import { pauseAnswerOfJson } from "./framework-json.js";
+import { completeUnlessInterrupted } from "./records/record-interrupt.js";
 import * as memories from "./records/record-memory.js";
 import * as reads from "./records/record-reads.js";
 import * as scores from "./records/record-scores.js";
@@ -112,6 +113,14 @@ export class MongoExecutionRecordRepository extends ExecutionRecordRepository {
       expected,
       context,
     });
+  }
+  completeUnlessInterrupted(
+    id: string,
+    outcome: TurnOutcome,
+    context?: StatusContext,
+  ): Promise<boolean> {
+    const write = { now: this.clock.now(), context };
+    return completeUnlessInterrupted(this.connection, id, outcome, write);
   }
   statusHistory(tenantId: string, threadId: string): Promise<readonly ThreadStatusTransition[]> {
     return historyOf(this.connection.db, { tenantId, threadId });

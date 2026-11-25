@@ -112,11 +112,15 @@
     "byCategory": {
       "agents": 0.01,
       "routing": 0.0023,
-      "guards": 0,
+      "guardrails": 0,
       "review": 0,
       "tools": 0,
-      "compaction": 0,
-      "retrieval": 0
+      "memory": 0,
+      "rag": 0,
+      "files": 0,
+      "pii": 0,
+      "arbiters": 0,
+      "pauses": 0
     },
     "byModel": {
       "m/x": 0.0123
@@ -126,6 +130,7 @@
         "caller": "agent:clerk",
         "category": "agents",
         "model": "m/x",
+        "provider": "openrouter",
         "inputTokens": 10,
         "outputTokens": 5,
         "cacheReadTokens": 5,
@@ -134,7 +139,13 @@
         "costSource": "api",
         "servedBy": "p1"
       }
-    ]
+    ],
+    "unknownCalls": 0,
+    "inputTokens": 10,
+    "outputTokens": 5,
+    "cacheWriteTokens": 0,
+    "totalTokens": 15,
+    "byProvider": {}
   },
   "pauses": [
     {
@@ -153,15 +164,29 @@
         "toolLoopIteration": 2,
         "validationAttempts": 0
       },
-      "role": "refund-approval-channel",
-      "answeredBy": "channel",
-      "responder": "manager-17",
+      "target": "refund-tool-approval",
+      "channel": "refund-approval-channel",
+      "respondent": "delegate",
+      "actor": {
+        "id": "manager-17"
+      },
       "resolution": "replied",
       "askedAt": "2026-01-05T09:00:00.000Z",
       "resolvedAt": "2026-01-05T09:05:00.000Z",
       "decision": {
         "approved": true
-      }
+      },
+      "input": {
+        "text": "10 USD"
+      },
+      "trail": [
+        {
+          "action": "opened",
+          "at": "2026-01-05T09:00:00.000Z",
+          "target": "refund-tool-approval",
+          "channel": "refund-approval-channel"
+        }
+      ]
     }
   ],
   "compensations": [
@@ -309,11 +334,15 @@
         "byCategory": {
           "agents": 0.01,
           "routing": 0.0023,
-          "guards": 0,
+          "guardrails": 0,
           "review": 0,
           "tools": 0,
-          "compaction": 0,
-          "retrieval": 0
+          "memory": 0,
+          "rag": 0,
+          "files": 0,
+          "pii": 0,
+          "arbiters": 0,
+          "pauses": 0
         },
         "byModel": {
           "m/x": 0.0123
@@ -323,6 +352,7 @@
             "caller": "agent:clerk",
             "category": "agents",
             "model": "m/x",
+            "provider": "openrouter",
             "inputTokens": 10,
             "outputTokens": 5,
             "cacheReadTokens": 5,
@@ -331,7 +361,13 @@
             "costSource": "api",
             "servedBy": "p1"
           }
-        ]
+        ],
+        "unknownCalls": 0,
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheWriteTokens": 0,
+        "totalTokens": 15,
+        "byProvider": {}
       },
       "startedAt": "2026-01-05T09:00:00.000Z",
       "endedAt": "2026-01-05T09:00:01.000Z",
@@ -418,11 +454,15 @@
         "byCategory": {
           "agents": 0.01,
           "routing": 0.0023,
-          "guards": 0,
+          "guardrails": 0,
           "review": 0,
           "tools": 0,
-          "compaction": 0,
-          "retrieval": 0
+          "memory": 0,
+          "rag": 0,
+          "files": 0,
+          "pii": 0,
+          "arbiters": 0,
+          "pauses": 0
         },
         "byModel": {
           "m/x": 0.0123
@@ -432,6 +472,7 @@
             "caller": "agent:clerk",
             "category": "agents",
             "model": "m/x",
+            "provider": "openrouter",
             "inputTokens": 10,
             "outputTokens": 5,
             "cacheReadTokens": 5,
@@ -440,7 +481,13 @@
             "costSource": "api",
             "servedBy": "p1"
           }
-        ]
+        ],
+        "unknownCalls": 0,
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheWriteTokens": 0,
+        "totalTokens": 15,
+        "byProvider": {}
       },
       "toolCalls": [
         {
@@ -531,11 +578,15 @@
             "byCategory": {
               "agents": 0.01,
               "routing": 0.0023,
-              "guards": 0,
+              "guardrails": 0,
               "review": 0,
               "tools": 0,
-              "compaction": 0,
-              "retrieval": 0
+              "memory": 0,
+              "rag": 0,
+              "files": 0,
+              "pii": 0,
+              "arbiters": 0,
+              "pauses": 0
             },
             "byModel": {
               "m/x": 0.0123
@@ -545,6 +596,7 @@
                 "caller": "agent:clerk",
                 "category": "agents",
                 "model": "m/x",
+                "provider": "openrouter",
                 "inputTokens": 10,
                 "outputTokens": 5,
                 "cacheReadTokens": 5,
@@ -553,7 +605,13 @@
                 "costSource": "api",
                 "servedBy": "p1"
               }
-            ]
+            ],
+            "unknownCalls": 0,
+            "inputTokens": 10,
+            "outputTokens": 5,
+            "cacheWriteTokens": 0,
+            "totalTokens": 15,
+            "byProvider": {}
           },
           "startedAt": "2026-01-05T09:00:00.000Z",
           "endedAt": "2026-01-05T09:00:01.000Z",
@@ -591,15 +649,29 @@
             "toolLoopIteration": 2,
             "validationAttempts": 0
           },
-          "role": "refund-approval-channel",
-          "answeredBy": "thread-owner",
-          "responder": "alice",
+          "target": "refund-tool-approval",
+          "channel": "refund-approval-channel",
+          "respondent": "owner",
+          "actor": {
+            "id": "alice"
+          },
           "resolution": "replied",
           "askedAt": "2026-01-05T09:00:00.000Z",
           "resolvedAt": "2026-01-05T09:05:00.000Z",
           "decision": {
             "approved": true
-          }
+          },
+          "input": {
+            "text": "10 USD"
+          },
+          "trail": [
+            {
+              "action": "opened",
+              "at": "2026-01-05T09:00:00.000Z",
+              "target": "refund-tool-approval",
+              "channel": "refund-approval-channel"
+            }
+          ]
         }
       ],
       "children": [
@@ -642,11 +714,15 @@
             "byCategory": {
               "agents": 0.01,
               "routing": 0.0023,
-              "guards": 0,
+              "guardrails": 0,
               "review": 0,
               "tools": 0,
-              "compaction": 0,
-              "retrieval": 0
+              "memory": 0,
+              "rag": 0,
+              "files": 0,
+              "pii": 0,
+              "arbiters": 0,
+              "pauses": 0
             },
             "byModel": {
               "m/x": 0.0123
@@ -656,6 +732,7 @@
                 "caller": "agent:clerk",
                 "category": "agents",
                 "model": "m/x",
+                "provider": "openrouter",
                 "inputTokens": 10,
                 "outputTokens": 5,
                 "cacheReadTokens": 5,
@@ -664,7 +741,13 @@
                 "costSource": "api",
                 "servedBy": "p1"
               }
-            ]
+            ],
+            "unknownCalls": 0,
+            "inputTokens": 10,
+            "outputTokens": 5,
+            "cacheWriteTokens": 0,
+            "totalTokens": 15,
+            "byProvider": {}
           },
           "toolCalls": [],
           "steps": [],
@@ -685,15 +768,29 @@
                 "toolLoopIteration": 2,
                 "validationAttempts": 0
               },
-              "role": "refund-approval-channel",
-              "answeredBy": "channel",
-              "responder": "bob",
+              "target": "refund-tool-approval",
+              "channel": "refund-approval-channel",
+              "respondent": "delegate",
+              "actor": {
+                "id": "bob"
+              },
               "resolution": "replied",
               "askedAt": "2026-01-05T09:00:00.000Z",
               "resolvedAt": "2026-01-05T09:05:00.000Z",
               "decision": {
                 "approved": true
-              }
+              },
+              "input": {
+                "text": "10 USD"
+              },
+              "trail": [
+                {
+                  "action": "opened",
+                  "at": "2026-01-05T09:00:00.000Z",
+                  "target": "refund-tool-approval",
+                  "channel": "refund-approval-channel"
+                }
+              ]
             }
           ],
           "children": []

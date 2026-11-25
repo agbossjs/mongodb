@@ -73,36 +73,46 @@ export async function appendRecord(
  * Writes the outcome, the thread's activity and its status document in one transaction; with
  * `expected`, only while the record's status is it — one compare-and-set update, atomic.
  */
-export async function completeRecord(
+export function completeRecord(
   connection: MongoConnection,
   id: string,
   outcome: TurnOutcome,
-  write: {
-    readonly now: Date;
-    readonly expected?: ExecutionRecordStatus | undefined;
-    readonly context?: StatusContext | undefined;
-  },
+  write: CompleteWrite,
+): Promise<boolean> {
+  return connection.inTransaction(({ db, session }) =>
+    completedIn(db, session, id, outcome, write),
+  );
+}
+
+/** What a completion writes besides the outcome. */
+export interface CompleteWrite {
+  readonly now: Date;
+  readonly expected?: ExecutionRecordStatus | undefined;
+  readonly context?: StatusContext | undefined;
+}
+
+/** `completeRecord`'s writes, in the caller's transaction. */
+export async function completedIn(
+  db: Db,
+  session: ClientSession,
+  id: string,
+  outcome: TurnOutcome,
+  write: CompleteWrite,
 ): Promise<boolean> {
   const { replyWith, status, stopReason, route, steps, costUsd } = outcome;
-  return connection.inTransaction(async ({ db, session }) => {
-    // `status: expected` filters only when there is one: the client leaves out an undefined field (`ignoreUndefined`)
-    const completed = await db
-      .collection<RecordDocument>(Collections.ExecutionRecords)
-      .findOneAndUpdate(
-        { _id: id, status: write.expected },
-        { $set: { replyWith, status, stopReason, route: [...route], steps: [...steps], costUsd } },
-        { session, returnDocument: "after", projection: { tenantId: 1, threadId: 1 } },
-      );
-    if (completed === null) return false;
-    const thread = ThreadOf.parse(completed);
-    await touched(db, session, thread, write.now);
-    await appendRecordStatus(db, session, thread, {
-      status,
-      context: write.context,
-      at: write.now,
-    });
-    return true;
-  });
+  // `status: expected` filters only when there is one: the client leaves out an undefined field (`ignoreUndefined`)
+  const completed = await db
+    .collection<RecordDocument>(Collections.ExecutionRecords)
+    .findOneAndUpdate(
+      { _id: id, status: write.expected },
+      { $set: { replyWith, status, stopReason, route: [...route], steps: [...steps], costUsd } },
+      { session, returnDocument: "after", projection: { tenantId: 1, threadId: 1 } },
+    );
+  if (completed === null) return false;
+  const thread = ThreadOf.parse(completed);
+  await touched(db, session, thread, write.now);
+  await appendRecordStatus(db, session, thread, { status, context: write.context, at: write.now });
+  return true;
 }
 
 /**

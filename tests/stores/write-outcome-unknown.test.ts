@@ -430,7 +430,7 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
 
   it("updateMany outside a transaction that fails on its second document (a duplicate key) left the first written: unknown", async () => {
     const many = live().db.collection<{ _id: number; u?: number }>("write_outcome_multi");
-    await many.createIndex({ u: 1 }, { unique: true, sparse: true });
+    await many.createIndex({ u: 1 }, { unique: true, sparse: true }, {});
     await many.insertMany([{ _id: 1 }, { _id: 2 }]);
 
     const failure: unknown = await many

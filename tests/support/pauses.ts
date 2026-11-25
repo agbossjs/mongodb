@@ -1,4 +1,5 @@
-import { PauseAnswerer, PauseKind, PauseStatus, type PauseRecord } from "@agboss/core";
+import { PauseKind, PauseStatus, type PauseRecord } from "@agboss/core";
+import { PauseRespondent } from "@agboss/core/stores";
 
 /** A pending approval pause of `pauseId` at the step `stepKey`, asked at nine on 2026-01-05. */
 export const pauseOf = (pauseId: string, stepKey = `run-1:${pauseId}:1`): PauseRecord => ({
@@ -15,15 +16,16 @@ export const pauseOf = (pauseId: string, stepKey = `run-1:${pauseId}:1`): PauseR
   copyNumber: 1,
   kind: PauseKind.Approval,
   step: "clerk-agent",
+  target: "refund-tool-approval",
   channel: "refund-approval-channel",
-  answerer: PauseAnswerer.Channel,
+  respondent: PauseRespondent.Delegate,
   input: { text: "10 USD" },
   toolCall: { callId: "call-1", tool: "charge", summary: "charge" },
   trail: [
     {
       action: "opened",
       at: "2026-01-05T09:00:00.000Z",
-      target: "refund-approval-channel",
+      target: "refund-tool-approval",
       channel: "refund-approval-channel",
     },
   ],

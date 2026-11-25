@@ -27,7 +27,12 @@ const pin = JSON.parse(readFileSync(join(ROOT, ".agboss-version.json"), "utf8"))
 process.env["npm_config_cache"] ??= join(PACKED_DIR, NPM_CACHE);
 
 const run = (command, args, cwd) =>
-  execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+  execFileSync(command, args, {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 1 << 28,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
 
 /** The published tarballs of the pin's version, as `.packed/manifest.json` records them. */
 function packRegistry() {

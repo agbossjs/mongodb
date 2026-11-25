@@ -9,7 +9,6 @@ import type {
 } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
 import { Collections } from "../connection/collections.js";
-import { fillMissingChannels } from "../connection/pause-channels.js";
 import { MongoConnection } from "../connection/mongodb-connection.js";
 import {
   acknowledge,
@@ -90,8 +89,6 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
   ): Promise<PausePage> {
     assertScanLimit(limit);
     assertPauseFilter(filter);
-    // a pause an old instance wrote after the migration has no channel: it is given one here (#1104)
-    if (filter.channel !== undefined) await fillMissingChannels(this.connection.db, { tenantId });
     return pageOf(this.connection.db, tenantFilter(tenantId, filter), limit, after);
   }
 

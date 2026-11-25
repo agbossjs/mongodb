@@ -4,11 +4,10 @@
  * step that two instances make at once, a paused run's own reads and deletes.
  */
 import { PauseStatus, type PauseRecord } from "@agboss/core";
-import { StoredNamesUnreadableError, PauseNoticeKind } from "@agboss/core/stores";
+import { PauseNoticeKind } from "@agboss/core/stores";
 import { VirtualClock } from "@agboss/core/testing";
 import { MongoServerError, type Db } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
-import { fillMissingChannels } from "../../src/connection/pause-channels.js";
 import { Collections, MongoConnection, MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
 import {
@@ -130,21 +129,6 @@ describe("agbossjs/agboss#1213: a text that is no JSON names its row by its ids"
 
     await expect(storeOn().findByTenantIdAndPauseId("default", "p")).rejects.toThrowError(
       unreadable("pauseId p, rootExecutionId run-1"),
-    );
-  });
-
-  it("a channel the migration fills from a record that is no JSON", async () => {
-    await storeOn().findOrCreateByStepKey(pauseOf("p"));
-    await pauses().updateOne(
-      { pauseId: "p" },
-      { $set: { record: "{nope" }, $unset: { channel: "" } },
-    );
-
-    const refused = fillMissingChannels(dbOf(), {});
-
-    await expect(refused).rejects.toBeInstanceOf(StoredNamesUnreadableError);
-    await expect(refused).rejects.toThrowError(
-      "a stored pause is not readable: the text is not valid JSON",
     );
   });
 

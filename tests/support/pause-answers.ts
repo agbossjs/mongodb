@@ -1,9 +1,5 @@
-import {
-  ComponentKind,
-  PauseAnswerer,
-  PauseResolution,
-  type PauseAnswerRecord,
-} from "@agboss/core";
+import { ComponentKind, PauseResolution, type PauseAnswerRecord } from "@agboss/core";
+import { PauseRespondent } from "@agboss/core/stores";
 
 /** A resolved pause's log entry in the 0.1.1 shape, answered by `responder` (its actor). */
 export const answerOf = (
@@ -29,8 +25,9 @@ export const answerOf = (
     toolLoopIteration: 1,
     validationAttempts: 0,
   },
-  role: "refund-approval-channel",
-  answerer: PauseAnswerer.Channel,
+  target: "refund-tool-approval",
+  channel: "refund-approval-channel",
+  respondent: PauseRespondent.Delegate,
   actor: { id: responder, orgId: "holding-hq" },
   resolution: PauseResolution.Replied,
   askedAt,
@@ -44,7 +41,7 @@ export const answerOf = (
     {
       action: "opened",
       at: askedAt,
-      target: "refund-approval-channel",
+      target: "refund-tool-approval",
       channel: "refund-approval-channel",
     },
   ],

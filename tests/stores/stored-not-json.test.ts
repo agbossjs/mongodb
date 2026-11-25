@@ -6,6 +6,7 @@
  * answer-log entry and a history record alike.
  */
 import { inspect } from "node:util";
+import { PauseResolution, PauseStatus } from "@agboss/core";
 import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { VirtualClock } from "@agboss/core/testing";
 import { describe, expect, it } from "vitest";
@@ -17,7 +18,15 @@ import {
 import { idOf } from "../../src/stores/keys.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo, recordsOn } from "../support/stores.js";
-import { oldPause } from "./pause-names-0.1.0.fixtures.js";
+import { pauseOf } from "../support/pauses.js";
+
+/** A pause answered at nine past five: the fields of its closing. */
+const resolvedPause = {
+  ...pauseOf("p1"),
+  status: PauseStatus.Resolved,
+  resolution: PauseResolution.Replied,
+  resolvedAt: "2026-01-05T09:05:00.000Z",
+};
 
 const database = testDatabase();
 const SECRET = "ssn-078-05-1120";
@@ -78,7 +87,7 @@ describe.each(DAMAGED)("%s", (_name, text) => {
   });
 
   it("in a pause: its record text and its closing text", async () => {
-    const { status, resolution, resolvedAt } = oldPause;
+    const { status, resolution, resolvedAt } = resolvedPause;
     for (const damaged of ["record", "closing"] as const) {
       const id = `p-${damaged}-${String(text.length)}`;
       await connectionTo(database.url())
@@ -93,7 +102,7 @@ describe.each(DAMAGED)("%s", (_name, text) => {
           status,
           isSent: true,
           resolvedAt: new Date(resolvedAt),
-          record: damaged === "record" ? text : JSON.stringify({ ...oldPause, pauseId: id }),
+          record: damaged === "record" ? text : JSON.stringify({ ...resolvedPause, pauseId: id }),
           closing:
             damaged === "closing" ? text : JSON.stringify({ status, resolution, resolvedAt }),
         });

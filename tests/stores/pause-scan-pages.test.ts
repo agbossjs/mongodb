@@ -67,12 +67,17 @@ describe("agbossjs/agboss#1213: the limit, the filter and the cursor", () => {
     expect(seqOfCursor(undefined)).toBe(0);
   });
 
-  it("a tenant's filter names a channel and a deadline only when asked", () => {
+  it("a tenant's filter names a target and a deadline only when asked", () => {
     const statuses = [PauseStatus.Pending];
 
     expect(tenantFilter("t", { statuses })).toStrictEqual({
       tenantId: "t",
       status: { $in: statuses },
+    });
+    expect(tenantFilter("t", { statuses, target: "refund-tool-approval" })).toStrictEqual({
+      tenantId: "t",
+      status: { $in: statuses },
+      target: "refund-tool-approval",
     });
   });
 

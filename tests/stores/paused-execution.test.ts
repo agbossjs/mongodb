@@ -1,6 +1,5 @@
 import {
   ComponentKind,
-  PauseAnswerer,
   PauseKind,
   PauseResolution,
   PauseStatus,
@@ -12,12 +11,13 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
 import { testDatabase } from "../support/database.js";
+import { pauseOf as approvalOf } from "../support/pauses.js";
 import { connectionTo } from "../support/stores.js";
 
 /**
  * agbossjs/agboss#746 on MongoDB: a question role's pause (#659 a flow step, #712 an agent's tool)
  * asks the role's own DTO, no tool call — it is kept and read back as written, on another instance
- * too; an approval's pause whose ask lost its tool call still fails loudly.
+ * too; an approval's pause that lost its tool call still fails loudly.
  */
 const database = testDatabase();
 const NINE = new Date("2026-01-05T09:00:00.000Z");
@@ -25,43 +25,19 @@ const NINE = new Date("2026-01-05T09:00:00.000Z");
 const pausesOn = (): MongoPausedExecutionRepository =>
   new MongoPausedExecutionRepository(connectionTo(database.url()), new VirtualClock());
 
-const pauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
-  pauseId,
-  tenantId: "default",
-  threadId: "thread-1",
-  rootExecutionId: "run-1",
-  executionId: "run-1",
-  workflow: "order-workflow",
-  stepKey,
-  nodeId: "clerk-agent",
-  visitNumber: 1,
-  itemIndex: undefined,
-  copyNumber: 1,
-  kind: PauseKind.Approval,
-  step: "clerk-agent",
-  channel: "refund-approval-channel",
-  answerer: PauseAnswerer.Channel,
-  input: { text: "10 USD" },
-  toolCall: { callId: "call-1", tool: "charge", summary: "charge" },
-  trail: [
-    {
-      action: "opened",
-      at: "2026-01-05T09:00:00.000Z",
-      target: "refund-approval-channel",
-      channel: "refund-approval-channel",
-    },
-  ],
-  status: PauseStatus.Pending,
-  isSent: false,
-  askedAt: "2026-01-05T09:00:00.000Z",
-});
+const pauseOf = (pauseId: string, stepKey: string): PauseRecord => approvalOf(pauseId, stepKey);
 
-/** A question role's pause — the role its component, its ask the role's DTO (the report's shape). */
+/** The pause without its tool call: what a question's record is. */
+const withoutToolCall = (pause: PauseRecord): PauseRecord =>
+  Object.fromEntries(Object.entries(pause).filter(([key]) => key !== "toolCall")) as PauseRecord;
+
+/** A question role's pause — the role its component, its input the role's DTO (the report's shape). */
 const questionPauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
-  ...pauseOf(pauseId, stepKey),
+  ...withoutToolCall(pauseOf(pauseId, stepKey)),
   nodeId: "ship-question",
-  kind: PauseKind.Question,
+  kind: PauseKind.ExternalTask,
   step: "ship-question",
+  target: "ship-external-task",
   channel: "ship-question",
   component: {
     name: "ship-question",
@@ -88,7 +64,7 @@ async function editRecord(
 }
 
 describe("MongoPausedExecutionRepository", () => {
-  it("agbossjs/agboss#746: a question's pause, whose ask is no tool call, is read back as written on another instance", async () => {
+  it("agbossjs/agboss#746: a question's pause, whose input is no tool call, is read back as written on another instance", async () => {
     const asked = questionPauseOf("p-question", "step-question");
     await pausesOn().findOrCreateByStepKey(asked);
     const other = pausesOn();
@@ -113,20 +89,19 @@ describe("MongoPausedExecutionRepository", () => {
     });
   });
 
-  it("an approval's pause whose ask lost its tool call still fails loudly when read", async () => {
+  it("an approval's pause that lost its tool call still fails loudly when read", async () => {
     const pauses = pausesOn();
     await pauses.findOrCreateByStepKey(pauseOf("p-no-call", "step-no-call"));
-    await editRecord("p-no-call", (record) => ({
-      ...record,
-      ask: { tool: "charge", arguments: { text: "10 USD" }, summary: "charge" },
-    }));
+    await editRecord("p-no-call", (record) =>
+      Object.fromEntries(Object.entries(record).filter(([key]) => key !== "toolCall")),
+    );
 
     await expect(pauses.findByTenantIdAndPauseId("default", "p-no-call")).rejects.toThrow(
       /a stored pause is not readable/,
     );
   });
 
-  it("agbossjs/agboss#801: an approval's pause asks a tool call: a question's ask on it fails loudly", async () => {
+  it("agbossjs/agboss#801: an approval's pause asks a tool call: a question's input on it fails loudly", async () => {
     const pauses = pausesOn();
     await pauses.findOrCreateByStepKey(questionPauseOf("p-unkinded", "step-unkinded"));
     await editRecord("p-unkinded", (record) => ({ ...record, kind: PauseKind.Approval }));
@@ -136,10 +111,10 @@ describe("MongoPausedExecutionRepository", () => {
     );
   });
 
-  it("a question's pause whose ask is not an object fails loudly when read", async () => {
+  it("a question's pause whose input is not an object fails loudly when read", async () => {
     const pauses = pausesOn();
     await pauses.findOrCreateByStepKey(questionPauseOf("p-text-ask", "step-text-ask"));
-    await editRecord("p-text-ask", (record) => ({ ...record, ask: "box-1" }));
+    await editRecord("p-text-ask", (record) => ({ ...record, input: "box-1" }));
 
     await expect(pauses.findByTenantIdAndPauseId("default", "p-text-ask")).rejects.toThrow(
       /a stored pause is not readable/,
@@ -155,28 +130,8 @@ describe("MongoPausedExecutionRepository", () => {
     }));
 
     expect(await pauses.findByTenantIdAndPauseId("default", "p-kept")).toMatchObject({
-      kind: PauseKind.Question,
+      kind: PauseKind.ExternalTask,
       input: { name: "box-1" },
     });
-  });
-
-  it("agbossjs/agboss#801: a record written before (agent, no kind) is read by the rule it was written under", async () => {
-    const pauses = pausesOn();
-    const before = (record: Record<string, unknown>): Record<string, unknown> => {
-      const { step, ...rest } = record;
-      const kept = Object.entries(rest).filter(([field]) => field !== "kind");
-      return { ...Object.fromEntries(kept), agent: step };
-    };
-    await pauses.findOrCreateByStepKey(pauseOf("p-old-approval", "step-old-approval"));
-    await pauses.findOrCreateByStepKey(questionPauseOf("p-old-question", "step-old-question"));
-    await editRecord("p-old-approval", before);
-    await editRecord("p-old-question", before);
-
-    expect(await pauses.findByTenantIdAndPauseId("default", "p-old-approval")).toEqual(
-      pauseOf("p-old-approval", "step-old-approval"),
-    );
-    expect(await pauses.findByTenantIdAndPauseId("default", "p-old-question")).toEqual(
-      questionPauseOf("p-old-question", "step-old-question"),
-    );
   });
 });

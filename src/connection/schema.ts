@@ -96,7 +96,7 @@ const INDEXES: Readonly<Partial<Record<CollectionName, () => readonly IndexDescr
     // schema 2 (#938): the deadline and reminder scans, a tenant's pages, the open look
     index("pending_by_expiry", ascending("status", "expiresAt"), false, pendingWith("expiresAt")),
     index("pending_by_remind", ascending("status", "remindAt"), false, pendingWith("remindAt")),
-    index("by_tenant", ascending("tenantId", "status", "channel", "seq")),
+    index("by_tenant", ascending("tenantId", "status", "target", "seq")),
     // #946: the replacements a reassignment made that are still pending and unsent, in the re-send
     // scan's own order and keyset
     index("reassigned_unsent", ascending("askedAt", "tenantId", "pauseId"), false, {
