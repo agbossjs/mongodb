@@ -65,10 +65,7 @@ export const SHARDS = {
     // two mutants at a time: three loops that page for ever starve the servers' elections, and the mutants running then end
     // in transport errors, RuntimeErrors Stryker leaves out of the score (agbossjs/mongodb#103)
     concurrency: 2,
-    mutate: [
-      "src/stores/mongo-paused-execution.repository.ts",
-      "src/stores/paused/*.ts",
-    ],
+    mutate: ["src/stores/mongo-paused-execution.repository.ts", "src/stores/paused/*.ts"],
     tests: [CONFORMANCE, "tests/stores/{pause*,paused*}.test.ts"],
     contracts: ["pausedExecution"],
   },
