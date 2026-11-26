@@ -32,7 +32,7 @@ function limitsOn(clock = new VirtualClock()): {
 } {
   const connection = connectionTo(database.url());
   const log = commandsOf(connection);
-  const limits = new MongoRateLimitRepository(connection, clock, new TestApplicationContext({}));
+  const limits = new MongoRateLimitRepository(connection, clock, new TestApplicationContext());
   return { limits, log };
 }
 

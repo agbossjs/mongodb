@@ -6,7 +6,6 @@ import {
   BudgetScope,
   ChildPlacement,
   DatabaseStorage,
-  EmptyEnvironment,
   ExecutionContext,
   listOf,
   onStart,
@@ -156,7 +155,6 @@ export class StopDatabaseStorage {}
 @Application({
   name: "stop-application",
   version: "1.0.0",
-  environment: EmptyEnvironment,
   storage: StopDatabaseStorage,
   workflows: [StopBatchWorkflow, StopItemWorkflow],
   budgets: [StopApplicationBudget, StopTenantBudget, StopExecutionBudget],

@@ -68,7 +68,7 @@ export async function instances(
     new MongoChildExecutionQueueRepository(
       conn,
       options.clock,
-      new TestApplicationContext({}, id),
+      new TestApplicationContext(id),
       log,
     );
   return {

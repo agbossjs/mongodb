@@ -41,7 +41,7 @@ const questionPauseOf = (pauseId: string, stepKey: string): PauseRecord => ({
   channel: "ship-question",
   component: {
     name: "ship-question",
-    kind: ComponentKind.Question,
+    kind: ComponentKind.ExternalTask,
     promptHash: undefined,
     schemaHash: "ddb0c5dd",
   },
@@ -81,7 +81,7 @@ describe("MongoPausedExecutionRepository", () => {
       expect.objectContaining({ pauseId: "p-question", input: { name: "box-1" } }),
     ]);
     expect(await pausesOn().findByTenantIdAndPauseId("default", "p-question")).toMatchObject({
-      component: { kind: ComponentKind.Question },
+      component: { kind: ComponentKind.ExternalTask },
       input: { name: "box-1" },
       status: PauseStatus.Resolved,
       resolution: PauseResolution.Replied,
@@ -107,6 +107,61 @@ describe("MongoPausedExecutionRepository", () => {
     await editRecord("p-unkinded", (record) => ({ ...record, kind: PauseKind.Approval }));
 
     await expect(pauses.findByTenantIdAndPauseId("default", "p-unkinded")).rejects.toThrow(
+      /a stored pause is not readable/,
+    );
+  });
+
+  it.each([
+    ["the 0.1.0 `question`", { kind: "question" }],
+    ["the 0.1.0 `reply-interpreter`", { kind: "reply-interpreter" }],
+    ["no kind at all", {}],
+  ])(
+    "a stored component of %s is refused, never read as another kind (0.1.1 reads no 0.1.0 record, #1324)",
+    async (_name, component) => {
+      const pauses = pausesOn();
+      await pauses.findOrCreateByStepKey(questionPauseOf("p-legacy", "step-legacy"));
+      await editRecord("p-legacy", (record) => ({
+        ...record,
+        component: { name: "ship-question", ...component },
+      }));
+
+      await expect(pauses.findByTenantIdAndPauseId("default", "p-legacy")).rejects.toThrow(
+        /a stored pause is not readable/,
+      );
+    },
+  );
+
+  it.each(["firstAskedAt", "escalationLimits"])(
+    "a pause stored with no %s (the limits it was opened under) is refused, never read as unlimited",
+    async (field) => {
+      const pauses = pausesOn();
+      await pauses.findOrCreateByStepKey(pauseOf(`p-no-${field}`, `step-no-${field}`));
+      await editRecord(`p-no-${field}`, (record) =>
+        Object.fromEntries(Object.entries(record).filter(([key]) => key !== field)),
+      );
+
+      await expect(pauses.findByTenantIdAndPauseId("default", `p-no-${field}`)).rejects.toThrow(
+        /a stored pause is not readable/,
+      );
+    },
+  );
+
+  it("a stored limit that is `null`, not absent, is refused (the strict reader), and the dates read back as the text that was written", async () => {
+    const pauses = pausesOn();
+    const capped = "2026-01-05T18:00:00.000Z";
+    await pauses.findOrCreateByStepKey({
+      ...pauseOf("p-cap", "step-cap"),
+      maxExpiresAt: capped,
+      escalationLimits: { maxExtensions: 2 },
+    });
+
+    expect(await pauses.findByTenantIdAndPauseId("default", "p-cap")).toMatchObject({
+      firstAskedAt: "2026-01-05T09:00:00.000Z",
+      maxExpiresAt: capped,
+      escalationLimits: { maxExtensions: 2 },
+    });
+    await editRecord("p-cap", (record) => ({ ...record, maxExpiresAt: null }));
+    await expect(pauses.findByTenantIdAndPauseId("default", "p-cap")).rejects.toThrow(
       /a stored pause is not readable/,
     );
   });

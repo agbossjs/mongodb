@@ -42,7 +42,7 @@ async function instance() {
     leases: new MongoExecutionLeaseRepository(
       connection,
       store,
-      new TestApplicationContext({}, "instance-1"),
+      new TestApplicationContext("instance-1"),
     ),
     effects: new MongoFencedEffectRepository(connection, store),
   };

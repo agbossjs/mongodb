@@ -67,7 +67,7 @@ const EXPECTED: Readonly<Record<string, readonly Expected[]>> = {
       key: up("status", "remindAt"),
       partial: { status: "pending", remindAt: { $type: "date" } },
     },
-    { name: "by_tenant", key: up("tenantId", "status", "channel", "seq") },
+    { name: "by_tenant", key: up("tenantId", "status", "target", "seq") },
     {
       name: "reassigned_unsent",
       key: up("askedAt", "tenantId", "pauseId"),
@@ -77,6 +77,14 @@ const EXPECTED: Readonly<Record<string, readonly Expected[]>> = {
       name: "open",
       key: up("status", "seq"),
       partial: { status: { $in: ["pending", "resolved"] } },
+    },
+    { name: "by_status", key: up("status", "seq") },
+    { name: "by_channel", key: up("channel", "status", "seq") },
+    { name: "by_assignee", key: up("assignees", "seq") },
+    {
+      name: "by_external_ref",
+      key: up("externalRef", "seq"),
+      partial: { externalRef: { $exists: true } },
     },
   ],
   [Collections.PauseNotices]: [

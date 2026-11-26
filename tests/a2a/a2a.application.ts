@@ -25,7 +25,6 @@ import { A2AEndpoint } from "@agboss/core/a2a";
 import { WorkflowStartTextDto } from "@agboss/core/dto";
 import { hours, minutes, usd, type Usd } from "@agboss/core/units";
 import { MongoDriver } from "../../src/index.js";
-import { A2AEnvironment } from "./environments/app.environment.js";
 import { StopBatchWorkflow, StopItemWorkflow } from "../fixtures/stop/stop.application.js";
 
 /** The executions every instance of the test started, by execution id. */
@@ -104,7 +103,7 @@ export class EchoExecutionBudget implements BudgetHandler {
 
 /**
  * Every row on the test's replica set: the URL its test sets in the variable before an instance
- * starts (the environment contract names the same variable for the bundles' providers).
+ * starts.
  */
 @DatabaseStorage({
   name: "echo-database-storage",
@@ -118,7 +117,6 @@ export class EchoDatabaseStorage {}
 @Application({
   name: "echo-application",
   version: "1.0.0",
-  environment: A2AEnvironment,
   storage: EchoDatabaseStorage,
   workflows: [EchoWorkflow],
   observers: [StartCounter],

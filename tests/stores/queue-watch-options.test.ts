@@ -67,7 +67,7 @@ async function watchOpen(): Promise<void> {
   const queue = new MongoChildExecutionQueueRepository(
     connection,
     new VirtualClock(),
-    new TestApplicationContext({}, "instance-1"),
+    new TestApplicationContext("instance-1"),
     new RecordingLogger(),
   );
   const watch = await queue.watchQueued(() => undefined);

@@ -25,6 +25,7 @@ import {
   assertPauseFilter,
   assertScanLimit,
   dueBy,
+  listingFilter,
   pageOf,
   reassignedUnsentBefore,
   removableBefore,
@@ -90,6 +91,17 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     assertScanLimit(limit);
     assertPauseFilter(filter);
     return pageOf(this.connection.db, tenantFilter(tenantId, filter), limit, after);
+  }
+
+  /** Every tenant's pauses `filter` selects, paged as a tenant's: the keyset is the insertion sequence, no tenant clause. */
+  async findPageOfAllTenants(
+    filter: PauseFilter,
+    limit: number,
+    after?: string,
+  ): Promise<PausePage> {
+    assertScanLimit(limit);
+    assertPauseFilter(filter);
+    return pageOf(this.connection.db, listingFilter(filter), limit, after);
   }
 
   async findClosedByResolvedAtBefore(

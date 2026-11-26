@@ -73,7 +73,7 @@ const leasesOf = (instanceId: string): MongoExecutionLeaseRepository =>
   new MongoExecutionLeaseRepository(
     connection,
     serverClock(),
-    new TestApplicationContext({}, instanceId),
+    new TestApplicationContext(instanceId),
   );
 
 /** A fenced-effect key under `lease`'s token. */

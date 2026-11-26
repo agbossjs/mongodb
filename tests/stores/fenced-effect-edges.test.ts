@@ -43,7 +43,7 @@ async function instance() {
   const leases = new MongoExecutionLeaseRepository(
     connection,
     store,
-    new TestApplicationContext({}, "instance-1"),
+    new TestApplicationContext("instance-1"),
   );
   const held = await leases.acquire(TENANT, "root-1", hours(1));
   if (held === undefined) throw new Error("the lease is held");

@@ -25,7 +25,7 @@ const leasesOn = async (clock: StoreClock) =>
   new MongoExecutionLeaseRepository(
     await instanceConnection(database, "instance-1"),
     clock,
-    new TestApplicationContext({}, "instance-1"),
+    new TestApplicationContext("instance-1"),
   );
 
 /** A lease held by the repository, whose tenant cannot be read: every filter built from it throws. */

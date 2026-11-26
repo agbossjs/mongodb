@@ -3,6 +3,7 @@ import type { Db } from "mongodb";
 import { Collections } from "../../src/index.js";
 import {
   fieldsOf,
+  listingFieldsOf,
   pauseIdOf,
   type PauseDocument,
 } from "../../src/stores/paused/pause-documents.js";
@@ -38,6 +39,7 @@ export async function insertPauseRow(
     target: record.target,
     record: JSON.stringify(record),
     ...fieldsOf(record),
+    ...listingFieldsOf(record),
     ...extra,
   };
   await db.collection<PauseDocument>(Collections.Pauses).insertOne(document);

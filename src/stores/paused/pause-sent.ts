@@ -25,11 +25,9 @@ export function markSentIn(
     const change = markSentChange(before, recipients, externalRef);
     if (!found.isSent) {
       const sent = { _id: found._id, isSent: false };
-      const marked = await parts.pauses.updateOne(
-        sent,
-        { $set: writtenFieldsOf(before, change.pause) },
-        { session },
-      );
+      const marked = await parts.pauses.updateOne(sent, writtenFieldsOf(before, change.pause), {
+        session,
+      });
       // one snapshot with the read: a miss is the driver's conflict, so this fails closed (a test
       // makes it miss: pause-sent-mark.test.ts)
       if (marked.matchedCount !== 1) throw new Error("the sent mark matched no pause");

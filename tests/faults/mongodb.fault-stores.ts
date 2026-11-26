@@ -1,4 +1,3 @@
-import type { Secret } from "@agboss/core";
 import { secret } from "@agboss/core";
 import { FaultStoreTime, type FaultStoreSet } from "@agboss/core/testing/faults";
 import {
@@ -27,11 +26,6 @@ import {
  * writes its business document in the fenced effect's transaction, with its session.
  */
 
-/** The environment the stores read: the deployment. */
-export class MongoFaultEnvironment {
-  mongodbUrl!: Secret;
-}
-
 /** The collection of the fixture's business documents. */
 export const FAULT_BUSINESS_ROWS = "fault_business_rows";
 
@@ -59,9 +53,10 @@ export const faultStores: FaultStoreSet = {
     MongoOutboundCallRepository,
     MongoPausedExecutionRepository,
   ],
-  environment: {
-    contract: MongoFaultEnvironment,
-    values: { mongodbUrl: secret("AGBOSS_FAULT_DATABASE_URL") },
+  // the deployment the pod's `@DatabaseStorage` opens (the pod resolves the secret from its process env)
+  storage: {
+    backend: "mongodb",
+    settings: { kind: "mongodb", url: secret("AGBOSS_FAULT_DATABASE_URL") },
   },
   businessRows: {
     // the effect's ambient transaction (#1317c)

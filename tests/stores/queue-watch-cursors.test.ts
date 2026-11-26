@@ -60,7 +60,7 @@ describe("agbossjs/agboss#1088: the queue watch leaves no cursor on the server",
     const queue = new MongoChildExecutionQueueRepository(
       connectionTo(database.url()),
       new RealClock(),
-      new TestApplicationContext({}, "instance-1"),
+      new TestApplicationContext("instance-1"),
       new RecordingLogger(),
     );
     const watch = await watching(queue, cleanups);
@@ -177,7 +177,7 @@ describe("agbossjs/agboss#1088: the queue watch leaves no cursor on the server",
       const queue = new MongoChildExecutionQueueRepository(
         connectionTo(database.url()),
         new RealClock(),
-        new TestApplicationContext({}, "instance-1"),
+        new TestApplicationContext("instance-1"),
         new RecordingLogger(),
       );
       const watch = await watching(queue, cleanups);
@@ -279,7 +279,7 @@ describe("agbossjs/agboss#1169: a cursor id that is a bigint", () => {
     const queue = new MongoChildExecutionQueueRepository(
       connection,
       new RealClock(),
-      new TestApplicationContext({}, "instance-1"),
+      new TestApplicationContext("instance-1"),
       logger,
     );
     const watch = await watching(queue, cleanups);
@@ -327,7 +327,7 @@ describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", (
     const queue = new MongoChildExecutionQueueRepository(
       connection,
       new RealClock(),
-      new TestApplicationContext({}, "instance-1"),
+      new TestApplicationContext("instance-1"),
       new RecordingLogger(),
     );
     const watch = await watching(queue, cleanups);
@@ -394,7 +394,7 @@ describe("agbossjs/agboss#1345: a close whose own kill cannot go out in time", (
     const queue = new MongoChildExecutionQueueRepository(
       connection,
       new RealClock(),
-      new TestApplicationContext({}, "instance-1"),
+      new TestApplicationContext("instance-1"),
       new RecordingLogger(),
     );
     const admin = new MongoClient(REPLICA_SET_URL);

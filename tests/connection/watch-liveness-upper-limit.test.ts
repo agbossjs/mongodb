@@ -1,6 +1,6 @@
 /**
  * agbossjs/agboss#1129: a timer-backed duration has an upper limit. `watchLivenessSeconds` above
- * `MAX_WATCH_LIVENESS_SECONDS` (3600) is a `MongoSettingsError` naming the field on both paths — a
+ * `MAX_WATCH_LIVENESS_SECONDS` (3600) is a `MongoSettingsError` naming the field on both paths (a settings object, a driver's options) — a
  * Node timer holds at most 2^31-1 ms, and 2147484 s made the watch fail at once and the instance
  * silently fall back to the sweep. The connection copies the settings object it is given.
  */
@@ -8,13 +8,17 @@ import { describe, expect, it } from "vitest";
 import { MongoConnection, MongoSettingsError } from "../../src/index.js";
 import { MAX_WATCH_LIVENESS_SECONDS } from "../../src/connection/settings.js";
 import { watchClientOf } from "../../src/connection/watch-client.js";
-import { revealing, TestApplicationContext } from "../support/application-context.js";
+import { revealing } from "../support/application-context.js";
 
 const URL = "mongodb://db:27017/app?replicaSet=rs0";
 const TOO_LONG = [3601, 86_400, 2_147_483, 2_147_484, 2 ** 31, Number.MAX_SAFE_INTEGER];
 
-const environment = (value: number): TestApplicationContext =>
-  new TestApplicationContext({ mongodbUrl: revealing(URL), mongodbWatchLivenessSeconds: value });
+/** The settings `MongoDriver` resolved, its liveness in `Milliseconds`. */
+const resolved = (seconds: number) => ({
+  kind: "mongodb",
+  url: revealing(URL),
+  watchLiveness: seconds * 1000,
+});
 
 describe("agbossjs/agboss#1129: the watch's liveness bound has an upper limit", () => {
   it("AC1: the limit is far under what a Node timer holds", () => {
@@ -35,20 +39,22 @@ describe("agbossjs/agboss#1129: the watch's liveness bound has an upper limit", 
   );
 
   it.each(TOO_LONG)(
-    "AC2: mongodbWatchLivenessSeconds { %s } in the environment is a MongoSettingsError naming the field",
+    "AC2: watchLiveness { %s } s of the driver is a MongoSettingsError naming the field",
     (value) => {
-      const build = (): unknown => new MongoConnection(environment(value));
+      const build = (): unknown => new MongoConnection(resolved(value));
       expect(build).toThrow(MongoSettingsError);
-      expect(build).toThrow(/mongodbWatchLivenessSeconds must be at most 3600/);
+      expect(build).toThrow(
+        /watchLivenessSeconds must be a whole number of at least 2 and at most 3600/,
+      );
     },
   );
 
   it.each([2, 3600])(
-    "AC3: the limit itself and the minimum, { %s }, are accepted on both paths",
+    "AC3: the limit itself and the minimum, { %s }, are accepted on both paths (a settings object, a driver's options)",
     async (value) => {
       for (const connection of [
         new MongoConnection({ url: URL, watchLivenessSeconds: value }),
-        new MongoConnection(environment(value)),
+        new MongoConnection(resolved(value)),
       ]) {
         expect(watchClientOf(connection).livenessSeconds).toBe(value);
         await connection.onDestroy();

@@ -14,7 +14,7 @@ leaseRaceCases("MongoDB", async () => {
     new MongoExecutionLeaseRepository(
       await instanceConnection(database, instanceId),
       clock,
-      new TestApplicationContext({}, instanceId),
+      new TestApplicationContext(instanceId),
     );
   return {
     first: await leasesOf("instance-1"),

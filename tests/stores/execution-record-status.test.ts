@@ -26,7 +26,7 @@ function storeOn(clock = new VirtualClock()) {
     records: new MongoExecutionRecordRepository(
       connection,
       clock,
-      new TestApplicationContext({}),
+      new TestApplicationContext(),
       new CountingIdGenerator(),
     ),
   };

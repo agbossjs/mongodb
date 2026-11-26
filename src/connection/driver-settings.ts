@@ -7,8 +7,7 @@ import type { MongoConnectionSettings } from "./settings.js";
 /**
  * The settings `MongoDriver` resolved (agbossjs/agboss#1321f): its options with the `secret(…)` of
  * the URL revealed, the durations in `Milliseconds` (`DriverTimeouts`), read once at start. What
- * `MongoConnection` makes its client of when the application names a `@DatabaseStorage`; the
- * environment's `mongodb…` fields are read only without one.
+ * `MongoConnection` makes its client of.
  */
 
 /** A `Secret` of the resolved settings: only `reveal()` gives its value. */

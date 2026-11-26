@@ -33,7 +33,6 @@ import {
 import {
   DuplicateKeyNoticeOnce,
   ExtendAfterDeadline,
-  ExtendWithoutCompare,
   MARKERS,
   NoDeadlineGuards,
   ReassignWithoutGuard,
@@ -42,6 +41,7 @@ import {
   ReversedOrder,
   ScansIgnoreAfter,
   StringHeadTime,
+  TimeoutChangeWithoutCompare,
 } from "../../stores/pause-sabotage.js";
 import {
   AgePruningCalls,
@@ -284,7 +284,7 @@ leaseRaceCases("a check-then-write acquire", async () => {
   const leasesOf = async (instanceId: string): Promise<CheckThenWriteLeases> =>
     new CheckThenWriteLeases(await instanceConnection(database, instanceId), {
       storeClock: clock,
-      application: new TestApplicationContext({}, instanceId),
+      application: new TestApplicationContext(instanceId),
       instanceId,
     });
   return {
@@ -301,7 +301,7 @@ fenceRaceCases("a fence check that only reads", async () => {
   const one = await instanceConnection(database, "instance-1");
   const two = await instanceConnection(database, "instance-2");
   const application = (instanceId: string): TestApplicationContext =>
-    new TestApplicationContext({}, instanceId);
+    new TestApplicationContext(instanceId);
   return {
     connection: one,
     first: {
@@ -325,7 +325,7 @@ const brokenPauseStores: readonly (readonly [string, PauseStore])[] = [
   ["a pause head time stored as a string", StringHeadTime],
   ["noticeOnce that relies on a duplicate-key error", DuplicateKeyNoticeOnce],
   // agbossjs/agboss#1064
-  ["an extension decided by the stale read, not its deadline", ExtendWithoutCompare],
+  ["an extension decided by the stale read, not its deadline", TimeoutChangeWithoutCompare],
   ["an extension applied after the deadline", ExtendAfterDeadline],
   ["a notice claim renewed without its token holding", RenewRevivesAndShortens],
   ["pause scans that ignore their keyset", ScansIgnoreAfter],

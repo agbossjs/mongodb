@@ -1,5 +1,5 @@
 import { PauseStatus, type PauseRecord } from "@agboss/core";
-import type { ClientSession, Db } from "mongodb";
+import type { ClientSession, Db, UpdateFilter } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { pauseRecordOf } from "../framework-json.js";
@@ -14,7 +14,10 @@ import { nextSequence } from "../sequence.js";
  * closing (resolution, its time, the answer) and the deadline fields — are fields of their own,
  * laid over the record when read: `expiresAt`, `remindAt` and `resolvedAt` are BSON Dates (the
  * indexes' and the scans' keys), `target` is copied out for the tenant's pages. A document of
- * schema version 1 has no deadline fields: its record's are read (it has none).
+ * schema version 1 has no deadline fields: its record's are read (it has none). The fields a
+ * listing filters by (`assignees`, `externalRef`, `channel`, #1307e) are copied out beside the record
+ * — absent when the pause has none, never `null` — and kept as the record has them; the record
+ * (`firstAskedAt`, `maxExpiresAt`, `escalationLimits`, the trail) is the one source of what is read back.
  */
 export interface PauseDocument {
   _id: string;
@@ -30,6 +33,12 @@ export interface PauseDocument {
   expiresAt: Date | null;
   remindAt: Date | null;
   expiryBound: string | null;
+  /** Who the pause is for (a pool: any member matches a listing's `assignee`): a multikey index; absent when nobody in particular. */
+  assignees?: string[];
+  /** The reference the channel's system gave it (`by_external_ref`); absent until it has one. */
+  externalRef?: string;
+  /** The name of the channel that asks it (a listing's `channel`); absent when it has none. */
+  channel?: string;
   /** The record as created, JSON text. */
   record: string;
   /** How it closed — `{ status, resolution, resolvedAt, answer?, expiryProblem? }` —, JSON text; `null` while pending. */
@@ -42,6 +51,15 @@ export interface PauseDocument {
   /** How many times `noticeOnce…` wrote: a write to the pause that locks it against the retention's delete. */
   noticeWrites?: number;
 }
+
+/** What a pause's listing fields are as a new document holds them: only those it has. */
+export const listingFieldsOf = (
+  pause: PauseRecord,
+): Pick<PauseDocument, "assignees" | "externalRef" | "channel"> => ({
+  ...(pause.assignees === undefined ? {} : { assignees: [...pause.assignees] }),
+  ...(pause.externalRef === undefined ? {} : { externalRef: pause.externalRef }),
+  ...(pause.channel === undefined ? {} : { channel: pause.channel }),
+});
 
 /** The fields of a document a change of its pause sets. */
 export type PauseFields = Pick<
@@ -137,17 +155,34 @@ export function fieldsOf(pause: PauseRecord): PauseFields {
 /**
  * What a change of `before` into `after` writes: the fields of its status, closing and deadlines,
  * and — when its chain of custody or its pool of assignees changed (a deadline moved, a reassignment,
- * the channel's reference), which the created record holds — the record itself, whole.
+ * the channel's reference), which the created record holds — the record itself, whole, with the
+ * listing fields that follow it: `assignees` and `externalRef` set, or unset when the record has
+ * none (never `null`). The channel of a pause never changes.
  */
 export function writtenFieldsOf(
   before: PauseRecord,
   after: PauseRecord,
-): PauseFields & { readonly record?: string } {
+): UpdateFilter<PauseDocument> {
   const isRecordChanged =
     after.trail !== before.trail ||
     after.assignees !== before.assignees ||
     after.externalRef !== before.externalRef;
-  return isRecordChanged ? { ...fieldsOf(after), record: JSON.stringify(after) } : fieldsOf(after);
+  if (!isRecordChanged) return { $set: fieldsOf(after) };
+  const { assignees, externalRef } = listingFieldsOf(after);
+  // an empty `$unset` is an error before MongoDB 5.0: named only when there is a field to remove
+  const unset = {
+    ...(assignees === undefined ? { assignees: "" as const } : {}),
+    ...(externalRef === undefined ? { externalRef: "" as const } : {}),
+  };
+  return {
+    $set: {
+      ...fieldsOf(after),
+      record: JSON.stringify(after),
+      ...(assignees === undefined ? {} : { assignees }),
+      ...(externalRef === undefined ? {} : { externalRef }),
+    },
+    ...(Object.keys(unset).length === 0 ? {} : { $unset: unset }),
+  };
 }
 
 /** `pause` inserted as a new document of the pauses (#946: a reassignment's replacement), in `session`. */
@@ -166,6 +201,7 @@ export async function insertPause(
     target: pause.target,
     record: JSON.stringify(pause),
     ...fieldsOf(pause),
+    ...listingFieldsOf(pause),
     ...(pause.reassignedFrom === undefined
       ? {}
       : { reassignedFrom: pause.reassignedFrom, askedAt: dateOf(pause.askedAt, "askedAt") }),
@@ -189,6 +225,7 @@ export async function findOrCreatePause(db: Db, pause: PauseRecord): Promise<Pau
     target: pause.target,
     record: JSON.stringify(pause),
     ...fieldsOf(pause),
+    ...listingFieldsOf(pause),
   };
   try {
     await pauses.updateOne(step, { $setOnInsert: document }, { upsert: true });

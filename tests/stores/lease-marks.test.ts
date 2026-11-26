@@ -51,12 +51,12 @@ async function instance(instanceId: string) {
     leases: new MongoExecutionLeaseRepository(
       connection,
       store,
-      new TestApplicationContext({}, instanceId),
+      new TestApplicationContext(instanceId),
     ),
     records: new MongoExecutionRecordRepository(
       connection,
       new VirtualClock(),
-      new TestApplicationContext({}, instanceId),
+      new TestApplicationContext(instanceId),
       new CountingIdGenerator(),
     ),
   };
@@ -73,7 +73,7 @@ async function instances(count: number) {
       return new MongoExecutionLeaseRepository(
         connection,
         store,
-        new TestApplicationContext({}, instanceId),
+        new TestApplicationContext(instanceId),
       );
     }),
   );

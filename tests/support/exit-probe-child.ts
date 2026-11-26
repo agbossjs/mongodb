@@ -25,7 +25,7 @@ const connection = new MongoConnection({ url, watchLivenessSeconds: Number(liven
 const queue = new MongoChildExecutionQueueRepository(
   connection,
   clock,
-  new TestApplicationContext({}, "probe"),
+  new TestApplicationContext("probe"),
   new TellingLogger(),
 );
 const watch = await queue.watchQueued(() => {

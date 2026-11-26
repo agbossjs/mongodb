@@ -47,7 +47,7 @@ export function recordsOn(
   return new MongoExecutionRecordRepository(
     connectionTo(url),
     clock,
-    new TestApplicationContext({}),
+    new TestApplicationContext(),
     ids,
   );
 }

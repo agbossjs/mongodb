@@ -137,7 +137,7 @@ const leasesOn = (connection: MongoConnection, instanceId: string): MongoExecuti
   new MongoExecutionLeaseRepository(
     connection,
     serverClock(),
-    new TestApplicationContext({}, instanceId),
+    new TestApplicationContext(instanceId),
   );
 
 let admin: MongoClient;

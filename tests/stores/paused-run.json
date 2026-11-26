@@ -1,0 +1,247 @@
+{
+  "status": "paused",
+  "start": "desk-start",
+  "startInput": {
+    "q": 1
+  },
+  "path": ["desk-start", "clerk-agent"],
+  "budgetUsd": 5,
+  "cost": {
+    "totalUsd": 0.01,
+    "calls": 1,
+    "cacheReadTokens": 0,
+    "byCaller": {
+      "a": 0.01
+    },
+    "byCategory": {
+      "agents": 0.01,
+      "routing": 0,
+      "guardrails": 0,
+      "review": 0,
+      "tools": 0,
+      "memory": 0,
+      "rag": 0,
+      "files": 0,
+      "pii": 0,
+      "arbiters": 0,
+      "pauses": 0
+    },
+    "byModel": {
+      "m": 0.01
+    },
+    "trace": [
+      {
+        "caller": "a",
+        "category": "agents",
+        "model": "m",
+        "provider": "openrouter",
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "costUsd": 0.01,
+        "costSource": "api"
+      }
+    ],
+    "unknownCalls": 0,
+    "inputTokens": 1,
+    "outputTokens": 1,
+    "cacheWriteTokens": 0,
+    "totalTokens": 2,
+    "byProvider": {}
+  },
+  "threadId": "t-1",
+  "tenantId": "default",
+  "turnId": "turn-1",
+  "data": {
+    "scope": {
+      "v1": {
+        "valueId": "v1",
+        "slot": "in",
+        "producer": "desk-start",
+        "value": {
+          "q": 1
+        },
+        "builtFrom": []
+      }
+    },
+    "outdatedValues": [],
+    "lastError": null,
+    "launches": [
+      {
+        "launch": "l",
+        "items": 2,
+        "taken": 1,
+        "branches": [
+          {
+            "nodeId": "b",
+            "copyNumber": 1,
+            "status": "finished",
+            "itemIndex": 0
+          }
+        ],
+        "isQuorumReached": false,
+        "group": {
+          "targets": ["a"],
+          "priority": 1
+        }
+      }
+    ],
+    "children": [
+      {
+        "executionId": "child-1",
+        "parentExecutionId": "run-1",
+        "rootExecutionId": "run-1",
+        "workflow": {
+          "name": "c",
+          "version": "1",
+          "startedVersion": "1",
+          "configHash": "h"
+        },
+        "depth": 2,
+        "launchedBy": {
+          "nodeId": "c",
+          "visitNumber": 1
+        },
+        "start": {
+          "name": "cs",
+          "kind": "workflow-start",
+          "promptHash": "ph"
+        },
+        "input": 1,
+        "status": "finished",
+        "path": [],
+        "spend": {
+          "totalUsd": 0.01,
+          "calls": 1,
+          "cacheReadTokens": 0,
+          "byCaller": {
+            "a": 0.01
+          },
+          "byCategory": {
+            "agents": 0.01,
+            "routing": 0,
+            "guardrails": 0,
+            "review": 0,
+            "tools": 0,
+            "memory": 0,
+            "rag": 0,
+            "files": 0,
+            "pii": 0,
+            "arbiters": 0,
+            "pauses": 0
+          },
+          "byModel": {
+            "m": 0.01
+          },
+          "trace": [
+            {
+              "caller": "a",
+              "category": "agents",
+              "model": "m",
+              "provider": "openrouter",
+              "inputTokens": 1,
+              "outputTokens": 1,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0,
+              "costUsd": 0.01,
+              "costSource": "api"
+            }
+          ],
+          "unknownCalls": 0,
+          "inputTokens": 1,
+          "outputTokens": 1,
+          "cacheWriteTokens": 0,
+          "totalTokens": 2,
+          "byProvider": {}
+        },
+        "toolCalls": [],
+        "steps": [],
+        "children": []
+      }
+    ],
+    "handledErrors": [
+      {
+        "error": {
+          "name": "E",
+          "code": "E",
+          "lineage": ["E"],
+          "message": "m"
+        },
+        "at": {
+          "name": "a",
+          "kind": "agent",
+          "promptHash": "ph"
+        },
+        "by": {
+          "name": "b",
+          "kind": "action",
+          "promptHash": "ph"
+        }
+      }
+    ],
+    "compensations": [
+      {
+        "key": "k",
+        "executionId": "run-1",
+        "sequence": 1,
+        "action": "book",
+        "compensated": {
+          "component": {
+            "name": "clerk-agent",
+            "kind": "agent",
+            "promptHash": "ph"
+          },
+          "nodeId": "clerk-agent",
+          "visitNumber": 1,
+          "idempotencyKey": "k",
+          "callId": "c",
+          "copyNumber": 1,
+          "toolLoopIteration": 1,
+          "validationAttempts": 0
+        },
+        "compensator": "undo",
+        "input": {},
+        "status": "open"
+      }
+    ],
+    "toolCalls": [],
+    "steps": []
+  },
+  "compacted": [
+    {
+      "memory": "c",
+      "fromTurn": 1,
+      "toTurn": 2,
+      "summaries": 1,
+      "summaryQueueLength": 0
+    }
+  ],
+  "traceUrl": "https://t/1",
+  "runId": "run-1",
+  "pending": [
+    {
+      "pauseId": "p1",
+      "kind": "approval",
+      "respondent": "delegate",
+      "step": "clerk-agent",
+      "target": "refund-tool-approval",
+      "channel": "refund-approval-channel",
+      "input": {},
+      "toolCall": {
+        "callId": "call-1",
+        "tool": "refund",
+        "summary": "refund 7"
+      },
+      "trail": [
+        {
+          "action": "opened",
+          "at": "2026-01-05T09:00:00.000Z",
+          "target": "refund-tool-approval",
+          "channel": "refund-approval-channel"
+        }
+      ]
+    }
+  ],
+  "startedVersion": "1"
+}

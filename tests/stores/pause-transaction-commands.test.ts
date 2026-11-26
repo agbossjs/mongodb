@@ -11,7 +11,7 @@ import { Collections, MongoPausedExecutionRepository } from "../../src/index.js"
 import { pauseIdOf, type PauseDocument } from "../../src/stores/paused/pause-documents.js";
 import { commandsOf, nameOf, type Sent } from "../support/command-log.js";
 import { emptyAll, testDatabase } from "../support/database.js";
-import { ANSWER, NINE, pauseOf } from "../support/pauses.js";
+import { ANSWER, NINE, pauseOf, seenNow, withSeenNow } from "../support/pauses.js";
 import { insertMailboxRow, insertTakenRow } from "../support/pause-rows.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -98,7 +98,7 @@ describe("agbossjs/agboss#1213: a pause transaction's operations are in it", () 
     await store.noticeOnceByTenantIdAndPauseId(
       "default",
       "p",
-      PauseNoticeKind.Extended,
+      PauseNoticeKind.TimeoutChanged,
       facts,
       LATER,
       AUDIT,
@@ -117,12 +117,14 @@ describe("agbossjs/agboss#1213: a pause transaction's operations are in it", () 
 
   it("a reassignment reads the pause and the tree's step keys (their keys only), writes both pauses and the notice, in the transaction", async () => {
     await sentPause("p");
+    // what the change is planned against is read before the store under watch is asked
+    const seen = await seenNow(storeOn(), "p");
     const { store, log } = watched();
 
     await store.reassignByTenantIdAndPauseId(
       "default",
       "p",
-      { pauseId: "p-r", assignees: ["alice"] },
+      { pauseId: "p-r", assignees: ["alice"], seen },
       LATER,
       AUDIT,
     );
@@ -149,7 +151,7 @@ async function retentionRows(): Promise<void> {
   await store.reassignByTenantIdAndPauseId(
     "default",
     "p1",
-    { pauseId: "p2", assignees: ["a"] },
+    await withSeenNow(store, "p1", { pauseId: "p2", assignees: ["a"] }),
     NINE,
     NO_RECIPIENTS,
   );

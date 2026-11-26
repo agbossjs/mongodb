@@ -11,7 +11,7 @@ import {
   MongoSettingsError,
   MongoTransactionReadConcern,
 } from "../../src/index.js";
-import { revealing, TestApplicationContext } from "../support/application-context.js";
+import { revealing } from "../support/application-context.js";
 
 /** What an operation on a deployment that does not answer rejects with. */
 const MongoServerSelectionOrNetworkError = /ECONNREFUSED|Server selection timed out/;
@@ -29,19 +29,19 @@ function errorOf(build: () => unknown): unknown {
 }
 
 describe("MongoConnection: one client per application instance", () => {
-  it("is built from the application's environment, on the agboss database by default", async () => {
-    const connection = new MongoConnection(
-      new TestApplicationContext({ mongodbUrl: revealing(URL) }),
-    );
+  it("is built from the driver's resolved settings, on the agboss database by default", async () => {
+    const connection = new MongoConnection({ kind: "mongodb", url: revealing(URL) });
 
     expect(connection.db.databaseName).toBe("agboss");
     await connection.onDestroy();
   });
 
-  it("mongodbDatabase names the database", async () => {
-    const connection = new MongoConnection(
-      new TestApplicationContext({ mongodbUrl: revealing(URL), mongodbDatabase: "desk" }),
-    );
+  it("the driver's database names the database", async () => {
+    const connection = new MongoConnection({
+      kind: "mongodb",
+      url: revealing(URL),
+      database: "desk",
+    });
 
     expect(connection.db.databaseName).toBe("desk");
     await connection.onDestroy();
@@ -76,13 +76,12 @@ describe("MongoConnection: one client per application instance", () => {
     await connection.onDestroy();
   });
 
-  it("mongodbTransactionReadConcern: majority reads majority-committed data in a transaction", async () => {
-    const connection = new MongoConnection(
-      new TestApplicationContext({
-        mongodbUrl: revealing(URL),
-        mongodbTransactionReadConcern: MongoTransactionReadConcern.Majority,
-      }),
-    );
+  it("transactionReadConcern: majority reads majority-committed data in a transaction", async () => {
+    const connection = new MongoConnection({
+      kind: "mongodb",
+      url: revealing(URL),
+      transactionReadConcern: MongoTransactionReadConcern.Majority,
+    });
 
     expect(connection.transactionOptions.readConcern).toEqual({ level: "majority" });
     await connection.onDestroy();
@@ -130,10 +129,9 @@ describe("MongoConnection refuses a URL that weakens a guarantee — never overr
     expect(error.problems).toHaveLength(3);
   });
 
-  it("the environment's URL is checked the same way", () => {
+  it("the driver's URL is checked the same way", () => {
     const error = errorOf(
-      () =>
-        new MongoConnection(new TestApplicationContext({ mongodbUrl: revealing(`${URL}&w=1`) })),
+      () => new MongoConnection({ kind: "mongodb", url: revealing(`${URL}&w=1`) }),
     );
 
     expect(error).toBeInstanceOf(MongoDurabilityError);
@@ -159,10 +157,9 @@ describe("MongoConnection: a URL the driver cannot use", () => {
     expect(String(error)).not.toMatch(/hunter2/);
   });
 
-  it("an environment without mongodbUrl fails before any client is built", () => {
-    expect(() => new MongoConnection(new TestApplicationContext({}))).toThrow(
-      /mongodbUrl is missing/,
-    );
+  it("an application with no MongoDB storage fails before any client is built", () => {
+    expect(() => new MongoConnection()).toThrow(MongoSettingsError);
+    expect(() => new MongoConnection()).toThrow(/@DatabaseStorage/);
   });
 });
 

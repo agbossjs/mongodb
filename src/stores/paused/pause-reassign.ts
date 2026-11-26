@@ -57,7 +57,7 @@ export function reassignIn(
     if (change === undefined) return undefined;
     const written = await parts.pauses.updateOne(
       { _id, ...(replacement.due === undefined ? parts.guards.open(at) : parts.guards.due(at)) },
-      { $set: writtenFieldsOf(before, change.pause) },
+      writtenFieldsOf(before, change.pause),
       { session },
     );
     if (written.matchedCount === 0) return undefined;

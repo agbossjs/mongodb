@@ -36,9 +36,10 @@ against a real replica set (`AGBOSS_MONGODB_TEST_URL`) · api-extractor (`api/mo
 
 ## Architecture
 
-- `src/connection/` — `MongoConnection` (DI token, `deps: [ApplicationContext]`, or
-  `new MongoConnection({ url })` in a script/test); its settings from the environment
-  (`mongodbUrl: Secret`, `mongodbDatabase`, `mongodbTransactionReadConcern`, `mongodbSchemaSetup`); the concerns
+- `src/connection/` — `MongoConnection` (DI token, `deps: [DATABASE_SETTINGS, Clock]`, or
+  `new MongoConnection({ url })` in a script/test); its settings from the application's
+  `@DatabaseStorage` driver (`MongoDriver({ url, database, transactionReadConcern, schemaSetup,
+timeouts })`, `driver-settings.ts`), never the environment (#1324); the concerns
   (`concerns.ts`: a URL weaker than `w=majority` / `journal` / majority reads / primary is refused
   with `MongoDurabilityError`, never overridden; the client carries the enforced ones); the
   deployment check (`deployment.ts`: `hello` → replica set / sharded / standalone, a standalone is

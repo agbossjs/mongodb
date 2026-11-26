@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
-import type { PauseNoticeClaim, PauseNoticeCounts, SetAsideMailbox } from "@agboss/core/stores";
+import type {
+  PauseMailbox,
+  PauseNoticeClaim,
+  PauseNoticeCounts,
+  SetAsideMailbox,
+} from "@agboss/core/stores";
 import type { Db, Document, Filter } from "mongodb";
 import { z } from "zod";
 import { mailboxIdOf, mailboxOf, mailboxesOf, type MailboxDocument } from "./pause-mailboxes.js";
@@ -17,7 +22,15 @@ const unclaimedAt = (at: Date): Filter<MailboxDocument> => ({
   $or: [{ claimedUntil: null }, { claimedUntil: { $lte: at } }],
 });
 
-/** Claims up to `limit` due mailboxes of `recipients`, oldest due first, each under a token of its own. */
+/** What a mailbox that does not read is set aside with (agbossjs/agboss#1307, review #1419 L8: the core's SQLite store says the same). */
+export const UNREADABLE_MAILBOX = "unreadable mailbox";
+
+/**
+ * Claims up to `limit` due mailboxes of `recipients`, oldest due first, each under a token of its
+ * own. A mailbox that does not read is set aside (dead, `UNREADABLE_MAILBOX`) and the claim goes on:
+ * one damaged document never fails the claim of the others, nor makes the same one be claimed
+ * again and again.
+ */
 export async function claimDue(
   db: Db,
   at: Date,
@@ -41,9 +54,28 @@ export async function claimDue(
       { sort: { nextAttemptAt: 1 } },
     );
     if (claimed === null) return claims;
-    claims.push({ mailbox: mailboxOf(claimed), token, until });
+    const mailbox = readable(claimed);
+    if (mailbox === undefined) await setAsideUnreadable(db, claimed._id, token);
+    else claims.push({ mailbox, token, until });
   }
   return claims;
+}
+
+/** The mailbox a document is, `undefined` when it does not read. */
+function readable(found: unknown): PauseMailbox | undefined {
+  try {
+    return mailboxOf(found);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The unreadable mailbox, claimed under `token`, dead: never claimed again. */
+async function setAsideUnreadable(db: Db, _id: string, token: string): Promise<void> {
+  await mailboxesOf(db).updateOne(
+    { _id, claimToken: token },
+    { $set: { isDead: true, problem: UNREADABLE_MAILBOX, claimToken: null, claimedUntil: null } },
+  );
 }
 
 const Claimed = z.object({ claimedUntil: z.date().nullable() });

@@ -36,7 +36,7 @@ async function leasesOf(instanceId: string) {
   const leases = new MongoExecutionLeaseRepository(
     connection,
     new StoreClock(StoreTimeSource.Test, new HandClock()),
-    new TestApplicationContext({}, instanceId),
+    new TestApplicationContext(instanceId),
   );
   return { connection, leases };
 }
@@ -242,7 +242,7 @@ describe("ping", () => {
       const store = new MongoExecutionLeaseRepository(
         lost,
         new StoreClock(StoreTimeSource.Test, new HandClock()),
-        new TestApplicationContext({}, "instance-1"),
+        new TestApplicationContext("instance-1"),
       );
       await expect(store.ping()).rejects.toThrow();
     } finally {

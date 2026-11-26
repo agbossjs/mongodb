@@ -9,7 +9,7 @@ import { VirtualClock } from "@agboss/core/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
 import { emptyAll, testDatabase } from "../support/database.js";
-import { NINE, pauseOf } from "../support/pauses.js";
+import { NINE, pauseOf, withSeenNow } from "../support/pauses.js";
 import { connectionTo } from "../support/stores.js";
 
 const database = testDatabase();
@@ -19,11 +19,11 @@ beforeEach(() => emptyAll(database.url()));
 const storeOn = () =>
   new MongoPausedExecutionRepository(connectionTo(database.url()), new VirtualClock());
 
-const reassign = (store: MongoPausedExecutionRepository, from: string, to: string) =>
+const reassign = async (store: MongoPausedExecutionRepository, from: string, to: string) =>
   store.reassignByTenantIdAndPauseId(
     "default",
     from,
-    { pauseId: to, assignees: ["alice"] },
+    await withSeenNow(store, from, { pauseId: to, assignees: ["alice"] }),
     NINE,
     NO_RECIPIENTS,
   );

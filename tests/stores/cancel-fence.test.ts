@@ -48,7 +48,7 @@ async function instance(instanceId: string, store: StoreClock) {
     leases: new MongoExecutionLeaseRepository(
       connection,
       store,
-      new TestApplicationContext({}, instanceId),
+      new TestApplicationContext(instanceId),
     ),
     effects: new MongoFencedEffectRepository(connection, store),
     calls: new MongoOutboundCallRepository(connection, store),

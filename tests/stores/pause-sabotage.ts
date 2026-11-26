@@ -5,13 +5,16 @@ import type {
   PauseNoticeFacts,
   PauseNoticeKind,
   PauseRecipients,
+  PauseTimeoutChange,
 } from "@agboss/core/stores";
+import { seenOf } from "@agboss/core/stores";
 import { MongoServerError } from "mongodb";
 import type { MongoTransaction } from "../../src/index.js";
 import { MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
 import { onceNotices } from "../../src/stores/paused/pause-marks.js";
 import type { PlannedNotice } from "../../src/stores/paused/pause-changes.js";
+import { timeoutChange } from "../../src/stores/paused/pause-timeout.js";
 import { pauseIdOf, pauseOfDocument } from "../../src/stores/paused/pause-documents.js";
 import { PAUSE_GUARDS, inStatus, type PauseGuards } from "../../src/stores/paused/pause-guards.js";
 import {
@@ -29,7 +32,7 @@ import {
 /** The collection `DuplicateKeyNoticeOnce` keeps its once-markers in (a test's reset empties it). */
 export const MARKERS = "noticeonce_markers";
 
-/** The deadline taken out of every compare-and-set: a pending pause is answered, expired, extended at any time. */
+/** The deadline taken out of every compare-and-set: a pending pause is answered, expired, changed at any time. */
 export class NoDeadlineGuards extends MongoPausedExecutionRepository {
   protected override get guards(): PauseGuards {
     const pending = (): ReturnType<typeof inStatus> => inStatus(PauseStatus.Pending);
@@ -37,7 +40,7 @@ export class NoDeadlineGuards extends MongoPausedExecutionRepository {
       ...PAUSE_GUARDS,
       open: pending,
       due: pending,
-      extendable: pending,
+      changeable: pending,
       remindable: pending,
     };
   }
@@ -127,27 +130,43 @@ export class DuplicateKeyNoticeOnce extends MongoPausedExecutionRepository {
 }
 
 /**
- * An extension decided by the stale read alone (#1099): the compare-and-set's filter holds only
- * "pending, deadline after `at`" — not the deadline the caller read, not a later one. Two racing
- * extensions both apply, the second one shortening the first's.
+ * A deadline change decided by the stale read alone (#1099, #1307): the compare-and-set's filter holds
+ * only "pending, deadline after `at`", and the plan takes the deadline it just read for the one the
+ * caller read — never the caller's. Two racing changes from one read both apply, the second one over
+ * the first's; a stale `previousExpiresAt` is no refusal.
  */
-export class ExtendWithoutCompare extends MongoPausedExecutionRepository {
-  protected override get guards(): PauseGuards {
-    return {
-      ...PAUSE_GUARDS,
-      extendable: (at) => ({ status: PauseStatus.Pending, expiresAt: { $gt: at } }),
-    };
+export class TimeoutChangeWithoutCompare extends MongoPausedExecutionRepository {
+  override changeTimeoutByTenantIdAndPauseId(
+    tenantId: string,
+    pauseId: string,
+    change: PauseTimeoutChange,
+    at: Date,
+    recipients: PauseRecipients,
+  ): Promise<PauseRecord | undefined> {
+    const guard = { status: PauseStatus.Pending, expiresAt: { $gt: at } };
+    return this.change(tenantId, pauseId, guard, (before) =>
+      timeoutChange(
+        before,
+        {
+          ...change,
+          ...(before.expiresAt === undefined ? {} : { previousExpiresAt: before.expiresAt }),
+          seen: seenOf(before),
+        },
+        at,
+        recipients,
+      ),
+    );
   }
 }
 
-/** An extension whose filter never looks at the deadline: one written after it is applied (#1148). */
+/** A deadline change whose filter never looks at the deadline: one written after it is applied (#1148). */
 export class ExtendAfterDeadline extends MongoPausedExecutionRepository {
   protected override get guards(): PauseGuards {
     return {
       ...PAUSE_GUARDS,
-      extendable: (_at, change) => ({
+      changeable: (_at, previous) => ({
         status: PauseStatus.Pending,
-        expiresAt: { $eq: change.previous, $lt: change.next },
+        expiresAt: previous === undefined ? null : { $eq: previous },
       }),
     };
   }

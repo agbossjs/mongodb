@@ -33,7 +33,7 @@ async function store(instanceId = "instance-1") {
     leases: new MongoExecutionLeaseRepository(
       connection,
       new StoreClock(StoreTimeSource.Test, clock),
-      new TestApplicationContext({}, instanceId),
+      new TestApplicationContext(instanceId),
     ),
   };
 }

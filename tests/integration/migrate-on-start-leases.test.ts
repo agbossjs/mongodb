@@ -2,8 +2,8 @@
  * agbossjs/agboss#1260 (#1104, ADR-0034): no rolling upgrade across a schema change, `MigrateOnStart`
  * included — as `@agboss/postgres` does it. A start that has migrations to apply waits for the live
  * execution leases to lapse (the old instance stopped: its leases do) and fails with
- * `MongoLiveLeasesError` while one is live (the old instance still renewing); `allowLiveLeases`, and
- * `mongodbAllowLiveLeases` in the environment, keep the override. Nothing to apply: no look.
+ * `MongoLiveLeasesError` while one is live (the old instance still renewing); `allowLiveLeases` keeps
+ * the override. Nothing to apply: no look.
  *
  * The waits are scaled (`leaseWait`) or counted (a `Clock` that sleeps at once): no test waits minutes.
  */
@@ -30,7 +30,7 @@ import { migrateAtStart, SCHEMA_VERSION } from "../../src/connection/schema-vers
 import { treeIdOf } from "../../src/stores/keys.js";
 import { dropDatabase } from "../support/database.js";
 import { freshDatabaseName, REPLICA_SET_URL } from "../support/server.js";
-import { revealing, TestApplicationContext } from "../support/application-context.js";
+import { TestApplicationContext } from "../support/application-context.js";
 
 const made: string[] = [];
 afterAll(async () => {
@@ -185,17 +185,17 @@ describe("#1260: a start that migrates and the live leases", () => {
     const error = await startOn(database, clock).catch((reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(MongoLiveLeasesError);
-    expect(error).toMatchObject({ message: expect.stringContaining("mongodbAllowLiveLeases") });
+    expect(error).toMatchObject({ message: expect.stringContaining("allowLiveLeases") });
     expect(clock.polls).toBe(600);
     expect(await versionOf(database)).toBe(SCHEMA_VERSION - 1);
   });
 
-  it("the start's refusal names the environment switch next to the setting", async () => {
+  it("the start's refusal names the setting next to the migrate command's flag", async () => {
     const database = await behindWithLease(HOUR);
 
     const error = await startOn(database, new QuickClock()).catch((reason: unknown) => reason);
 
-    expect(String(error)).toMatch(/allowLiveLeases.*mongodbAllowLiveLeases/u);
+    expect(String(error)).toMatch(/allowLiveLeases.*--allow-live-leases/u);
   });
 
   it("a connection built without a Clock (a script) cannot wait: refused at once, as migrate is", async () => {
@@ -220,24 +220,6 @@ describe("#1260: a start that migrates and the live leases", () => {
     const clock = new QuickClock();
 
     await startOn(database, clock, { allowLiveLeases: true });
-
-    expect(await versionOf(database)).toBe(SCHEMA_VERSION);
-    expect(clock.polls).toBe(0);
-  });
-
-  it("mongodbAllowLiveLeases in the application's environment is the same override", async () => {
-    const database = await behindWithLease(HOUR);
-    const clock = new QuickClock();
-    const connection = new MongoConnection(
-      new TestApplicationContext({
-        mongodbUrl: revealing(urlOn(database)),
-        mongodbSchemaSetup: SchemaSetup.MigrateOnStart,
-        mongodbAllowLiveLeases: true,
-      }),
-      clock,
-    );
-
-    expect(await startedWith(connection, clock)).toBeUndefined();
 
     expect(await versionOf(database)).toBe(SCHEMA_VERSION);
     expect(clock.polls).toBe(0);
@@ -383,7 +365,7 @@ class OldInstance {
     const leases: ExecutionLeaseRepository = new MongoExecutionLeaseRepository(
       this.connection,
       new StoreClock(),
-      new TestApplicationContext({}, "old-pod"),
+      new TestApplicationContext("old-pod"),
     );
     const held = await leases.acquire("default", "run-1", seconds(2));
     if (held === undefined) throw new Error("the old instance must take the lease");

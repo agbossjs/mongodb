@@ -20,14 +20,14 @@ fenceRaceCases("MongoDB", async () => {
       leases: new MongoExecutionLeaseRepository(
         one,
         clock,
-        new TestApplicationContext({}, "instance-1"),
+        new TestApplicationContext("instance-1"),
       ),
     },
     second: {
       leases: new MongoExecutionLeaseRepository(
         two,
         clock,
-        new TestApplicationContext({}, "instance-2"),
+        new TestApplicationContext("instance-2"),
       ),
     },
     advance: (by) => clock.advance(by),

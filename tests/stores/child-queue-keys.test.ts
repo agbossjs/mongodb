@@ -43,7 +43,7 @@ function queueOn(clock = new VirtualClock()): MongoChildExecutionQueueRepository
   return new MongoChildExecutionQueueRepository(
     connectionTo(database.url()),
     clock,
-    new TestApplicationContext({}, INSTANCE),
+    new TestApplicationContext(INSTANCE),
     new RecordingLogger(),
   );
 }

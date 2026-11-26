@@ -48,7 +48,7 @@ async function closedAgainstPausedServer(running: boolean): Promise<{
   const unhandled = watchUnhandled();
   const sockets = trackSockets(port);
   try {
-    const app = await createApp(StopApplication, { env: "stop" });
+    const app = await createApp(StopApplication);
     let outcome: unknown = "none";
     if (running) {
       app.execute(StopBatchStart, [{ name: "a" }, { name: "b" }] as never).then(

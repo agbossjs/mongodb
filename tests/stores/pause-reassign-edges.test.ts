@@ -11,7 +11,7 @@ import { z } from "zod";
 import { Collections, MongoPausedExecutionRepository } from "../../src/index.js";
 import { inStatus, PAUSE_GUARDS, type PauseGuards } from "../../src/stores/paused/pause-guards.js";
 import { emptyAll, testDatabase } from "../support/database.js";
-import { NINE, pauseOf } from "../support/pauses.js";
+import { NINE, pauseOf, withSeenNow } from "../support/pauses.js";
 import { insertTakenRows } from "../support/pause-rows.js";
 import { connectionTo } from "../support/stores.js";
 
@@ -23,11 +23,11 @@ beforeEach(() => emptyAll(database.url()));
 const storeOn = () =>
   new MongoPausedExecutionRepository(connectionTo(database.url()), new VirtualClock());
 
-const reassign = (store: MongoPausedExecutionRepository, from: string, to: string) =>
+const reassign = async (store: MongoPausedExecutionRepository, from: string, to: string) =>
   store.reassignByTenantIdAndPauseId(
     "default",
     from,
-    { pauseId: to, assignees: ["alice"] },
+    await withSeenNow(store, from, { pauseId: to, assignees: ["alice"] }),
     NINE,
     NO_RECIPIENTS,
   );

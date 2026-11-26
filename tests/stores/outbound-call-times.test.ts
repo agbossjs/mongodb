@@ -58,7 +58,7 @@ async function instanceOn(clock: Clock, time: Time, index: number) {
     leases: new MongoExecutionLeaseRepository(
       connection,
       storeClock,
-      new TestApplicationContext({}, instanceId),
+      new TestApplicationContext(instanceId),
     ),
   };
 }

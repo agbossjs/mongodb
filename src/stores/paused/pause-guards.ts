@@ -21,17 +21,18 @@ export const dueAt = (at: Date): Filter<PauseDocument> => ({
 });
 
 /**
- * What an extension moves (#1099, #1148): a pending pause whose stored deadline is still the one the
- * caller read (`previous`), after `at` (a write after the deadline is refused, the store's filter
- * deciding, never the caller's read), and earlier than the new one (a deadline never shortens).
+ * What a deadline change moves (#1099, #1148, #1307): a pending pause open at `at` (a write after
+ * the deadline is refused, the store's filter deciding, never the caller's read) whose stored
+ * deadline is still the one the caller read (`previous`; `undefined`: it had none — a missing field
+ * or `null` matches) — never "later than": a deadline may move either way, and to or from none.
  */
-export const extendableAt = (
-  at: Date,
-  change: { readonly previous: Date; readonly next: Date },
-): Filter<PauseDocument> => ({
-  status: PauseStatus.Pending,
-  $and: [{ expiresAt: { $eq: change.previous } }, { expiresAt: { $gt: at, $lt: change.next } }],
-});
+export const changeableAt = (at: Date, previous: Date | undefined): Filter<PauseDocument> =>
+  previous === undefined
+    ? { status: PauseStatus.Pending, expiresAt: null }
+    : {
+        status: PauseStatus.Pending,
+        $and: [{ expiresAt: { $eq: previous } }, { expiresAt: { $gt: at } }],
+      };
 
 /** A pending pause whose reminder is due and whose deadline is after `at`: the reminder, once. */
 export const remindableAt = (at: Date): Filter<PauseDocument> => ({
@@ -47,10 +48,7 @@ export const inStatus = (status: PauseStatus): Filter<PauseDocument> => ({ statu
 export interface PauseGuards {
   open(at: Date): Filter<PauseDocument>;
   due(at: Date): Filter<PauseDocument>;
-  extendable(
-    at: Date,
-    change: { readonly previous: Date; readonly next: Date },
-  ): Filter<PauseDocument>;
+  changeable(at: Date, previous: Date | undefined): Filter<PauseDocument>;
   remindable(at: Date): Filter<PauseDocument>;
   inStatus(status: PauseStatus): Filter<PauseDocument>;
 }
@@ -58,7 +56,7 @@ export interface PauseGuards {
 export const PAUSE_GUARDS: PauseGuards = {
   open: openAt,
   due: dueAt,
-  extendable: extendableAt,
+  changeable: changeableAt,
   remindable: remindableAt,
   inStatus,
 };

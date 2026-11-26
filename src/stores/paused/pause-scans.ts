@@ -21,9 +21,17 @@ export function assertScanLimit(limit: number): void {
     );
 }
 
-/** Throws unless the filter names at least one status. */
+/** Throws unless the filter names at least one status and its texts are texts (never an operator document). */
 export function assertPauseFilter(filter: PauseFilter): void {
   if (filter.statuses.length === 0) throw new TypeError("a pause filter names at least one status");
+  for (const [name, value] of Object.entries({
+    target: filter.target,
+    channel: filter.channel,
+    assignee: filter.assignee,
+    externalRef: filter.externalRef,
+  }))
+    if (value !== undefined && typeof value !== "string")
+      throw new TypeError(`a pause filter's ${name} is a text`);
 }
 
 /** The insertion sequence a cursor continues after; no cursor: from the start. */
@@ -60,14 +68,28 @@ function pageFrom(found: readonly PauseDocument[], limit: number): PausePage {
   };
 }
 
-/** What a tenant's page selects. */
-export function tenantFilter(tenantId: string, filter: PauseFilter): Filter<PauseDocument> {
+/**
+ * What a listing selects, whatever the tenant (#1307e): the statuses, the target, the deadline
+ * bound, the channel's name, who has the pause (`assignees` is the stored pool: a text matches any
+ * member) and the reference its channel gave it. The reference names `$exists` beside the value:
+ * the partial index `by_external_ref` holds only documents that have one.
+ */
+export function listingFilter(filter: PauseFilter): Filter<PauseDocument> {
   return {
-    tenantId,
     status: { $in: [...filter.statuses] },
     ...(filter.target === undefined ? {} : { target: filter.target }),
     ...(filter.expiresBefore === undefined ? {} : { expiresAt: { $lt: filter.expiresBefore } }),
+    ...(filter.channel === undefined ? {} : { channel: filter.channel }),
+    ...(filter.assignee === undefined ? {} : { assignees: filter.assignee }),
+    ...(filter.externalRef === undefined
+      ? {}
+      : { externalRef: { $eq: filter.externalRef, $exists: true } }),
   };
+}
+
+/** What a tenant's page selects: its listing, in that tenant only. */
+export function tenantFilter(tenantId: string, filter: PauseFilter): Filter<PauseDocument> {
+  return { tenantId, ...listingFilter(filter) };
 }
 
 /**

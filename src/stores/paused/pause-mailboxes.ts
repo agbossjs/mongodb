@@ -51,6 +51,12 @@ const StoredNotice = z.object({
   previousTarget: z.string().optional(),
   previousChannel: z.string().optional(),
   previousExternalRef: z.string().optional(),
+  // `timeout-changed`: who changed it and why, written with the notice (a late delivery names its own change)
+  actor: z
+    .object({ id: z.string(), orgId: z.string().optional() })
+    .transform(({ id, orgId }) => (orgId === undefined ? { id } : { id, orgId }))
+    .optional(),
+  changeReason: z.string().optional(),
   launch: z.string().optional(),
   errorCode: z.string().optional(),
 });
@@ -96,8 +102,8 @@ const orElse = (field: string, fallback: unknown): Document => ({
 function noticeExpression(planned: PlannedNotice): Document {
   const fields = Object.entries(planned.notice).flatMap(([key, value]) => {
     if (typeof value === "string") return [[key, literal(value)] as const];
-    // a list of texts (the assignees): a literal too, no text of it is a field path
-    return Array.isArray(value) ? [[key, { $literal: value }] as const] : [];
+    // a list of texts (the assignees) or an object (the actor): a literal too, no text of it is a field path
+    return typeof value === "object" ? [[key, { $literal: value }] as const] : [];
   });
   const writtenAt = new Date(planned.notice.writtenAt);
   const seq = { $add: [{ $size: NOTICES }, 1] };

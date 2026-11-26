@@ -30,7 +30,7 @@ const limitsOn = (instanceId = "instance-1"): MongoRateLimitRepository =>
   new MongoRateLimitRepository(
     connectionTo(database.url()),
     new VirtualClock(NOW),
-    new TestApplicationContext({}, instanceId),
+    new TestApplicationContext(instanceId),
   );
 
 describe("agbossjs/agboss#81: a renewal and a slot", () => {

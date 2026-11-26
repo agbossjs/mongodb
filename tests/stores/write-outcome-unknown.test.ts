@@ -104,7 +104,7 @@ const count = (collection: string, filter: Document = {}): Promise<number> =>
   live().db.collection(collection).countDocuments(filter);
 
 const clock = new VirtualClock();
-const application = new TestApplicationContext({}, "instance-1");
+const application = new TestApplicationContext("instance-1");
 const ids = new CountingIdGenerator();
 const storeClock = new StoreClock(StoreTimeSource.Database, { now: () => new Date() });
 
@@ -244,18 +244,6 @@ const CASES: readonly WriteCase[] = [
     name: "pause: findOrCreateByStepKey (its sequence, its upsert)",
     write: () => pauses().findOrCreateByStepKey(pauseOf("p1")),
     applied: async () => (await count(Collections.Sequences)) === 1,
-  },
-  {
-    name: "pause: decideByTenantIdAndPauseId",
-    setup: () => pauses().findOrCreateByStepKey(pauseOf("p1")),
-    write: () =>
-      pauses().decideByTenantIdAndPauseId(
-        "default",
-        "p1",
-        { decision: { approved: true }, actor: { id: "manager-17" } },
-        BEFORE,
-      ),
-    applied: async () => (await count(Collections.Pauses, { status: "taken" })) === 1,
   },
   {
     name: "pause: markTakenByTenantIdAndPauseId",

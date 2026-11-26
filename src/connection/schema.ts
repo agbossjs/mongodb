@@ -105,6 +105,16 @@ const INDEXES: Readonly<Partial<Record<CollectionName, () => readonly IndexDescr
       reassignedFrom: { $exists: true },
     }),
     index("open", ascending("status", "seq"), false, { status: { $in: ["pending", "resolved"] } }),
+    // #1307e: a listing's filters, the cross-tenant page (no tenant prefix) and the three fields it
+    // filters by — the status scan in insertion order for any status set, the channel with it, who has
+    // the pause (a multikey index: any member of a pool matches), the reference a channel gave
+    // (only the pauses that have one)
+    index("by_status", ascending("status", "seq")),
+    index("by_channel", ascending("channel", "status", "seq")),
+    index("by_assignee", ascending("assignees", "seq")),
+    index("by_external_ref", ascending("externalRef", "seq"), false, {
+      externalRef: { $exists: true },
+    }),
   ],
   [Collections.PauseNotices]: () => [
     index("due", ascending("isDead", "nextAttemptAt")),

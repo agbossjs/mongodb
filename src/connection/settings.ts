@@ -1,14 +1,13 @@
-import { SchemaSetup } from "@agboss/core/stores";
-import { z } from "zod";
+import type { SchemaSetup } from "@agboss/core/stores";
 import { MongoSettingsError } from "../errors.js";
-import { MongoTransactionReadConcern } from "./concerns.js";
+import type { MongoTransactionReadConcern } from "./concerns.js";
 
-/** The database the stores use when the environment does not set `mongodbDatabase`. */
+/** The database the stores use when the driver names no `database`. */
 export const DEFAULT_DATABASE = "agboss";
 
 /**
  * How long a dead change stream connection may go unnoticed (agbossjs/agboss#789) when the
- * environment does not set `mongodbWatchLivenessSeconds`: a ping every half of it, an answer due
+ * driver gives no `timeouts.watchLiveness`: a ping every half of it, an answer due
  * within the other half.
  */
 export const DEFAULT_WATCH_LIVENESS_SECONDS = 10;
@@ -22,9 +21,9 @@ export const MAX_WATCH_LIVENESS_SECONDS = 3600;
 
 /**
  * `seconds` when the child queue's watch can run on it — a whole number from 2 to `MAX_WATCH_LIVENESS_SECONDS`, as the
- * environment's field is checked —, else `MongoSettingsError` naming `watchLivenessSeconds`
+ * driver's option is checked —, else `MongoSettingsError` naming `watchLivenessSeconds`
  * (agbossjs/agboss#1029): a settings object a script or a provider builds is trusted no more than
- * the environment.
+ * the driver's options.
  */
 export function checkedWatchLivenessOf(seconds: number | undefined): number | undefined {
   if (
@@ -61,7 +60,7 @@ export interface MongoConnectionSettings {
    * and gives the answer the other half, then warns, opens the stream on a new client and wakes
    * once.
    * Another value (0, 1, a negative or a fractional number, or one above 3600) is a `MongoSettingsError` at construction
-   * (agbossjs/agboss#1029), as in the environment.
+   * (agbossjs/agboss#1029), as in the driver.
    */
   readonly watchLivenessSeconds?: number;
   /**
@@ -75,84 +74,7 @@ export interface MongoConnectionSettings {
    * leases of the old instances to lapse (twice the longest lease left, at least a minute, at most
    * ten) and fails with `MongoLiveLeasesError` while one is live (agbossjs/agboss#1104: no rolling
    * upgrade across a schema change — stop the old instances first). `true` migrates over live
-   * leases: for an operator who accepts the risk. The environment's `mongodbAllowLiveLeases`.
+   * leases: for an operator who accepts the risk. The migrate command's `--allow-live-leases`.
    */
   readonly allowLiveLeases?: boolean;
-}
-
-/** A `Secret` of the environment: only `reveal()` gives its value. */
-interface RevealedSecret {
-  reveal(): string;
-}
-
-const isSecret = (value: unknown): value is RevealedSecret =>
-  typeof value === "object" &&
-  value !== null &&
-  "reveal" in value &&
-  typeof value.reveal === "function";
-
-/** The fields the MongoDB stores read from the application's environment. */
-const MongoEnvironment = z.object({
-  mongodbUrl: z.custom<RevealedSecret>(isSecret, {
-    message: 'mongodbUrl must be a Secret: mongodbUrl: secret("MONGODB_URL")',
-  }),
-  mongodbDatabase: z
-    .string({ message: "mongodbDatabase must be a text" })
-    .min(1, "mongodbDatabase is empty")
-    .optional(),
-  mongodbTransactionReadConcern: z
-    .enum(MongoTransactionReadConcern, {
-      message: "mongodbTransactionReadConcern must be snapshot or majority",
-    })
-    .optional(),
-  mongodbWatchLivenessSeconds: z
-    .number({ message: "mongodbWatchLivenessSeconds must be a number" })
-    .int("mongodbWatchLivenessSeconds must be a whole number")
-    .min(2, "mongodbWatchLivenessSeconds must be at least 2")
-    .max(
-      MAX_WATCH_LIVENESS_SECONDS,
-      `mongodbWatchLivenessSeconds must be at most ${String(MAX_WATCH_LIVENESS_SECONDS)}`,
-    )
-    .optional(),
-  mongodbSchemaSetup: z
-    .enum(SchemaSetup, { message: "mongodbSchemaSetup must be check or migrate-on-start" })
-    .optional(),
-  mongodbAllowLiveLeases: z
-    .boolean({ message: "mongodbAllowLiveLeases must be true or false" })
-    .optional(),
-});
-
-const MISSING_URL =
-  'mongodbUrl is missing: declare mongodbUrl!: Secret in the environment contract and set mongodbUrl: secret("MONGODB_URL")';
-
-/**
- * The connection settings an application's environment gives: `mongodbUrl` (required, a
- * `Secret`), `mongodbDatabase`, `mongodbTransactionReadConcern`, `mongodbWatchLivenessSeconds` and
- * `mongodbSchemaSetup` and `mongodbAllowLiveLeases` (optional). A missing or
- * mistyped field fails with `MongoSettingsError`, naming it — the URL itself is never printed.
- */
-export function settingsOfEnvironment(environment: unknown): MongoConnectionSettings {
-  const parsed = MongoEnvironment.safeParse(environment);
-  if (!parsed.success) {
-    const isUrlMissing = Reflect.get(Object(environment), "mongodbUrl") === undefined;
-    const problems = parsed.error.issues.map((issue) =>
-      issue.path[0] === "mongodbUrl" && isUrlMissing ? MISSING_URL : issue.message,
-    );
-    throw new MongoSettingsError({
-      message: `the MongoDB stores need their environment fields — ${problems.join("; ")}`,
-    });
-  }
-  const { mongodbUrl, mongodbDatabase, mongodbTransactionReadConcern, mongodbSchemaSetup } =
-    parsed.data;
-  const { mongodbWatchLivenessSeconds, mongodbAllowLiveLeases } = parsed.data;
-  const url = mongodbUrl.reveal();
-  if (url.length === 0) throw new MongoSettingsError({ message: "mongodbUrl is empty" });
-  return {
-    url,
-    database: mongodbDatabase,
-    transactionReadConcern: mongodbTransactionReadConcern,
-    watchLivenessSeconds: mongodbWatchLivenessSeconds,
-    schemaSetup: mongodbSchemaSetup,
-    allowLiveLeases: mongodbAllowLiveLeases,
-  };
 }

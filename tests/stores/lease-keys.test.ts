@@ -24,7 +24,7 @@ const leasesOn = async (clock: StoreClock, instanceId = "instance-1") =>
   new MongoExecutionLeaseRepository(
     await instanceConnection(database, instanceId),
     clock,
-    new TestApplicationContext({}, instanceId),
+    new TestApplicationContext(instanceId),
   );
 
 /** The stored lease fields of `root`'s document: the token's names, and the flags the writes set. */

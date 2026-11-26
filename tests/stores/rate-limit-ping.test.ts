@@ -12,7 +12,7 @@ describe("MongoRateLimitRepository: ping", () => {
     const limits = new MongoRateLimitRepository(
       connection,
       new VirtualClock(),
-      new TestApplicationContext({}),
+      new TestApplicationContext(),
     );
 
     await limits.ping();

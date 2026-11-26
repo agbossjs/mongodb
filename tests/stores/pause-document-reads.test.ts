@@ -19,7 +19,7 @@ import {
 } from "../../src/stores/paused/pause-documents.js";
 import { mailboxesOf } from "../../src/stores/paused/pause-mailboxes.js";
 import { emptyAll, testDatabase } from "../support/database.js";
-import { NINE, pauseOf } from "../support/pauses.js";
+import { NINE, pauseOf, seenNow } from "../support/pauses.js";
 import { connectionTo } from "../support/stores.js";
 
 const database = testDatabase();
@@ -95,24 +95,53 @@ describe("agbossjs/agboss#1213: the fields a document keeps over its record's", 
     expect(read).toMatchObject({ expiresAt: deadline, remindAt: deadline });
   });
 
-  it("a pending pause has no closing text, stored or after an extension", async () => {
+  it("a pending pause has no closing text, stored or after a deadline change", async () => {
     const store = storeOn();
     await store.findOrCreateByStepKey({ ...pauseOf("p"), expiresAt: "2026-01-06T09:00:00.000Z" });
     expect((await pauses().findOne({ pauseId: "p" }))?.closing).toBeNull();
 
-    await store.extendByTenantIdAndPauseId(
+    await store.changeTimeoutByTenantIdAndPauseId(
       "default",
       "p",
       {
         expiresAt: "2026-01-07T09:00:00.000Z",
         previousExpiresAt: "2026-01-06T09:00:00.000Z",
-        remindAt: undefined,
+        seen: await seenNow(store, "p"),
       },
       NINE,
       { listeners: [] },
     );
 
     expect((await pauses().findOne({ pauseId: "p" }))?.closing).toBeNull();
+  });
+
+  it("a deadline taken away is a null field the scans' indexes skip, and reads back as none", async () => {
+    const store = storeOn();
+    await store.findOrCreateByStepKey({
+      ...pauseOf("p"),
+      expiresAt: "2026-01-06T09:00:00.000Z",
+      remindAt: "2026-01-06T08:00:00.000Z",
+    });
+
+    const changed = await store.changeTimeoutByTenantIdAndPauseId(
+      "default",
+      "p",
+      {
+        previousExpiresAt: "2026-01-06T09:00:00.000Z",
+        seen: await seenNow(store, "p"),
+      },
+      NINE,
+      { listeners: [] },
+    );
+
+    expect(Object.keys(changed ?? {})).not.toContain("expiresAt");
+    expect(await pauses().findOne({ pauseId: "p" })).toMatchObject({
+      expiresAt: null,
+      remindAt: null,
+    });
+    const read = await store.findByTenantIdAndPauseId("default", "p");
+    expect(Object.keys(read ?? {})).not.toContain("expiresAt");
+    expect(Object.keys(read ?? {})).not.toContain("remindAt");
   });
 });
 
@@ -220,7 +249,7 @@ describe("agbossjs/agboss#1213: the paused run and the pause's own reads", () =>
     await store.noticeOnceByTenantIdAndPauseId(
       "default",
       "p",
-      PauseNoticeKind.Extended,
+      PauseNoticeKind.TimeoutChanged,
       { expiresAt: undefined, previousExpiresAt: "2026-01-05T09:00:00.000Z" },
       NINE,
       { listeners: ["audit"] },

@@ -5,20 +5,19 @@ import {
   type ExpiryProblem,
   type PauseCancellation,
   type PauseRecord,
-  type PauseTrailRecord,
 } from "@agboss/core";
 import {
   closedAtOf,
   pauseClosedReasonOf,
-  PauseExpiryBound,
   PauseNoticeKind,
   recipientKeysOf,
   type PauseAnswer,
+  isSeenAs,
   type PauseExpiry,
-  type PauseDeadlineChange,
   type PauseNotice,
   type PauseNoticeFacts,
   type PauseRecipients,
+  type PauseSeen,
   type PauseUntakenResolution,
 } from "@agboss/core/stores";
 
@@ -85,19 +84,46 @@ export const closed = (
   at: Date,
 ): PauseRecord => ({ ...pause, ...fields, resolvedAt: at.toISOString() });
 
-/** `Pending → Resolved` with the answer (`Replied`). */
+/**
+ * `Pending → Resolved` with the answer (`Replied`) — and, when the caller names the pause its permit
+ * was asked over (`seen`), only while it is still that one: with no `seen` the change is unguarded
+ * (as the core's `resolveChange`; the guard decides the deadline).
+ */
 export function resolveChange(
   before: PauseRecord,
   answer: PauseAnswer,
   at: Date,
   recipients: PauseRecipients,
-): PauseChange {
+  seen?: PauseSeen,
+): PauseChange | undefined {
+  if (seen !== undefined && !isSeenAs(before, seen)) return undefined;
   const after = closed(
     before,
     { status: PauseStatus.Resolved, answer, resolution: PauseResolution.Replied },
     at,
   );
   return closing(before, after, at, recipients);
+}
+
+/**
+ * `Pending → Taken` with the answer its channel gave at once (`Decided`, no notice: the pause was
+ * never sent), only while the pause is still the one the channel was sent (`seen`): an expiry's
+ * in-place reassignment during the first send makes the decision stale. The guard decides the
+ * deadline (an answer at or after it is the expiry's), as the core's `decideChange` does.
+ */
+export function decideChange(
+  before: PauseRecord,
+  answer: PauseAnswer,
+  at: Date,
+  seen: PauseSeen,
+): PauseChange | undefined {
+  if (!isSeenAs(before, seen)) return undefined;
+  const after = closed(
+    before,
+    { status: PauseStatus.Taken, answer, resolution: PauseResolution.Decided },
+    at,
+  );
+  return { pause: after, notices: [] };
 }
 
 /** `Pending → Cancelled`; a cancel or a tree end at or after `expiresAt` records `Expired` (I3). */
@@ -180,50 +206,6 @@ export function closeUntakenChange(
       : { closedFirst: { resolution: before.resolution, resolvedAt: before.resolvedAt } };
   const after = closed(before, { status: PauseStatus.Cancelled, resolution, ...first }, at);
   return { pause: after, notices: before.isSent ? untakenNotices(resolution, at, recipients) : [] };
-}
-
-/** The entry a deadline change adds to the chain of custody: who moved it, when, to what. */
-function timeoutChangedEntryOf(
-  pause: PauseRecord,
-  extension: PauseDeadlineChange,
-  at: Date,
-): PauseTrailRecord {
-  return {
-    action: "timeout-changed",
-    at: at.toISOString(),
-    ...(extension.actor === undefined ? {} : { actor: extension.actor }),
-    target: pause.target,
-    ...(pause.channel === undefined ? {} : { channel: pause.channel }),
-    ...(pause.assignees === undefined ? {} : { assignees: pause.assignees }),
-    expiresAt: extension.expiresAt,
-    ...(pause.externalRef === undefined ? {} : { externalRef: pause.externalRef }),
-  };
-}
-
-/**
- * A pending pause's deadline moved to a later one, never to a past time (the guard decides the
- * rest: pending, the deadline the caller read still stored, after `at`, earlier than the new one),
- * and never past `maxExtensions` `timeout-changed` entries of its chain of custody — which the
- * change records. This restates the core's `extendChange`, which the stores entry does not export.
- */
-export function extendChange(
-  before: PauseRecord,
-  extension: PauseDeadlineChange,
-  at: Date,
-  recipients: PauseRecipients,
-): PauseChange | undefined {
-  if (before.expiresAt === undefined || extension.expiresAt <= at.toISOString()) return undefined;
-  const changes = before.trail.filter((entry) => entry.action === "timeout-changed").length;
-  if (extension.maxExtensions !== undefined && changes >= extension.maxExtensions) return undefined;
-  const after = {
-    ...before,
-    expiresAt: extension.expiresAt,
-    expiryBound: PauseExpiryBound.Pause,
-    remindAt: extension.remindAt,
-    trail: [...before.trail, timeoutChangedEntryOf(before, extension, at)],
-  };
-  const facts = { expiresAt: extension.expiresAt, previousExpiresAt: before.expiresAt };
-  return { pause: after, notices: noticesOf(recipients, PauseNoticeKind.Extended, at, facts) };
 }
 
 /** The reminder of a pending pause, once: its `remindAt` cleared, `expiring` written. */

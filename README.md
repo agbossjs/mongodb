@@ -23,49 +23,44 @@ npm install @agboss/mongodb
 Peer dependencies: `@agboss/core` `^0.1.1`, `@langchain/core`, `@langchain/langgraph-checkpoint`.
 Dependencies: the official `mongodb` driver (7.x), `zod`.
 
-## 1. List the stores
+## 1. Declare the database
 
 <!-- snippet-context
-declare class AppEnvironment {}
 declare class DeskWorkflow {}
 -->
 
 ```ts
-import { Application } from "@agboss/core";
-import { MONGODB_STORES } from "@agboss/mongodb";
+import { Application, DatabaseStorage, secret } from "@agboss/core";
+import { hours } from "@agboss/core/units";
+import { MongoDriver } from "@agboss/mongodb";
+
+@DatabaseStorage({
+  name: "desk-database",
+  description: "The desk's MongoDB replica set",
+  driver: MongoDriver({ url: secret("MONGODB_URL") }), // every store below, on one client
+  auditLogTtl: hours(24),
+  ledgerEntriesTtl: hours(24),
+})
+export class DeskDatabase {}
 
 @Application({
   name: "desk",
   version: "1.0.0",
-  environment: AppEnvironment,
+  storage: DeskDatabase,
   workflows: [DeskWorkflow],
-  providers: [...MONGODB_STORES], // every store below; `agboss describe` still names each one
 })
 export class DeskApplication {}
 ```
 
-`MONGODB_STORES` (agbossjs/agboss#891) is every store of the table below. `MONGODB_DURABLE_STORES`
-is the same without the coordination stores (leases, the child queue, rate limits) and the two
-that check the lease in their own transaction (fenced effects, outbound calls): what an application
-lists beside `@agboss/redis`'s `REDIS_COORDINATION_STORES` — the Redis leases keep their execution
-ids here, `provide(EXECUTION_ID_STORE, MongoExecutionLeaseRepository)`:
-
-```ts no-check: a fragment of an application's providers, beside @agboss/redis (not a dependency here)
-import { EXECUTION_ID_STORE, provide } from "@agboss/core";
-import { MONGODB_DURABLE_STORES, MongoExecutionLeaseRepository } from "@agboss/mongodb";
-import { REDIS_COORDINATION_STORES } from "@agboss/redis";
-
-// @Application({ …,
-providers: [
-  ...MONGODB_DURABLE_STORES,
-  ...REDIS_COORDINATION_STORES,
-  provide(EXECUTION_ID_STORE, MongoExecutionLeaseRepository), // under the token only: no second lease store
-],
-```
-
-On Redis leases an application lists no fenced-effect or outbound-call store: their write checks
-the lease in its own transaction, and assembly refuses one of another backend
-(`[application.store-backend-mismatch]`).
+`MongoDriver` (agbossjs/agboss#1321) provides `MongoConnection` and every store of the table below
+(`MONGODB_STORES` is that list; `MONGODB_DURABLE_STORES` the same without the coordination stores —
+the leases, the child queue, the rate limits — and the two that check the lease in their own
+transaction, fenced effects and outbound calls). A `@ClusterStorage` takes the coordination stores'
+place — Redis's, for example — and the lease store stays the application's durable one: the Redis
+leases keep their execution ids and their marks in it. A store class listed in `providers` beside a
+`storage` is `[storage.providers-conflict]`: choose it in the driver, not in the list. On Redis
+leases an application lists no fenced-effect or outbound-call store: their write checks the lease in
+its own transaction.
 
 | Store                                | How it is atomic                                                                                                                                                                | Collections                                                                                |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -149,22 +144,25 @@ start. The fenced stores read the marks from the tree's ROOT document, a child's
 store also mirrors a cluster's lease (`syncClusterLease`, `endClusterLease`, `mirroredLeaseOf`): the
 document is the authority.
 
-## 2. The environment
+## 2. The driver's options
 
-<!-- snippet-context
-import type { Secret } from "@agboss/core";
-import type { SchemaSetup } from "@agboss/mongodb";
--->
+The connection reads its settings from the application's `@DatabaseStorage` and nowhere else — no
+environment field (agbossjs/agboss#1324: the environment is no source of a connection any more). A
+script or a test builds one from a settings object: `new MongoConnection({ url, database?, … })`.
 
 ```ts
-export class AppEnvironment {
-  mongodbUrl!: Secret; // mongodb://h1,h2,h3/<database>?replicaSet=rs0 — secret("MONGODB_URL")
-  mongodbDatabase?: string; // default: the URL's database, else "agboss"
-  mongodbTransactionReadConcern?: string; // "snapshot" (default) or "majority"
-  mongodbWatchLivenessSeconds?: number; // the longest a silently dead change stream goes unnoticed: 10 (default), 2 to 3600
-  mongodbSchemaSetup?: SchemaSetup; // SchemaSetup.Check (default) or SchemaSetup.MigrateOnStart
-  mongodbAllowLiveLeases?: boolean; // MigrateOnStart migrates over live leases: false (default)
-}
+import { secret } from "@agboss/core";
+import { SchemaSetup } from "@agboss/core/stores";
+import { sec } from "@agboss/core/units";
+import { MongoDriver, MongoTransactionReadConcern } from "@agboss/mongodb";
+
+export const driver = MongoDriver({
+  url: secret("MONGODB_URL"), // mongodb://h1,h2,h3/<database>?replicaSet=rs0, read once at start, never printed
+  database: "desk", // default: the URL's database, else "agboss"
+  transactionReadConcern: MongoTransactionReadConcern.Snapshot, // Snapshot (default) or Majority
+  schemaSetup: SchemaSetup.Check, // SchemaSetup.Check (default) or SchemaSetup.MigrateOnStart
+  timeouts: { watchLiveness: sec(10) }, // the longest a silently dead change stream goes unnoticed: 10 s (default), 2 to 3600 s
+});
 ```
 
 `MongoConnection` holds one `MongoClient` per application instance. At start (`onInit`) it requires
@@ -214,7 +212,7 @@ A start (`SchemaSetup.Check`, the default — `SchemaSetup` is the core's, share
 change the schema: a database never migrated, an older one or one a stores' collection was dropped
 from is `MongoSchemaMissingError` (`applied`, `expected`, `collections`), one a newer
 `@agboss/mongodb` migrated `MongoSchemaTooNewError` (deploy that version: migrations are not rolled
-back). `mongodbSchemaSetup: SchemaSetup.MigrateOnStart` makes each start migrate first instead, and
+back). The driver's `schemaSetup: SchemaSetup.MigrateOnStart` makes each start migrate first instead, and
 is held to the same rule as `migrate` (agbossjs/agboss#1104, #1260): with migrations pending on an
 already migrated database the start waits for live leases to lapse (twice the longest lease the
 database shows, so a lease duration longer than the default 30 s is waited for too: at least a
@@ -225,9 +223,8 @@ stopped single instance's own leases do — and if one is still live it fails to
 database at this version and a first start on an empty database are unaffected. A connection built
 without a `Clock` (a script: `new MongoConnection({ url })`) has nothing to wait on and refuses at once, as `migrate` does.
 `allowLiveLeases: true` in the connection's settings
-(`new MongoConnection({ url, schemaSetup: SchemaSetup.MigrateOnStart, allowLiveLeases: true })`), or
-`mongodbAllowLiveLeases: true` in the application's environment, migrates over live leases, for an
-operator who accepts the risk.
+(`new MongoConnection({ url, schemaSetup: SchemaSetup.MigrateOnStart, allowLiveLeases: true })`)
+migrates over live leases, for an operator who accepts the risk.
 
 ## Required database settings
 
@@ -373,6 +370,47 @@ database with no counters starts at the epoch, "never pruned".
 - **Text.** BSON keeps every text as given, U+0000 included. A composite key is the JSON array of
   its parts, so a separator inside a tenant id cannot join two keys, and a lone surrogate (which the
   driver would write as U+FFFD) is escaped in it.
+
+## Pauses (agbossjs/agboss#1307)
+
+`MongoPausedExecutionRepository` keeps one document per pause: the record as JSON text (`record`, the
+chain of custody, the question, `firstAskedAt`, `maxExpiresAt`, `escalationLimits`) and, beside it,
+the fields the scans and the listings read — `status`, `isSent`, the deadline (`expiresAt`,
+`remindAt`, `expiryBound`, BSON Dates; `null` when the pause has none), `target`, and the listing
+fields `assignees`, `externalRef` and `channel` (absent when the pause has none, never `null`).
+
+- **A change is one transaction over the pause as it was read**: the document is read, the core's
+  rule decides, and one conditional write records it — its filter holds the deadline (open at `at`,
+  or due) and, for a deadline change, the deadline the caller read — with the notices appended in the
+  same transaction. A concurrent writer of the document makes the write conflict and the transaction
+  run again over what it wrote: of two racing changes exactly one applies.
+- **`seen`.** `decide…` (required), `resolve…` (optional), `reassign…` and `changeTimeout…` apply
+  only while the pause is still the one the caller read and was permitted over (`seenOf`: trail
+  length, assignees, deadline, `isSent`), compared with the core's `isSeenAs` on the record read in
+  the transaction. `decide…` applies only while the deadline is ahead (the filter).
+- **Limits are the record's own.** The counts (`escalationLimits.maxExtensions`,
+  `maxReassignments`) and the cap (`maxExpiresAt`) come from the record read in the transaction —
+  never from the change, never from configuration. A move to another target narrows them with the
+  core's `narrowedLimits` over that same read, in the same write as the replacement's insert; a
+  deadline a change sets must be at or before the cap, and is refused when none is given while a cap
+  is set. `maxExpiresAt` and `firstAskedAt` are the `toISOString()` text the core wrote: kept as text,
+  compared as text.
+- **A deadline may be taken away** (`expiresAt: null`, `remindAt: null` in the document): the
+  deadline indexes are partial on `$type: "date"`, so such a pause is in none of them.
+- **Listing.** `findPageByTenantId` and `findPageOfAllTenants` (every tenant's, no tenant clause,
+  the same keyset) filter `statuses`, `target`, `expiresBefore`, `channel`, `assignee` (a member of
+  the pool: `{ assignees: value }` matches an element) and `externalRef`, in insertion order. Indexes:
+  `by_status`, `by_channel`, `by_assignee` (multikey) and `by_external_ref` (partial: only pauses
+  that have a reference).
+- **A timeout-changed notice** keeps the change's own `actor` and `changeReason` in its mailbox.
+
+**Upgrading.** Documents written before this version are unreadable (`StoreError.UnreadableRecord`,
+fail closed): a pause with no `firstAskedAt` or `escalationLimits` — filling them would loosen the
+limits its target had, so a rewrite is the operator's decision, not an automatic one — and a
+component whose `kind` is `question` or `reply-interpreter` (renamed `external-task` and
+`channel-interpreter`; no legacy reader). Drain the open pauses before the upgrade or rewrite them
+by hand. The new indexes are made by `agboss-mongodb migrate`, which is idempotent: run it against a
+database already at version 1 (the baseline of 0.1.1, still unreleased, gained them) too.
 
 ## Tests
 

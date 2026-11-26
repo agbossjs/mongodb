@@ -28,7 +28,7 @@ describe("the scope's mark", () => {
     const leases = new MongoExecutionLeaseRepository(
       connection,
       clock,
-      new TestApplicationContext({}, "instance-1"),
+      new TestApplicationContext("instance-1"),
     );
     const effects = new MongoFencedEffectRepository(connection, clock);
     const lease = await leases.acquire("default", "root-mark", hours(1));

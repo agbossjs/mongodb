@@ -268,7 +268,7 @@ describe("MongoExecutionRecordRepository", () => {
     await new MongoExecutionRecordRepository(
       connection,
       new VirtualClock(),
-      new TestApplicationContext({}),
+      new TestApplicationContext(),
       new RandomIdGenerator(),
     ).ping();
 

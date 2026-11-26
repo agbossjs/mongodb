@@ -30,7 +30,7 @@ const queueOf = (
   new MongoChildExecutionQueueRepository(
     connectionTo(database.url()),
     clock,
-    new TestApplicationContext({}, instanceId),
+    new TestApplicationContext(instanceId),
     logger,
   );
 

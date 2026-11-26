@@ -27,9 +27,6 @@
     "vitest.*.config.ts",
     // loaded by path: the child an exit probe starts (tests/support/exit-probe.ts)
     "tests/support/exit-probe-child.ts",
-    // loaded by path: the environments of `--env <name>` next to their applications
-    "tests/a2a/environments/*.environment.ts",
-    "tests/fixtures/*/environments/*.environment.ts",
     // loaded by path: the fixtures a nested vitest runs (`storeConformance` sabotage, #693)
     "tests/contracts/fixtures/*.conformance-fixture.ts",
   ],

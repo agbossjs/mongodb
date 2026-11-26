@@ -93,7 +93,7 @@ export abstract class MongoPauseBase extends PausedExecutionRepository {
       if (before === undefined || change === undefined) return undefined;
       const recorded = await pauses.updateOne(
         { _id, ...guard },
-        { $set: writtenFieldsOf(before, change.pause) },
+        writtenFieldsOf(before, change.pause),
         { session },
       );
       if (recorded.matchedCount === 0) return undefined;

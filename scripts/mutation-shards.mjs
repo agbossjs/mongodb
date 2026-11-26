@@ -159,11 +159,11 @@ export const SHARDS = {
     mutate: ["src/stores/{local-order,sequence}.ts"],
     tests: ["tests/stores/{local-order,sequence}*.test.ts", "tests/stores/fence-keys.test.ts"],
   },
-  // the settings read from the environment and from a settings object (agbossjs/agboss#789, #1029,
-  // #1129): the URL's database, the liveness bound, every field named when it is wrong
+  // the settings of a settings object and of the driver's resolved ones (agbossjs/agboss#789, #1029,
+  // #1129, #1324): the URL's database, the liveness bound, every field named when it is wrong
   settings: {
     mutate: ["src/connection/settings.ts"],
-    tests: ["tests/connection/{settings*,environment-fields,watch-liveness-*}.test.ts"],
+    tests: ["tests/connection/{settings*,watch-liveness-*}.test.ts"],
   },
   // the `agboss-mongodb` command (agbossjs/agboss#891): its arguments, its exit codes, and the
   // passwords it never prints

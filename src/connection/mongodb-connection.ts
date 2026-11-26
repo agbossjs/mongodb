@@ -1,11 +1,4 @@
-import {
-  ApplicationContext,
-  Clock,
-  EnvironmentField,
-  Injectable,
-  type OnDestroy,
-  type OnInit,
-} from "@agboss/core";
+import { Clock, Injectable, type OnDestroy, type OnInit } from "@agboss/core";
 import { DATABASE_SETTINGS, SchemaSetup, type ResolvedSettings } from "@agboss/core/stores";
 import { assertDriverInternals, closeClientBounded } from "./close-bounded.js";
 import {
@@ -35,7 +28,6 @@ import {
   checkedWatchLivenessOf,
   databaseOfUrl,
   DEFAULT_DATABASE,
-  settingsOfEnvironment,
   type MongoConnectionSettings,
 } from "./settings.js";
 import type { MongoTransaction } from "./transaction.js";
@@ -61,43 +53,37 @@ function clientOf(url: string, options?: MongoClientOptions): MongoClient {
 }
 
 /**
- * The settings of a connection: the driver's resolved settings when the application names a
- * `@DatabaseStorage` of `MongoDriver` (agbossjs/agboss#1321), else the environment's fields (until
- * they are removed), else the settings object a script or a test gave.
+ * The settings of a connection: the resolved settings of the application's `@DatabaseStorage` of
+ * `MongoDriver` (agbossjs/agboss#1321), else the settings object a script or a test gave. An
+ * application with no MongoDB storage and no object is `MongoSettingsError`: the environment is no
+ * source of the connection any more (agbossjs/agboss#1324).
  */
 function settingsOf(
-  source: ApplicationContext | MongoConnectionSettings,
-  resolved: ResolvedSettings | undefined,
+  source: MongoConnectionSettings | ResolvedSettings | undefined,
 ): MongoConnectionSettings {
-  if (resolved?.kind === "mongodb") return settingsOfResolved(resolved);
-  return source instanceof ApplicationContext ? settingsOfEnvironment(source.environment) : source;
+  if (source === undefined)
+    throw new MongoSettingsError({
+      message:
+        "the MongoDB stores need the application's @DatabaseStorage({ driver: MongoDriver({ url: secret(…) }) }) — the database they open",
+    });
+  if ("kind" in source) return settingsOfResolved(source);
+  return source;
 }
 
 /**
- * The MongoDB deployment of one application instance: one `MongoClient` on the environment's
- * `mongodbUrl`, shared by every MongoDB store the application lists. Its client always writes with
+ * The MongoDB deployment of one application instance: one `MongoClient` on the `url` of the
+ * application's `@DatabaseStorage({ driver: MongoDriver({ url }) })`, shared by every MongoDB store
+ * the application lists. Its client always writes with
  * `w=majority` on the journal and reads at `majority` from the primary; a URL that asks for less
  * fails with `MongoDurabilityError` when the connection is built. At `onInit` it requires a
  * replica set (or a sharded cluster): a standalone `mongod` fails with `MongoDeploymentError`;
  * then it checks the schema (`SchemaSetup.Check`, the default: `MongoSchemaMissingError`,
  * `MongoSchemaTooNewError`), or migrates it first (`SchemaSetup.MigrateOnStart`). A failed start
  * closes the client. At `onDestroy`, after its stores, it closes the client. Created
- * by the container (`deps: [ApplicationContext]`) or by a script or a test from its settings
+ * by the container (`deps: [DATABASE_SETTINGS, Clock]`) or by a script or a test from its settings
  * (`new MongoConnection({ url })`). The DI token the MongoDB stores will name in their `deps`.
  */
-@Injectable({
-  deps: [ApplicationContext, Clock, DATABASE_SETTINGS],
-  // checked at the application's assembly (agbossjs/agboss#511): a contract without mongodbUrl
-  // fails with [environment.missing-field] before anything starts
-  environmentFields: {
-    mongodbUrl: EnvironmentField.secret(),
-    mongodbDatabase: EnvironmentField.text({ optional: true }),
-    mongodbTransactionReadConcern: EnvironmentField.text({ optional: true }),
-    mongodbWatchLivenessSeconds: EnvironmentField.integer({ optional: true }),
-    mongodbSchemaSetup: EnvironmentField.text({ optional: true }),
-    mongodbAllowLiveLeases: EnvironmentField.flag({ optional: true }),
-  },
-})
+@Injectable({ deps: [DATABASE_SETTINGS, Clock] })
 export class MongoConnection implements OnInit, OnDestroy {
   /** The instance's client: every store's operations, every transaction's session. */
   readonly client: MongoClient;
@@ -117,14 +103,13 @@ export class MongoConnection implements OnInit, OnDestroy {
    *   one closes in order only.
    */
   constructor(
-    source: ApplicationContext | MongoConnectionSettings,
+    source?: MongoConnectionSettings | ResolvedSettings,
     private readonly clock?: Clock,
-    resolved?: ResolvedSettings,
   ) {
     // a copy: the caller changing its object after this line must not bypass the checks below, nor
     // change what the watch reads later (agbossjs/agboss#1129)
     const settings: MongoConnectionSettings = Object.freeze({
-      ...settingsOf(source, resolved),
+      ...settingsOf(source),
     });
     checkedWatchLivenessOf(settings.watchLivenessSeconds);
     rememberSettings(this, settings);

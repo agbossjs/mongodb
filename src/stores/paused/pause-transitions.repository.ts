@@ -1,28 +1,25 @@
-import {
-  PauseResolution,
-  PauseStatus,
-  type PauseCancellation,
-  type PauseRecord,
-} from "@agboss/core";
+import { PauseStatus, type PauseCancellation, type PauseRecord } from "@agboss/core";
 import type {
   PauseExpiry,
-  PauseDeadlineChange,
   PauseNoticeFacts,
   PauseNoticeKind,
   PauseAnswer,
   PauseReassignmentChange,
   PauseRecipients,
+  PauseSeen,
+  PauseTimeoutChange,
   PauseUntakenResolution,
 } from "@agboss/core/stores";
 import { MongoPauseBase } from "./pause-base.js";
 import {
   cancelChange,
   closeUntakenChange,
+  decideChange,
   expireChange,
-  extendChange,
   remindChange,
   resolveChange,
 } from "./pause-changes.js";
+import { timeoutChange } from "./pause-timeout.js";
 import { findOrCreatePause, pauseIdOf, pauseOfDocument } from "./pause-documents.js";
 import { markSentIn } from "./pause-sent.js";
 import { noticeOnceIn } from "./pause-once.js";
@@ -79,30 +76,29 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     answer: PauseAnswer,
     at: Date,
     recipients: PauseRecipients,
+    seen?: PauseSeen,
   ): Promise<PauseRecord | undefined> {
     return this.change(tenantId, pauseId, this.guards.open(at), (before) =>
-      resolveChange(before, answer, at, recipients),
+      resolveChange(before, answer, at, recipients, seen),
     );
   }
 
-  /** Its channel decided at once: `Pending → Taken`, no notice (the pause was never sent). */
+  /**
+   * Its channel decided at once: `Pending → Taken`, no notice (the pause was never sent) — only
+   * while the deadline is after `at` (the guard) and the pause is still the one the channel was sent
+   * (`seen`, compared over the record read in the same transaction as the write).
+   */
   async decideByTenantIdAndPauseId(
     tenantId: string,
     pauseId: string,
     answer: PauseAnswer,
     at: Date,
+    seen: PauseSeen,
   ): Promise<boolean> {
-    const closing = JSON.stringify({
-      status: PauseStatus.Taken,
-      resolution: PauseResolution.Decided,
-      resolvedAt: at.toISOString(),
-      answer,
-    });
-    const decided = await this.pauses.updateOne(
-      { _id: pauseIdOf(tenantId, pauseId), status: PauseStatus.Pending },
-      { $set: { status: PauseStatus.Taken, resolvedAt: at, closing } },
+    const decided = await this.change(tenantId, pauseId, this.guards.open(at), (before) =>
+      decideChange(before, answer, at, seen),
     );
-    return decided.matchedCount === 1;
+    return decided !== undefined;
   }
 
   cancelByTenantIdAndPauseId(
@@ -141,19 +137,23 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     );
   }
 
-  extendByTenantIdAndPauseId(
+  /**
+   * The deadline changed (`app.setPauseTimeout`, #1307): later, earlier, set or taken away — one
+   * transaction. The filter decides that the pause is pending and open at `at` and that its stored
+   * deadline is still `change.previousExpiresAt` (absent: none); the plan decides the pause as seen,
+   * the new deadline after `at` or none, the record's cap and its `maxExtensions` count.
+   */
+  changeTimeoutByTenantIdAndPauseId(
     tenantId: string,
     pauseId: string,
-    change: PauseDeadlineChange,
+    change: PauseTimeoutChange,
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
-    const dates = {
-      previous: new Date(change.previousExpiresAt),
-      next: new Date(change.expiresAt),
-    };
-    return this.change(tenantId, pauseId, this.guards.extendable(at, dates), (before) =>
-      extendChange(before, change, at, recipients),
+    const previous =
+      change.previousExpiresAt === undefined ? undefined : new Date(change.previousExpiresAt);
+    return this.change(tenantId, pauseId, this.guards.changeable(at, previous), (before) =>
+      timeoutChange(before, change, at, recipients),
     );
   }
 

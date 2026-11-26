@@ -33,7 +33,7 @@ afterEach(async () => {
 /** An instance of the application on the test's database, serving A2A; resolves with its URL. */
 async function instance(): Promise<string> {
   process.env.AGBOSS_A2A_TEST_MONGODB_URL = database.url();
-  const app = await createApp(EchoApplication, { env: "instances" });
+  const app = await createApp(EchoApplication);
   const served: { listener?: ReturnType<typeof a2aHttpListener> } = {};
   const server = createServer((request, response) => served.listener?.(request, response));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

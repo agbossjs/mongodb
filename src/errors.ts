@@ -250,7 +250,7 @@ export interface MongoLiveLeasesErrorOptions {
  * (agbossjs/agboss#1104, ADR-0034): a running old instance writes documents the new schema's
  * guarantees do not cover — a cancel it never reads, a pause without `channel`. Nothing was
  * applied. Stop the old instances (let their leases lapse) and run again; `allowLiveLeases: true` /
- * `--allow-live-leases` (the settings' `allowLiveLeases`, the environment's `mongodbAllowLiveLeases`
+ * `--allow-live-leases` (the settings' `allowLiveLeases`
  * for a start) migrates anyway. An idle old instance holds no lease: this check does not
  * see it.
  */
@@ -266,7 +266,7 @@ export class MongoLiveLeasesError extends AGBossError {
   constructor(options: MongoLiveLeasesErrorOptions) {
     const others = options.count > options.holders.length ? " and others" : "";
     super(
-      `${String(options.count)} live execution lease(s) held by ${options.holders.join(", ")}${others}: an instance of the previous version is still running — stop every old instance, run the migration, then deploy the new version (ADR-0034); to migrate anyway pass allowLiveLeases: true (agboss-mongodb migrate --allow-live-leases; for a start with MigrateOnStart: allowLiveLeases in the connection's settings, mongodbAllowLiveLeases in the environment)`,
+      `${String(options.count)} live execution lease(s) held by ${options.holders.join(", ")}${others}: an instance of the previous version is still running — stop every old instance, run the migration, then deploy the new version (ADR-0034); to migrate anyway pass allowLiveLeases: true (agboss-mongodb migrate --allow-live-leases; for a start with MigrateOnStart: allowLiveLeases in the connection's settings)`,
       { cause: options.cause },
     );
     this.count = options.count;

@@ -23,7 +23,7 @@ import { insertPause } from "../../src/stores/paused/pause-documents.js";
 import { mailboxesOf } from "../../src/stores/paused/pause-mailboxes.js";
 import { emptyAll, testDatabase } from "../support/database.js";
 import { currentPausedRun } from "../support/paused-run.js";
-import { ANSWER, NINE, pauseOf } from "../support/pauses.js";
+import { ANSWER, NINE, pauseOf, seenNow, withSeenNow } from "../support/pauses.js";
 import { connectionTo } from "../support/stores.js";
 
 const database = testDatabase();
@@ -101,8 +101,14 @@ describe("agbossjs/agboss#81: a pause taken", () => {
     const store = storeOn();
     await store.findOrCreateByStepKey(pauseOf("decided"));
 
-    expect(await store.decideByTenantIdAndPauseId("default", "decided", ANSWER, NINE)).toBe(true);
-    expect(await store.decideByTenantIdAndPauseId("default", "decided", ANSWER, NINE)).toBe(false);
+    const seen = await seenNow(store, "decided");
+
+    expect(await store.decideByTenantIdAndPauseId("default", "decided", ANSWER, NINE, seen)).toBe(
+      true,
+    );
+    expect(await store.decideByTenantIdAndPauseId("default", "decided", ANSWER, NINE, seen)).toBe(
+      false,
+    );
 
     const row = await rowOf("decided");
     expect(row).toMatchObject({ status: PauseStatus.Taken, resolvedAt: NINE });
@@ -149,7 +155,7 @@ describe("agbossjs/agboss#81: a notice written once", () => {
       store.noticeOnceByTenantIdAndPauseId(
         tenantId,
         id,
-        PauseNoticeKind.Extended,
+        PauseNoticeKind.TimeoutChanged,
         { expiresAt: "2026-01-05T10:00:00.000Z" },
         NINE,
         recipients,
@@ -160,7 +166,7 @@ describe("agbossjs/agboss#81: a notice written once", () => {
     expect(await once("two")).toBe(true);
 
     expect(
-      await mailboxesOf(dbOf()).countDocuments({ "notices.kind": PauseNoticeKind.Extended }),
+      await mailboxesOf(dbOf()).countDocuments({ "notices.kind": PauseNoticeKind.TimeoutChanged }),
     ).toBe(2);
   });
 
@@ -175,7 +181,7 @@ describe("agbossjs/agboss#81: a notice written once", () => {
       store.noticeOnceByTenantIdAndPauseId(
         tenantId,
         "same",
-        PauseNoticeKind.Extended,
+        PauseNoticeKind.TimeoutChanged,
         { expiresAt: "2026-01-05T10:00:00.000Z" },
         NINE,
         recipients,
@@ -191,7 +197,7 @@ describe("agbossjs/agboss#81: a reassignment's replacement", () => {
     const store = storeOn();
     await store.findOrCreateByStepKey(pauseOf("before"));
     const hostile = {
-      ...{ pauseId: "after", assignees: ["alice"] },
+      ...(await withSeenNow(store, "before", { pauseId: "after", assignees: ["alice"] })),
       ...{ status: PauseStatus.Resolved, isSent: true, askedAt: "2020-01-01T00:00:00.000Z" },
       reassignedFrom: "someone-else",
     };
@@ -223,6 +229,45 @@ describe("agbossjs/agboss#81: the fields a pause document keeps beside its recor
       ...{ tenantId: "default", rootExecutionId: "run-1", stepKey: "run-1:fresh:1" },
       ...{ pauseId: "fresh", target: "refund-tool-approval", status: PauseStatus.Pending },
     });
+  });
+
+  it("a pause keeps beside its record what a listing filters by, and only what it has (#1307e)", async () => {
+    const store = storeOn();
+    await store.findOrCreateByStepKey({
+      ...pauseOf("held", "run-1:held:1"),
+      assignees: ["ann", "bob"],
+      externalRef: "JIRA-1",
+    });
+    await store.findOrCreateByStepKey(pauseOf("bare", "run-1:bare:1"));
+
+    expect(await rowOf("held")).toMatchObject({
+      assignees: ["ann", "bob"],
+      externalRef: "JIRA-1",
+      channel: "refund-approval-channel",
+    });
+    const bare = await rowOf("bare");
+    expect(Object.keys(bare ?? {})).not.toContain("assignees");
+    expect(Object.keys(bare ?? {})).not.toContain("externalRef");
+  });
+
+  it("a change follows them: an in-place reassignment replaces the pool, releasing it unsets the field, the channel's reference is set when it is given", async () => {
+    const store = storeOn();
+    await store.findOrCreateByStepKey({ ...pauseOf("moved"), assignees: ["ann"] });
+    const moved = async (assignees: readonly string[] | undefined) =>
+      store.reassignByTenantIdAndPauseId(
+        "default",
+        "moved",
+        await withSeenNow(store, "moved", assignees === undefined ? {} : { assignees }),
+        NINE,
+        NO_RECIPIENTS,
+      );
+
+    await moved(["bob", "cy"]);
+    expect(await rowOf("moved")).toMatchObject({ assignees: ["bob", "cy"] });
+    await moved(undefined);
+    expect(Object.keys((await rowOf("moved")) ?? {})).not.toContain("assignees");
+    await store.markSentByTenantIdAndPauseId("default", "moved", NO_RECIPIENTS, "JIRA-9");
+    expect(await rowOf("moved")).toMatchObject({ externalRef: "JIRA-9" });
   });
 
   it("a pause inserted by a replacement has them too", async () => {
