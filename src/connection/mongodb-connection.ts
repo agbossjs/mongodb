@@ -104,7 +104,7 @@ export class MongoConnection implements OnInit, OnDestroy {
   /**
    * The database the stores' collections are in (`mongodbDatabase`, else the URL's, else `agboss`):
    * a write of its collections outside a transaction reads an error of unknown outcome as
-   * `StoreOutcomeUnknownError` (agbossjs/mongodb#76).
+   * `StoreError.OutcomeUnknown` (agbossjs/mongodb#76).
    */
   readonly db: Db;
   readonly #rawDb: Db;
@@ -191,7 +191,7 @@ export class MongoConnection implements OnInit, OnDestroy {
    * - a commit whose reply was lost is sent once more by the driver — the same transaction, which
    *   the server commits once —: after one reset the retry learns the real outcome (agbossjs/agboss#1017);
    *   a commit that fails after it — whatever the error: the driver retries by itself, so the one
-   *   seen may be the retry's after a first attempt that committed — rejects at once with `StoreOutcomeUnknownError` (source
+   *   seen may be the retry's after a first attempt that committed — rejects at once with `StoreError.OutcomeUnknown` (source
    *   `Transport`, `outcome.ts`): the transaction may have committed, the holder hands the tree
    *   over and the next one reads what was left; the work is never run again for it;
    * - any other error (the work's own, a fence's refusal) aborts and is rethrown as it is.

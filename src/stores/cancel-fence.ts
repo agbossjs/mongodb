@@ -1,5 +1,5 @@
-import { ExecutionPauseFencedError, ExecutionStopFencedError, InterruptMode } from "@agboss/core";
-import { ExecutionCancelFencedError, cancelTreeOf, type EffectKey } from "@agboss/core/stores";
+import { InterruptMode } from "@agboss/core";
+import { cancelFencedOf, cancelTreeOf, type EffectKey } from "@agboss/core/stores";
 import type { ClientSession, Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
@@ -8,6 +8,7 @@ import type { LeaseDocument } from "./lease-documents.js";
 import { TokenFields, tokenOf } from "./lease-documents.js";
 import { orSeed, seedStages, type Tree } from "./lease-seed.js";
 import { logged, type MarkScope, type MarkWrite } from "./lease-marks.js";
+import { pauseFencedOf, stopFencedOf } from "./interrupt-fence.js";
 import { storeNowOf } from "./store-time.js";
 
 /**
@@ -71,7 +72,7 @@ const FenceMarks = z.intersection(
  * write of the root's lease at or below it is stale, and so is a child's while the root's current
  * token is the fenced one → `ExecutionPauseFencedError`; an `Immediate` stop with no cancel
  * (#1341b) → `ExecutionStopFencedError`; a cancel request and a key that is not an undo's →
- * `ExecutionCancelFencedError`. Nothing written or sent.
+ * `ExecutionError.CancelFenced`. Nothing written or sent.
  */
 export async function checkCancel(db: Db, session: ClientSession, key: EffectKey): Promise<void> {
   const tree = cancelTreeOf(key);
@@ -91,11 +92,10 @@ export async function checkCancel(db: Db, session: ClientSession, key: EffectKey
   if (fenced !== undefined) {
     const isStale =
       key.leaseExecutionId === tree.rootExecutionId ? key.token <= fenced : fenced >= tokenOf(row);
-    if (isStale) throw ExecutionPauseFencedError.of(key);
+    if (isStale) throw pauseFencedOf(key);
   }
   const isCancelled = row.cancelRequestedAt !== undefined;
-  if (!isCancelled && row.stopMode === InterruptMode.Immediate)
-    throw ExecutionStopFencedError.of(key);
+  if (!isCancelled && row.stopMode === InterruptMode.Immediate) throw stopFencedOf(key);
   if (key.isCompensation === true) return;
-  if (isCancelled) throw ExecutionCancelFencedError.of(key);
+  if (isCancelled) throw cancelFencedOf(key);
 }

@@ -60,7 +60,7 @@ function classifiedCollection<TDocument extends Document>(
 
 /**
  * `db`, whose collections read an error of a write outside a transaction that leaves its outcome
- * unknown (`outcome.ts`) as `StoreOutcomeUnknownError`. A write of a transaction is left as it is:
+ * unknown (`outcome.ts`) as `StoreError.OutcomeUnknown`. A write of a transaction is left as it is:
  * its commit decides (`MongoConnection.inTransaction`); a read is never unknown.
  */
 export function classifiedDb(db: Db): Db {

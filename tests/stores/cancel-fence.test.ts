@@ -6,7 +6,7 @@
  * commits before it and is read — never the write landing after the cancel answered.
  */
 import {
-  ExecutionCancelFencedError,
+  ExecutionError,
   IdempotencyRunStatus,
   StoreClock,
   StoreTimeSource,
@@ -207,7 +207,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
 
     expect(written.status).toBe(IdempotencyRunStatus.Ran);
     const later = await rejection(one.effects.runOnce(keyOf(lease, "later"), () => ({ r: 2 })));
-    expect(later).toBeInstanceOf(ExecutionCancelFencedError);
+    expect(later).toBeInstanceOf(ExecutionError.CancelFenced);
   });
 
   /** A child's write held open inside its transaction, the root's document not yet there; the cancel from another instance. */
@@ -280,7 +280,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     const later = await rejection(
       one.effects.runOnce(keyOf(child, "later", "root-r"), () => ({ r: 2 })),
     );
-    expect(later).toBeInstanceOf(ExecutionCancelFencedError);
+    expect(later).toBeInstanceOf(ExecutionError.CancelFenced);
   });
 
   it("sabotage: a child's check that only reads the root's document lets the cancel answer inside the child's open write", async () => {
@@ -385,7 +385,7 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     const later = await rejection(
       one.effects.runOnce(keyOf(child, "later", "root-h"), () => ({ r: 2 })),
     );
-    expect(later).toBeInstanceOf(ExecutionCancelFencedError);
+    expect(later).toBeInstanceOf(ExecutionError.CancelFenced);
   });
 
   it("sabotage (agbossjs/agboss#1302): a child's check that only reads its root's held document lets the cancel commit inside the child's open write", async () => {

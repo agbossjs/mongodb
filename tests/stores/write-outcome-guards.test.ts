@@ -6,7 +6,6 @@
  *  - a command of a transaction is left to the driver although its failure ended the transaction
  *    (the state is read before the call).
  */
-import { StoreOutcomeUnknownError } from "@agboss/core/stores";
 import {
   Collection,
   MongoBulkWriteError,
@@ -20,6 +19,7 @@ import type { MongoConnection } from "../../src/index.js";
 import { writeErrorOf } from "../../src/connection/outcome.js";
 import { emptyAll, openConnection, testDatabase } from "../support/database.js";
 import { holdFailPoints } from "../support/failpoint-lock.js";
+import { isStoreOutcomeUnknown, StoreError } from "@agboss/core/stores";
 
 const APP = "agboss-write-outcome-guards-test";
 const PROBE = "write_outcome_guards_probe";
@@ -75,8 +75,10 @@ describe("a write concern error is unknown whatever its code (the write may have
       const error = concernError(code);
 
       expect(error.code).toBe(code);
-      expect(writeErrorOf("coll.insertOne", error)).toBeInstanceOf(StoreOutcomeUnknownError);
-      expect(writeErrorOf("coll.updateMany", error, true)).toBeInstanceOf(StoreOutcomeUnknownError);
+      expect(writeErrorOf("coll.insertOne", error)).toBeInstanceOf(StoreError.OutcomeUnknown);
+      expect(writeErrorOf("coll.updateMany", error, true)).toBeInstanceOf(
+        StoreError.OutcomeUnknown,
+      );
     },
   );
 
@@ -99,9 +101,9 @@ describe("a write concern error is unknown whatever its code (the write may have
         .insertOne({ _id: "applied" })
         .catch((error: unknown) => error);
 
-      expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+      expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
       expect(failure).toMatchObject({ cause: { code } });
-      expect((failure as StoreOutcomeUnknownError).cause).toBeInstanceOf(MongoWriteConcernError);
+      expect((failure as StoreError.OutcomeUnknown).cause).toBeInstanceOf(MongoWriteConcernError);
       await admin().db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
       // the connection reads at majority: its snapshot may trail the write by a moment
       await vi.waitFor(async () => {
@@ -137,8 +139,8 @@ describe("a bulk write that applied something and then failed on known codes is 
         .bulkWrite([...applied, { insertOne: { document: { _id: "dup" } } }], { ordered: false })
         .catch((error: unknown) => error);
 
-      expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
-      const cause = (failure as StoreOutcomeUnknownError).cause;
+      expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
+      const cause = (failure as StoreError.OutcomeUnknown).cause;
       expect(cause).toBeInstanceOf(MongoBulkWriteError);
       // every refusal is a known code and something really was applied
       expect((cause as MongoBulkWriteError).writeErrors).toMatchObject([{ code: 11000 }]);
@@ -172,7 +174,7 @@ describe("a command of a transaction is left to the driver although its failure 
 
       expect(session.inTransaction()).toBe(false);
       expect(failure).toBe(failed);
-      expect(failure).not.toBeInstanceOf(StoreOutcomeUnknownError);
+      expect(isStoreOutcomeUnknown(failure)).toBe(false);
       expect((failure as MongoServerError).hasErrorLabel("TransientTransactionError")).toBe(true);
     } finally {
       await session.endSession();
@@ -187,7 +189,7 @@ describe("a command of a transaction is left to the driver although its failure 
       .insertOne({ _id: "no-tx" })
       .catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(failure).toMatchObject({ cause: failed });
   });
 });

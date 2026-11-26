@@ -1,10 +1,15 @@
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import {
+  isStoreOutcomeUnknown,
+  StoreError,
+  StoreOutcomeSource,
+  type StoreOutcomeUnknown,
+} from "@agboss/core/stores";
 import { MongoBulkWriteError, MongoServerError, MongoWriteConcernError } from "mongodb";
 
 /**
  * Which errors of a write leave its outcome unknown (agbossjs/agboss#1017, mirroring
  * `@agboss/postgres`'s `outcome.ts`) — by WHITELIST: only an error that proves the write was NOT
- * applied is known; every other error after the send is `StoreOutcomeUnknownError`, a wrong
+ * applied is known; every other error after the send is `StoreError.OutcomeUnknown`, a wrong
  * "unknown" costs one hand-over, a wrong "known" undoes an order whose charge was taken. The driver
  * already retries what it can (a retryable write and a `commitTransaction` are sent once more after
  * a lost reply), so what reaches the store is after that.
@@ -19,7 +24,7 @@ import { MongoBulkWriteError, MongoServerError, MongoWriteConcernError } from "m
  * applied), `NotWritablePrimary` and every other code after the send, a bulk write that failed as
  * a whole, an error with no code, an error of a kind not listed.
  *
- * An unknown outcome is `StoreOutcomeUnknownError`, source `Transport`: under a lease the holder
+ * An unknown outcome is `StoreError.OutcomeUnknown`, source `Transport`: under a lease the holder
  * hands the tree over, and the next holder finds what the write left.
  */
 
@@ -66,8 +71,8 @@ function provesNotApplied(error: unknown, isMulti: boolean): boolean {
 
 const STORE = "MongoConnection";
 
-const unknown = (operation: string, cause: unknown): StoreOutcomeUnknownError =>
-  new StoreOutcomeUnknownError({
+const unknown = (operation: string, cause: unknown): StoreError.OutcomeUnknown =>
+  new StoreError.OutcomeUnknown({
     store: STORE,
     operation,
     source: StoreOutcomeSource.Transport,
@@ -81,13 +86,13 @@ const unknown = (operation: string, cause: unknown): StoreOutcomeUnknownError =>
  * application: not `NoSuchTransaction` (251) or a transient label (the retry of a committed
  * transaction can be answered with them), not a transport error, not a write concern error.
  */
-export function commitErrorOf(error: unknown): StoreOutcomeUnknownError {
-  return error instanceof StoreOutcomeUnknownError ? error : unknown("commitTransaction", error);
+export function commitErrorOf(error: unknown): StoreOutcomeUnknown {
+  return isStoreOutcomeUnknown(error) ? error : unknown("commitTransaction", error);
 }
 
 /** `error` of a single-command write (`isMulti`: of many documents): as it is when the server proved nothing was applied, else unknown. */
 export function writeErrorOf(operation: string, error: unknown, isMulti = false): unknown {
-  if (error instanceof StoreOutcomeUnknownError || provesNotApplied(error, isMulti)) return error;
+  if (isStoreOutcomeUnknown(error) || provesNotApplied(error, isMulti)) return error;
   return unknown(operation, error);
 }
 

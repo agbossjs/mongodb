@@ -37,6 +37,7 @@ export const SHARDS = {
     mutate: [
       "src/stores/fence.ts",
       "src/stores/cancel-fence.ts",
+      "src/stores/interrupt-fence.ts",
       "src/stores/outbound-calls/lease-state.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{fence-*,cancel-fence}.test.ts"],
@@ -201,7 +202,7 @@ export const SHARDS = {
     ],
   },
   // the outcome of a write whose answer was lost (agbossjs/agboss#1017, mongodb#76, #82): a
-  // whitelist, "not applied" only where the server's reply proves it, else StoreOutcomeUnknownError
+  // whitelist, "not applied" only where the server's reply proves it, else StoreError.OutcomeUnknown
   outcome: {
     mutate: ["src/connection/{classified-db,outcome}.ts"],
     tests: [

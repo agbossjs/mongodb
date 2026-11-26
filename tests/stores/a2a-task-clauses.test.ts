@@ -3,8 +3,8 @@ import {
   A2ATaskState,
   InvalidA2APageTokenError,
   type NewA2ATask,
+  StoreError,
 } from "@agboss/core/stores";
-import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { ClientSession, Collection, FindCursor } from "mongodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoA2ATaskRepository } from "../../src/index.js";
@@ -226,10 +226,10 @@ describe("agbossjs/mongodb#105: a reply and a stored task read back", () => {
       .findByMessage(messageKeyOf("damaged"))
       .catch((error: unknown) => error);
 
-    expect(status).toBeInstanceOf(StoredNamesUnreadableError);
+    expect(status).toBeInstanceOf(StoreError.UnreadableRecord);
     expect(status).toHaveProperty("message", expect.stringContaining("a2a task status"));
     expect(status).toHaveProperty("message", expect.stringContaining("damaged"));
-    expect(reply).toBeInstanceOf(StoredNamesUnreadableError);
+    expect(reply).toBeInstanceOf(StoreError.UnreadableRecord);
     expect(reply).toHaveProperty("message", expect.stringContaining("a2a message reply"));
     expect(reply).toHaveProperty("message", expect.stringContaining("m-damaged"));
   });

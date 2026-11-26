@@ -1,13 +1,12 @@
 /**
  * agbossjs/agboss#906 D4 and #1121, one rule for every stored JSON text: a text that is not JSON (cut off,
- * empty, damaged) is refused as a record that fails its schema is — `StoredNamesUnreadableError`, `code:
- * "stored.unreadable"`, the ids of its row — never the text, never the parser's message (it quotes the
+ * empty, damaged) is refused as a record that fails its schema is — `StoreError.UnreadableRecord`, `code:
+ * "store.unreadable-record"`, the ids of its row — never the text, never the parser's message (it quotes the
  * text), never a tenant; its `cause` is a `SyntaxError` that keeps no text. A paused run, a pause, an
  * answer-log entry and a history record alike.
  */
 import { inspect } from "node:util";
 import { PauseResolution, PauseStatus } from "@agboss/core";
-import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { VirtualClock } from "@agboss/core/testing";
 import { describe, expect, it } from "vitest";
 import {
@@ -19,6 +18,7 @@ import { idOf } from "../../src/stores/keys.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo, recordsOn } from "../support/stores.js";
 import { pauseOf } from "../support/pauses.js";
+import { StoreError } from "@agboss/core/stores";
 
 /** A pause answered at nine past five: the fields of its closing. */
 const resolvedPause = {
@@ -50,8 +50,8 @@ async function refusal(read: () => Promise<unknown>, ids: readonly string[]): Pr
     (thrown: unknown) => thrown,
   );
   if (!(error instanceof Error)) throw new TypeError("it was read, or nothing Error-like thrown");
-  expect(error).toBeInstanceOf(StoredNamesUnreadableError);
-  expect(error).toMatchObject({ code: "stored.unreadable", fields: "(the text)" });
+  expect(error).toBeInstanceOf(StoreError.UnreadableRecord);
+  expect(error).toMatchObject({ code: "store.unreadable-record", fields: "(the text)" });
   expect(error.message).toContain("is not readable");
   for (const id of ids) expect(error.message).toContain(id);
   expect(error.message).not.toContain("tenantId");

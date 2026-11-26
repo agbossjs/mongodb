@@ -5,7 +5,7 @@
  * every one of its eight writes names its operation, and the cancel mark is read alone.
  */
 import { StoreClock, StoreTimeSource, type ExecutionTree } from "@agboss/core";
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { StoreOutcomeSource, StoreError } from "@agboss/core/stores";
 import { seconds } from "@agboss/core/units";
 import { MongoNetworkError } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -97,7 +97,7 @@ describe("a write whose own arguments cannot be read names its operation", () =>
       (failure: unknown) => failure,
     );
 
-    expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(error).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(error).toMatchObject({ operation: "requestCancel", cause: BROKEN });
   });
 
@@ -111,7 +111,7 @@ describe("a write whose own arguments cannot be read names its operation", () =>
         (failure: unknown) => failure,
       );
 
-    expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(error).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(error).toMatchObject({ operation: "claimExecutionId", cause: BROKEN });
   });
 });
@@ -145,7 +145,7 @@ describe("claimExecutionId", () => {
       (failure: unknown) => failure,
     );
 
-    expect(claimed).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(claimed).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(claimed).toMatchObject({ source: StoreOutcomeSource.Transport, cause: lost });
   });
 });
@@ -224,7 +224,7 @@ describe("acquire, when the insert of the tree's first lease answers otherwise t
       (failure: unknown) => failure,
     );
 
-    expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(error).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(error).toMatchObject({ cause: lost });
     expect(asked.n).toBe(2);
   });

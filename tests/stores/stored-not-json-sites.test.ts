@@ -1,13 +1,12 @@
 /**
  * agbossjs/agboss#1166 (#1121, #906 D4-b): every other read of a stored text that is no JSON is the
- * coded `StoredNamesUnreadableError` (`code: "stored.unreadable"`, the record, the ids of its row)
+ * coded `StoreError.UnreadableRecord` (`code: "store.unreadable-record"`, the record, the ids of its row)
  * and quotes no stored text — not in the message, the stack or the cause. A site that goes back to a
  * bare `JSON.parse` fails its case: the parser's `SyntaxError` quotes the secret and has no code.
  * The documents are given to the stores' readers as a database would give them; no server is asked.
  */
 import { inspect } from "node:util";
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
-import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import { directMessageOf } from "../../src/stores/a2a-direct-messages/a2a-direct-message-documents.js";
 import { messageOf, taskOf } from "../../src/stores/a2a-tasks/a2a-task-documents.js";
@@ -15,6 +14,7 @@ import { auditEventOf } from "../../src/stores/audit-log/audit-event-documents.j
 import { replayOf } from "../../src/stores/fenced-effects/result-documents.js";
 import { MongoExecutionTreeRepository } from "../../src/stores/mongo-execution-tree.repository.js";
 import { MongoMeshRequestRepository } from "../../src/stores/mongo-mesh-request.repository.js";
+import { StoreError } from "@agboss/core/stores";
 
 const SECRET = "ssn-078-05-1166";
 const TEXTS = [
@@ -37,8 +37,8 @@ async function thrownBy(read: () => unknown): Promise<unknown> {
 
 async function refused(read: () => unknown, record: string, ids: string): Promise<void> {
   const error = await thrownBy(read);
-  expect(error).toBeInstanceOf(StoredNamesUnreadableError);
-  expect(error).toMatchObject({ code: "stored.unreadable", record, ids });
+  expect(error).toBeInstanceOf(StoreError.UnreadableRecord);
+  expect(error).toMatchObject({ code: "store.unreadable-record", record, ids });
   if (!(error instanceof Error)) throw new TypeError("no error");
   expect(error.cause).toBeInstanceOf(SyntaxError);
   const shown = inspect(error, { depth: 12 });

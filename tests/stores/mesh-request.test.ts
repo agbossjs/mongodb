@@ -1,8 +1,8 @@
-import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { describe, expect, it, vi } from "vitest";
 import { Collections, MongoMeshRequestRepository } from "../../src/index.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
+import { StoreError } from "@agboss/core/stores";
 
 /**
  * agbossjs/mongodb#105: the mesh request store's once-only claim, raced by instances of their own
@@ -120,7 +120,7 @@ describe("agbossjs/mongodb#105: the mesh request store's answer", () => {
       .findByKey({ ...key, idempotencyKey: "k-damaged" })
       .catch((error: unknown) => error);
 
-    expect(refused).toBeInstanceOf(StoredNamesUnreadableError);
+    expect(refused).toBeInstanceOf(StoreError.UnreadableRecord);
     expect(refused).toHaveProperty("message", expect.stringContaining("mesh request response"));
     expect(refused).toHaveProperty("message", expect.stringContaining("orders-application"));
     expect(refused).toHaveProperty("message", expect.stringContaining("k-damaged"));

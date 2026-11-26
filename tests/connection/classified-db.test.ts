@@ -1,11 +1,11 @@
 /**
  * agbossjs/agboss#1017, agbossjs/mongodb#76, #1213: the collections of `classifiedDb` read the error
  * of a write outside a transaction that proves nothing was applied as it is and every other as
- * `StoreOutcomeUnknownError`, naming the collection and the write; a write of an open transaction,
+ * `StoreError.OutcomeUnknown`, naming the collection and the write; a write of an open transaction,
  * a read and anything else of the database are left as they are. The driver's methods are stubbed:
  * no server is asked.
  */
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { StoreOutcomeSource, StoreError } from "@agboss/core/stores";
 import { Collection, Db, MongoClient, MongoServerError, type ClientSession } from "mongodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { classifiedDb } from "../../src/connection/classified-db.js";
@@ -68,7 +68,7 @@ describe("classifiedDb: a write outside a transaction", () => {
 
       const error = await write(method, []).catch((caught: unknown) => caught);
 
-      expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+      expect(error).toBeInstanceOf(StoreError.OutcomeUnknown);
       expect(error).toMatchObject({
         operation: `orders.${method}`,
         source: StoreOutcomeSource.Transport,
@@ -92,27 +92,27 @@ describe("classifiedDb: a write outside a transaction", () => {
     async (method) => {
       failing(method, duplicate());
 
-      await expect(write(method, [])).rejects.toBeInstanceOf(StoreOutcomeUnknownError);
+      await expect(write(method, [])).rejects.toBeInstanceOf(StoreError.OutcomeUnknown);
     },
   );
 
   it("a write with options that name no session is read as outside a transaction", async () => {
     failing("insertOne", new Error("reset"));
 
-    await expect(write("insertOne", [{}, {}])).rejects.toBeInstanceOf(StoreOutcomeUnknownError);
+    await expect(write("insertOne", [{}, {}])).rejects.toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 
   it("a write whose options are null is read as outside a transaction", async () => {
     failing("insertOne", new Error("reset"));
 
-    await expect(write("insertOne", [{}, null])).rejects.toBeInstanceOf(StoreOutcomeUnknownError);
+    await expect(write("insertOne", [{}, null])).rejects.toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 
   it("a write whose session is undefined is read as outside a transaction", async () => {
     failing("insertOne", new Error("reset"));
 
     await expect(write("insertOne", [{}, { session: undefined }])).rejects.toBeInstanceOf(
-      StoreOutcomeUnknownError,
+      StoreError.OutcomeUnknown,
     );
   });
 
@@ -121,7 +121,7 @@ describe("classifiedDb: a write outside a transaction", () => {
     const session = client.startSession();
 
     await expect(write("insertOne", [{}, { session }])).rejects.toBeInstanceOf(
-      StoreOutcomeUnknownError,
+      StoreError.OutcomeUnknown,
     );
   });
 });

@@ -60,7 +60,7 @@ describe("MongoCostLedgerRepository: pruning (agbossjs/agboss#771)", () => {
 
     for (const outcome of outcomes)
       if (outcome.status === "rejected")
-        expect(outcome.reason).toMatchObject({ code: "cost-ledger.entry-expired" });
+        expect(outcome.reason).toMatchObject({ code: "store.ledger-entry-expired" });
     expect((await first.findUsageByCounter(day("race"))).spent).toBe(3.75);
   });
 
@@ -181,7 +181,7 @@ describe("MongoCostLedgerRepository: the pruning mark is never missing quietly (
       );
 
       await expect(ledger.saveAll([day("back")], [entry("pass-b", 0)])).rejects.toMatchObject({
-        code: "cost-ledger.entry-expired",
+        code: "store.ledger-entry-expired",
       });
       await ledger.saveAll([day("back")], [entry("pass-b", 1)]);
       expect((await ledger.findUsageByCounter(day("back"))).spent).toBe(0.25);
@@ -345,7 +345,7 @@ describe("MongoCostLedgerRepository: a dropped ledger is never made again as nev
           .replaceOne({ _id: MARK_ID }, { prunedBefore: new Date(at ?? "") });
 
         await expect(ledger.saveAll([day("cure")], [entry("pass-u", 0)])).rejects.toMatchObject({
-          code: "cost-ledger.entry-expired",
+          code: "store.ledger-entry-expired",
         });
         const fresh: LedgerEntry = { ...entry("pass-u", 1), madeAt: new Date(Date.now() + 60_000) };
         await ledger.saveAll([day("cure")], [fresh]);

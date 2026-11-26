@@ -6,8 +6,8 @@
  */
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { IdempotencyRunStatus, StoreClock, StoreTimeSource } from "@agboss/core";
-import { type EffectKey } from "@agboss/core/stores";
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { type EffectKey, StoreError } from "@agboss/core/stores";
+import { StoreOutcomeSource } from "@agboss/core/stores";
 import { minutes } from "@agboss/core/units";
 import { MongoClient, type Document } from "mongodb";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -159,7 +159,7 @@ describe("a fenced effect's transaction on an error the driver retries", () => {
 });
 
 describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unknown", () => {
-  it("a commit whose retry fails too is StoreOutcomeUnknownError (Transport), the work run once; the next call replays the charge", async () => {
+  it("a commit whose retry fails too is StoreError.OutcomeUnknown (Transport), the work run once; the next call replays the charge", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-3", minutes(1));
     const key = keyOf("unknown-3", lease?.token ?? 0);
     const effects = new MongoFencedEffectRepository(connection, serverClock());
@@ -182,7 +182,7 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
     const failure: unknown = await effects.runOnce(key, charge).catch((error: unknown) => error);
     const again = await effects.runOnce(key, charge);
 
-    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(failure).toMatchObject({
       code: "store.outcome-unknown",
       source: StoreOutcomeSource.Transport,
@@ -195,7 +195,7 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
     expect(await chargesOf("unknown-3")).toBe(1);
   });
 
-  it("a commit whose connection is cut twice (no answer at all) is StoreOutcomeUnknownError too", async () => {
+  it("a commit whose connection is cut twice (no answer at all) is StoreError.OutcomeUnknown too", async () => {
     const lease = await leasesOf("instance-1").acquire("default", "unknown-4", minutes(1));
     const effects = new MongoFencedEffectRepository(connection, serverClock());
     await failNext(["commitTransaction"], { closeConnection: true }, 2);
@@ -208,7 +208,7 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
       })
       .catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 
   it("an error the work throws, or a write conflict, is no unknown outcome: it is rethrown as it is, or the work runs again", async () => {
@@ -222,7 +222,7 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
     expect(failure).toBeInstanceOf(TypeError);
   });
 
-  it("a single-command write whose retry fails too is StoreOutcomeUnknownError: acquire, release, a cancel", async () => {
+  it("a single-command write whose retry fails too is StoreError.OutcomeUnknown: acquire, release, a cancel", async () => {
     const leases = leasesOf("instance-1");
     await failNext(["findAndModify"], { closeConnection: true }, 2);
 
@@ -234,8 +234,8 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
       .requestCancel({ tenantId: "default", rootExecutionId: "unknown-6" })
       .catch((error: unknown) => error);
 
-    expect(acquired).toBeInstanceOf(StoreOutcomeUnknownError);
-    expect(cancelled).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(acquired).toBeInstanceOf(StoreError.OutcomeUnknown);
+    expect(cancelled).toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 });
 

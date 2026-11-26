@@ -1,9 +1,5 @@
 import { usd } from "@agboss/core/units";
-import {
-  pauseAnswerRecordOfValue,
-  PauseRespondent,
-  StoreOutcomeUnknownError,
-} from "@agboss/core/stores";
+import { pauseAnswerRecordOfValue, PauseRespondent, StoreError } from "@agboss/core/stores";
 import {
   ComponentKind,
   ExecutionRecordStatus,
@@ -286,10 +282,10 @@ describe("MongoExecutionRecordRepository", () => {
 
     await expect(
       records.createThread({ workflow: "desk-workflow", tenantId: "default", threadId: "own" }),
-    ).rejects.toThrow(StoreOutcomeUnknownError);
+    ).rejects.toThrow(StoreError.OutcomeUnknown);
     await expect(
       records.createThread({ workflow: "desk-workflow", tenantId: "default" }),
-    ).rejects.toThrow(StoreOutcomeUnknownError);
+    ).rejects.toThrow(StoreError.OutcomeUnknown);
 
     expect(insert).toHaveBeenCalledTimes(2);
   });

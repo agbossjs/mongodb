@@ -136,7 +136,7 @@ describe("agbossjs/agboss#1213: the cost ledger's save", () => {
     expect((await ledger.findUsageByCounter(counter("old"))).spent).toBe(0);
 
     await expect(ledger.saveAll([counter("old")], [entry("lost:0")])).rejects.toMatchObject({
-      code: "cost-ledger.entry-expired",
+      code: "store.ledger-entry-expired",
     });
   });
 

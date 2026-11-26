@@ -145,7 +145,7 @@ rises (`$max`) and is never cleared, the cancel is never unset, the first reques
 mark that carries a thread's status entry writes both in one transaction
 (`agboss_thread_status_transitions`); a standalone `mongod` without transactions fails closed at
 start. The fenced stores read the marks from the tree's ROOT document, a child's key too:
-`ExecutionPauseFencedError`, `ExecutionStopFencedError`, `ExecutionCancelFencedError`. The lease
+`ExecutionError.CancelFenced` (and the pause and stop refusals the holder reads as such). The lease
 store also mirrors a cluster's lease (`syncClusterLease`, `endClusterLease`, `mirroredLeaseOf`): the
 document is the authority.
 
@@ -307,7 +307,7 @@ database with no counters starts at the epoch, "never pruned".
   whitelist: every single-command write of every store outside a transaction (not only a lease's),
   and every transaction's commit. A write inside a transaction is left as it is: its commit decides.
   Only an error that proves the write was not applied is known and rethrown as it is; every other
-  one is `StoreOutcomeUnknownError` (source `Transport`), and under a lease the holder hands the tree
+  one is `StoreError.OutcomeUnknown` (source `Transport`), and under a lease the holder hands the tree
   over. The client's `socketTimeoutMS` is forced to 300 s.
   - Known server codes: 2, 9, 14 and 40 (refusals of a command's form), for every write; and 112,
     121, 11000, 11001 and 12582 (a write conflict, a validation failure, duplicate keys), the

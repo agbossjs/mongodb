@@ -11,9 +11,9 @@ import {
   BudgetPeriod,
   BudgetScope,
   createApp,
-  GraphRuleError,
   type BudgetHandler,
   type Secret,
+  ConfigError,
 } from "@agboss/core";
 import { usd, type Usd } from "@agboss/core/units";
 import { describe, expect, it } from "vitest";
@@ -82,7 +82,7 @@ async function environmentViolationsOf(application: new () => object): Promise<s
     () => undefined,
     (thrown: unknown) => thrown,
   );
-  if (!(error instanceof GraphRuleError)) throw new Error("expected the assembly to fail");
+  if (!(error instanceof ConfigError.GraphRules)) throw new Error("expected the assembly to fail");
   return error.violations
     .filter((found) => found.code.startsWith("environment."))
     .map((found) => `[${found.code}] ${found.message}`);

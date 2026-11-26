@@ -1,9 +1,9 @@
-import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import type { ExecutionTree, ExecutionTreeValue } from "@agboss/core";
 import { describe, expect, it, vi } from "vitest";
 import { Collections, MongoExecutionTreeRepository } from "../../src/index.js";
 import { testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
+import { StoreError } from "@agboss/core/stores";
 
 /**
  * agbossjs/mongodb#105 (agbossjs/agboss#105, acceptance Z): the execution tree store's once-only write. The public
@@ -130,7 +130,7 @@ describe("agbossjs/mongodb#105: the execution tree store's keys", () => {
       .findByIdInTree(TREE, "damaged")
       .catch((error: unknown) => error);
 
-    expect(refused).toBeInstanceOf(StoredNamesUnreadableError);
+    expect(refused).toBeInstanceOf(StoreError.UnreadableRecord);
     expect(refused).toHaveProperty("message", expect.stringContaining("execution tree value"));
     expect(refused).toHaveProperty("message", expect.stringContaining("damaged"));
     expect(refused).toHaveProperty("message", expect.not.stringContaining("ssn-078-05-1166"));

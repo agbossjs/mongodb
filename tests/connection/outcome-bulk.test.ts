@@ -4,7 +4,7 @@
  * ran, none of its operations succeeded and no write concern error came with it; a write concern
  * error is never known, whatever its code.
  */
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { StoreOutcomeSource, StoreError } from "@agboss/core/stores";
 import {
   MongoBulkWriteError,
   MongoServerError,
@@ -78,7 +78,7 @@ describe("a bulk write that is unknown", () => {
     const error = bulkError(codes);
     const read = writeErrorOf("coll.bulkWrite", error);
 
-    expect(read).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(read).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(read).toMatchObject({
       store: "MongoConnection",
       operation: "coll.bulkWrite",
@@ -101,7 +101,7 @@ describe("a bulk write that is unknown", () => {
     (_name, applied) => {
       const error = bulkError([11000], applied);
 
-      expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreOutcomeUnknownError);
+      expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreError.OutcomeUnknown);
     },
   );
 
@@ -109,14 +109,14 @@ describe("a bulk write that is unknown", () => {
     const error = bulkError([11000], { concern: true });
 
     expect(error.err).toBeUndefined();
-    expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 
   it("it carries a write concern error of its own", () => {
     const error = bulkError([11000]);
     error.err = concernOf(91);
 
-    expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 });
 
@@ -126,7 +126,7 @@ describe("a write concern error is never known, whatever its code", () => {
     const read = writeErrorOf("coll.insertOne", error);
 
     expect(error.code).toBe(code);
-    expect(read).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(read).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(read).toMatchObject({ cause: error });
   });
 });
@@ -148,7 +148,7 @@ describe("settled: a single-command write", () => {
       (caught: unknown) => caught,
     );
 
-    expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(error).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(error).toMatchObject({ operation: "coll.insertOne", cause: boom });
   });
 });

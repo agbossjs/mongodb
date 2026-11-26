@@ -1,4 +1,4 @@
-import { IdGenerator, ThreadIdsExhaustedError } from "@agboss/core";
+import { IdGenerator, ExecutionError } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
 import { describe, expect, it } from "vitest";
 import { testDatabase } from "../support/database.js";
@@ -6,7 +6,7 @@ import { recordsOn } from "../support/stores.js";
 
 /**
  * agbossjs/mongodb#105 (agbossjs/agboss#550, #613): a minted thread id the tenant already has is never handed out;
- * the next one is minted, at most 100 times, then `ThreadIdsExhaustedError` naming the generator.
+ * the next one is minted, at most 100 times, then `ExecutionError.ThreadIdsExhausted` naming the generator.
  */
 const database = testDatabase();
 
@@ -109,7 +109,7 @@ describe("agbossjs/mongodb#105: a thread id minted twice", () => {
       .createThread({ workflow: "desk-workflow", tenantId: "default" })
       .catch((error: unknown) => error);
 
-    expect(refused).toBeInstanceOf(ThreadIdsExhaustedError);
+    expect(refused).toBeInstanceOf(ExecutionError.ThreadIdsExhausted);
     expect(refused).toHaveProperty("message", expect.stringContaining("StuckIdGenerator"));
     expect(ids.asked).toBe(100);
   });

@@ -1,6 +1,6 @@
 /**
  * agbossjs/agboss#934 D1 / D2: a stored value that is not the shape 0.1.1 writes is refused — in the history record (its pauses and its children's, at any depth), in the answer log
- * and in a pause's embedded answer alike — with `StoredNamesUnreadableError` naming the record's id
+ * and in a pause's embedded answer alike — with `StoreError.UnreadableRecord` naming the record's id
  * and the field, never the value. Documents are inserted as a damaged database would hold them.
  */
 import { inspect } from "node:util";
@@ -32,7 +32,7 @@ async function refusal(read: () => unknown, id: string, field: string): Promise<
       (thrown: unknown) => thrown,
     );
   if (!(error instanceof Error)) throw new TypeError("nothing was thrown");
-  expect(error.name).toBe("StoredNamesUnreadableError");
+  expect(error.name).toBe("StoreError.UnreadableRecord");
   expect(error.message).toContain(id);
   expect(error.message).toContain(field);
   expect(shown(error)).not.toContain(SECRET);

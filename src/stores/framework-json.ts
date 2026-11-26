@@ -7,7 +7,7 @@ import { parsedOrUnreadable } from "./unreadable.js";
  * The framework's records a store keeps as JSON — a resolved pause's log entry, a pause, a paused
  * run — read back by the core, whole: every field checked (version tolerant: what 0.1.0 wrote reads
  * too), the record that comes out is what the schema says. A row that is not one fails with
- * `StoredNamesUnreadableError`, naming the ids and the field, never half-read.
+ * `StoreError.UnreadableRecord`, naming the ids and the field, never half-read.
  */
 
 /** A resolved pause's log entry, from the JSON `savePauseAnswer` wrote (read by the core: any depth checked). */

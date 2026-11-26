@@ -1,13 +1,13 @@
 /**
  * agbossjs/mongodb#100: a lease write that fails with an error the collection's own reading of a
  * reply does not name (a clock that cannot be read, a lease that cannot be read) is
- * `StoreOutcomeUnknownError` named after its operation — `acquire`, `renew`, `release`, `retire`,
+ * `StoreError.OutcomeUnknown` named after its operation — `acquire`, `renew`, `release`, `retire`,
  * `yield`, `reclaim` — for every one of them. The collection's errors are named after the
  * collection (`classified-db.ts`), so the operation's name is the one of everything else a write
  * of the store throws.
  */
 import { StoreClock, StoreTimeSource, type ExecutionLease } from "@agboss/core";
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { StoreOutcomeSource, StoreError } from "@agboss/core/stores";
 import { seconds } from "@agboss/core/units";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MongoExecutionLeaseRepository } from "../../src/index.js";
@@ -59,7 +59,7 @@ describe("agbossjs/mongodb#100: an error of a lease write that is not the collec
 
     const error = await rejection(() => leases.acquire("default", "root-a", LEASE));
 
-    expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(error).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(error).toMatchObject({
       operation: "acquire",
       source: StoreOutcomeSource.Transport,
@@ -82,7 +82,7 @@ describe("agbossjs/mongodb#100: an error of a lease write that is not the collec
 
     const error = await rejection(() => call(leases, unreadable(held)));
 
-    expect(error).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(error).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(error).toMatchObject({
       operation,
       source: StoreOutcomeSource.Transport,

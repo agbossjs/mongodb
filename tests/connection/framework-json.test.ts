@@ -3,7 +3,6 @@
  * a paused run whose non-finite numbers JSON cannot hold are tagged and restored.
  */
 import { type PausedExecution, type PauseRecord } from "@agboss/core";
-import { StoredNamesUnreadableError } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import {
   pauseAnswerOfJson,
@@ -14,6 +13,7 @@ import {
 import { answerOf } from "../support/pause-answers.js";
 import { pauseOf } from "../support/pauses.js";
 import { pausedRunOf } from "../support/paused-run.js";
+import { StoreError } from "@agboss/core/stores";
 
 // read in a test, not at the import: a mutant of the reading that fails here must fail a test, which kills it,
 // not the import of the file, which Stryker leaves out of the score (agbossjs/mongodb#103)
@@ -74,7 +74,7 @@ describe("the records a store keeps as JSON are read whole by the core", () => {
 
   it("a log entry that is not JSON is unreadable: it names what it is and the ids, never the text", () => {
     expect(() => pauseAnswerOfJson("{not json", { executionId: "run-9" })).toThrow(
-      StoredNamesUnreadableError,
+      StoreError.UnreadableRecord,
     );
     expect(() => pauseAnswerOfJson("{not json", { executionId: "run-9" })).toThrow(/pause answer/);
     expect(() => pauseAnswerOfJson("{not json", { executionId: "run-9" })).toThrow(/run-9/);
@@ -82,7 +82,7 @@ describe("the records a store keeps as JSON are read whole by the core", () => {
 
   it("a paused run that is not JSON is unreadable: it names what it is and the ids", () => {
     expect(() => pausedRunOfJson("{not json", { threadId: "thread-9", runId: "run-9" })).toThrow(
-      StoredNamesUnreadableError,
+      StoreError.UnreadableRecord,
     );
     expect(() => pausedRunOfJson("{not json", { threadId: "thread-9" })).toThrow(/paused run/);
     expect(() => pausedRunOfJson("{not json", { threadId: "thread-9" })).toThrow(/thread-9/);

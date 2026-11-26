@@ -1,12 +1,11 @@
 import {
-  ExecutionCancelFencedError,
   IdempotencyRunStatus,
   type ExecutionLease,
   type IdempotencyRunOutcome,
   type FencedEffectWork,
   type StoreClock,
 } from "@agboss/core";
-import { type EffectKey } from "@agboss/core/stores";
+import { cancelFencedOf, type EffectKey } from "@agboss/core/stores";
 import { withAmbientTransaction } from "../../src/connection/ambient.js";
 import { cancelTreeOf, effectKeyIdentityOf, type ExecutionTree } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
@@ -40,7 +39,7 @@ const leasesOf = (db: Db) => db.collection<LeaseDocument>(Collections.ExecutionL
 
 const refuseIfMarked = async (key: EffectKey, marked: Promise<LeaseDocument | null>) => {
   if (!key.isCompensation && (await marked)?.cancelRequestedAt !== undefined)
-    throw ExecutionCancelFencedError.of(key);
+    throw cancelFencedOf(key);
 };
 
 /** No cancel check at all: a cancelled tree's effects are written. */

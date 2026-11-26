@@ -1,9 +1,9 @@
 /**
  * agbossjs/mongodb#76, agbossjs/agboss#1017: the classifier of a write's error is a whitelist — only
  * the server's error reply that proves nothing was applied is known; every other error after the
- * send is `StoreOutcomeUnknownError` (source `Transport`, the error its cause).
+ * send is `StoreError.OutcomeUnknown` (source `Transport`, the error its cause).
  */
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { StoreOutcomeSource, StoreError } from "@agboss/core/stores";
 import {
   MongoNetworkError,
   MongoNetworkTimeoutError,
@@ -68,7 +68,7 @@ describe("agbossjs/mongodb#76: the write classifier is a whitelist", () => {
   it.each(UNKNOWN)("%s is unknown", (_name, error) => {
     const read = writeErrorOf("coll.updateOne", error);
 
-    expect(read).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(read).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(read).toMatchObject({
       code: "store.outcome-unknown",
       operation: "coll.updateOne",
@@ -94,7 +94,7 @@ describe("agbossjs/mongodb#76: a write of many documents outside a transaction i
   ])("%s: the documents before the failing one stay written — unknown", (_name, code) => {
     const error = server(code);
 
-    expect(writeErrorOf("coll.updateMany", error, true)).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(writeErrorOf("coll.updateMany", error, true)).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(writeErrorOf("coll.updateMany", error, true)).toMatchObject({ cause: error });
   });
 
@@ -129,7 +129,7 @@ describe("agbossjs/mongodb#76: a commit is never known (the driver retries it it
   ] as const)("%s is unknown", (_name, error) => {
     const read = commitErrorOf(error);
 
-    expect(read).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(read).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(read).toMatchObject({ operation: "commitTransaction", cause: error });
   });
 

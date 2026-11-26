@@ -1,6 +1,6 @@
 /**
  * agbossjs/mongodb#76 (agbossjs/agboss#1017): an error of a single-command write after the server
- * APPLIED it is `StoreOutcomeUnknownError` in every MongoDB store — a pause, a fenced effect's
+ * APPLIED it is `StoreError.OutcomeUnknown` in every MongoDB store — a pause, a fenced effect's
  * sweep, an outbound call, a checkpoint, a record, a queue, a limit, a tree, a mesh request — as it
  * is in the lease store, SQLite and PostgreSQL. The fault is the server's own `failCommand` fail
  * point (the write executes, its reply is a write concern error): the fault-injecting client. Every
@@ -9,8 +9,8 @@
  */
 import { effectKeyForTesting } from "@agboss/core/testing/contracts";
 import { BudgetScope, ExecutionRecordStatus, StoreClock, StoreTimeSource } from "@agboss/core";
-import { A2ATaskState } from "@agboss/core/stores";
-import { StoreOutcomeSource, StoreOutcomeUnknownError } from "@agboss/core/stores";
+import { A2ATaskState, isStoreOutcomeUnknown, StoreError } from "@agboss/core/stores";
+import { StoreOutcomeSource } from "@agboss/core/stores";
 import { VirtualClock } from "@agboss/core/testing";
 import { seconds, usd } from "@agboss/core/units";
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
@@ -346,12 +346,12 @@ describe("agbossjs/mongodb#76: a single-command write answered with an error aft
 
     const failure: unknown = await one.write().catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(failure).toMatchObject({
       code: "store.outcome-unknown",
       source: StoreOutcomeSource.Transport,
     });
-    expect((failure as StoreOutcomeUnknownError).cause).toBeInstanceOf(MongoWriteConcernError);
+    expect((failure as StoreError.OutcomeUnknown).cause).toBeInstanceOf(MongoWriteConcernError);
     if (one.applied !== undefined) {
       await admin().db("admin").command({ configureFailPoint: "failCommand", mode: "off" });
       expect(await one.applied()).toBe(true);
@@ -386,7 +386,7 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
 
     const failure: unknown = await write().catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 
   it("a duplicate key of a bulk write is the server's answer for one operation: known, as it is", async () => {
@@ -397,7 +397,7 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
       .catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(MongoBulkWriteError);
-    expect(failure).not.toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(isStoreOutcomeUnknown(failure)).toBe(false);
   });
 
   it("a read is never unknown", async () => {
@@ -437,7 +437,7 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
       .updateMany({}, { $set: { u: 7 } })
       .catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(StoreOutcomeUnknownError);
+    expect(failure).toBeInstanceOf(StoreError.OutcomeUnknown);
     expect(failure).toMatchObject({ cause: { code: 11000 } });
     expect(await many.countDocuments({ u: 7 })).toBe(1);
   });
@@ -480,7 +480,7 @@ describe("agbossjs/mongodb#76: the seam reads every write method of a collection
       };
       error.err = concern;
 
-      expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreOutcomeUnknownError);
+      expect(writeErrorOf("coll.bulkWrite", error)).toBeInstanceOf(StoreError.OutcomeUnknown);
     });
   });
 

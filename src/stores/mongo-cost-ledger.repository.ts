@@ -1,6 +1,5 @@
 import {
   BudgetScope,
-  CostLedgerEntryExpiredError,
   CostLedgerRepository,
   Injectable,
   totalCost,
@@ -10,7 +9,7 @@ import {
   type CostCounter,
   type LedgerEntry,
 } from "@agboss/core";
-import { assertLedgerCutoff, assertLedgerEntries } from "@agboss/core/stores";
+import { assertLedgerCutoff, assertLedgerEntries, StoreError } from "@agboss/core/stores";
 import { usd } from "@agboss/core/units";
 import type { AnyBulkWriteOperation, ClientSession, Collection } from "mongodb";
 import { z } from "zod";
@@ -175,7 +174,7 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
       } else if (await this.#isNew(ledgerId, madeAt, session)) added.push(entry);
     }
     if (expired.length > 0)
-      throw new CostLedgerEntryExpiredError({ ledgerIds: expired, prunedBefore });
+      throw new StoreError.LedgerEntryExpired({ ledgerIds: expired, prunedBefore });
     return added;
   }
 
@@ -191,7 +190,7 @@ export class MongoCostLedgerRepository extends CostLedgerRepository {
 
   async deleteByMadeAtBefore(cutoff: Date): Promise<void> {
     // a cutoff that is no date would lower the mark: refused with the ledger's code,
-    // cost-ledger.cutoff-invalid (agbossjs/agboss#817, agbossjs/agboss#869)
+    // store.ledger-cutoff-invalid (agbossjs/agboss#817, agbossjs/agboss#869)
     assertLedgerCutoff(cutoff);
     await this.connection.inTransaction(async ({ session }) => {
       // the mark raised (never lowered), then the entries made before it, in one transaction
