@@ -1,5 +1,5 @@
 import { InterruptMode } from "@agboss/core";
-import { cancelFencedOf, cancelTreeOf, type EffectKey } from "@agboss/core/stores";
+import { cancelFencedOf, cancelTreeOf, pauseFencedOf, stopFencedOf, type EffectKey } from "@agboss/core/stores";
 import type { ClientSession, Db } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../connection/collections.js";
@@ -8,7 +8,6 @@ import type { LeaseDocument } from "./lease-documents.js";
 import { TokenFields, tokenOf } from "./lease-documents.js";
 import { orSeed, seedStages, type Tree } from "./lease-seed.js";
 import { logged, type MarkScope, type MarkWrite } from "./lease-marks.js";
-import { pauseFencedOf, stopFencedOf } from "./interrupt-fence.js";
 import { storeNowOf } from "./store-time.js";
 
 /**

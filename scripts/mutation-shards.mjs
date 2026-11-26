@@ -37,7 +37,6 @@ export const SHARDS = {
     mutate: [
       "src/stores/fence.ts",
       "src/stores/cancel-fence.ts",
-      "src/stores/interrupt-fence.ts",
       "src/stores/outbound-calls/lease-state.ts",
     ],
     tests: [CONFORMANCE, "tests/stores/{fence-*,cancel-fence}.test.ts"],

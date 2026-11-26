@@ -73,11 +73,6 @@ export default tseslint.config(
     },
   },
   {
-    // the one file that names the core's pause and stop abort reasons: no public seam yet (#1324)
-    files: ["src/stores/interrupt-fence.ts"],
-    rules: { "no-restricted-imports": ["error", { patterns: [TESTING] }] },
-  },
-  {
     files: ["tests/**/*.ts"],
     rules: { "no-restricted-imports": ["error", { patterns: [INTERNAL] }] },
   },
