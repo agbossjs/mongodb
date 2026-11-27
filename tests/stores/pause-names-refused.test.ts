@@ -170,7 +170,8 @@ describe("D1 / D2: a pause's embedded answer and the answer log", () => {
     const id = `p-${String((sequence += 1))}`;
     const pauses = await pauseWith(answer, id);
 
-    await refusal(() => pauses.findByTenantIdAndPauseId("default", id), `pauseId ${id}`, field);
+    // the core names the pause by its (hashed) key and its execution: the execution is run-1
+    await refusal(() => pauses.findByTenantIdAndPauseId("default", id), "executionId run-1", field);
   });
 
   it("an answer-log entry whose role is an object names the execution and the field", async () => {

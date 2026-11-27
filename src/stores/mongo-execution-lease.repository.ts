@@ -20,6 +20,7 @@ import {
   takeable,
   unleased,
   takePipeline,
+  reclaimedFence,
   STORED_TOKEN,
   Yielded,
 } from "./lease-documents.js";
@@ -171,6 +172,7 @@ export class MongoExecutionLeaseRepository extends MongoLeaseMarks {
         {
           $set: {
             token: { $add: [STORED_TOKEN, 1] },
+            fencedThroughToken: reclaimedFence({ $add: [STORED_TOKEN, 1] }),
             yielded: false,
             expiresAt: { $add: [now, duration] },
             previousHolder: null,

@@ -119,13 +119,15 @@ describe("MongoPausedExecutionRepository", () => {
     "a stored component of %s is refused, never read as another kind (0.1.1 reads no 0.1.0 record, #1324)",
     async (_name, component) => {
       const pauses = pausesOn();
-      await pauses.findOrCreateByStepKey(questionPauseOf("p-legacy", "step-legacy"));
-      await editRecord("p-legacy", (record) => ({
+      // an id of its own per case: the database is shared by the file's tests
+      const id = `p-legacy-${_name.replace(/\W+/g, "-")}`;
+      await pauses.findOrCreateByStepKey(questionPauseOf(id, `step-${id}`));
+      await editRecord(id, (record) => ({
         ...record,
         component: { name: "ship-question", ...component },
       }));
 
-      await expect(pauses.findByTenantIdAndPauseId("default", "p-legacy")).rejects.toThrow(
+      await expect(pauses.findByTenantIdAndPauseId("default", id)).rejects.toThrow(
         /a stored pause is not readable/,
       );
     },

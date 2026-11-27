@@ -28,21 +28,19 @@ async function instance() {
   const clock = new HandClock();
   const store = new StoreClock(StoreTimeSource.Test, clock);
   const connection = await instanceConnection(database, "instance-1");
-  return {
-    connection,
-    effects: new MongoFencedEffectRepository(connection, store),
-    leases: new MongoExecutionLeaseRepository(connection, store, new TestApplicationContext()),
-  };
+  const leases = new MongoExecutionLeaseRepository(connection, store, new TestApplicationContext());
+  // one lease of the tree for the whole test: a second acquire of a live lease is refused
+  const lease = await leases.acquire("default", "root-1", hours(1));
+  if (lease === undefined) throw new Error("no lease");
+  return { connection, effects: new MongoFencedEffectRepository(connection, store), lease };
 }
 
 const run = async (
-  { effects, leases }: Awaited<ReturnType<typeof instance>>,
+  { effects, lease }: Awaited<ReturnType<typeof instance>>,
   name: string,
   expiresAt: Date | null,
   extra: { readonly businessKey?: string } = {},
 ) => {
-  const lease = await leases.acquire("default", "root-1", hours(1));
-  if (lease === undefined) throw new Error("no lease");
   const key = effectKeyForTesting({
     scopeKey: "default:root-1",
     tenantId: "default",

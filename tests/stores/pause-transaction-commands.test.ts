@@ -126,7 +126,8 @@ describe("agbossjs/agboss#1213: a pause transaction's operations are in it", () 
       "p",
       { pauseId: "p-r", assignees: ["alice"], seen },
       LATER,
-      AUDIT,
+      // the old pause's `closed` goes to its channel only (listeners hear the replacement's `reassigned`)
+      { channel: "refund-approval-channel", listeners: ["audit"] },
     );
 
     expect(ofPauses(log).map(nameOf)).toEqual([

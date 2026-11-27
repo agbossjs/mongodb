@@ -75,10 +75,10 @@ async function instance() {
 const document = async (connection: Awaited<ReturnType<typeof instance>>["connection"]) =>
   connection.db
     .collection<{ _id: string } & Record<string, unknown>>(Collections.OutboundCalls)
-    .findOne({}, { projection: { _id: 0, status: 1, attempt: 1, attemptOwner: 1, endedAt: 1 } });
+    .findOne({}, { projection: { _id: 0, status: 1, attempt: 1, attemptOwner: 1, expiresAt: 1 } });
 
 describe("agbossjs/agboss#81: an intent is saved", () => {
-  it("in the fencing transaction, as a pending call with no end", async () => {
+  it("in the fencing transaction, as a pending call with no end and no expiry", async () => {
     const { connection, saved } = await instance();
     const log = commandsOf(connection);
 
@@ -87,9 +87,11 @@ describe("agbossjs/agboss#81: an intent is saved", () => {
     // the sequence of its number is drawn before it, outside the transaction (nothing to fence)
     const writes = log.filter((one) => nameOf(one) === `update ${Collections.OutboundCalls}`);
     expect(writes.map((one) => one.inTransaction)).toEqual([true]);
+    // a pending call has no end, so no expiry: the retention's index skips it
     expect(await document(connection)).toEqual({
-      ...{ status: OutboundCallStatus.Pending, attempt: 1, attemptOwner: OWNER },
-      endedAt: null,
+      status: OutboundCallStatus.Pending,
+      attempt: 1,
+      attemptOwner: OWNER,
     });
   });
 });

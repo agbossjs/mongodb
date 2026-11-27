@@ -63,6 +63,25 @@ export interface LeaseDocument {
 /** The token as stored: `token`, else a 0.1.0 document's `leaseEpoch` (an aggregation expression). */
 export const STORED_TOKEN = { $ifNull: ["$token", "$leaseEpoch"] };
 
+/**
+ * The fence after a reclaim whose new token is `token` (#1341c): while the tree is paused `Immediate`
+ * from outside, the reclaimed lease inherits the fence — no token above it is handed out, so the
+ * root's write on the reclaimed token is refused like any other — and the fence only rises (`$max`);
+ * under an `AfterStep` pause, after an unpause or with none it stays where it was.
+ */
+export const reclaimedFence = (token: Document): Document => ({
+  $cond: [
+    {
+      $and: [
+        { $eq: [{ $ifNull: ["$isExternallyPaused", false] }, true] },
+        { $eq: ["$externalPauseMode", "immediate"] },
+      ],
+    },
+    { $max: [{ $ifNull: ["$fencedThroughToken", 0] }, token] },
+    "$fencedThroughToken",
+  ],
+});
+
 /** The stage that ends every pipeline writing a lease: a 0.1.0 document's names dropped. */
 export const DROP_OLD_NAMES = { $unset: ["leaseEpoch", "previousEpoch"] };
 

@@ -114,11 +114,15 @@ describe("agbossjs/agboss#81: the scope's mark", () => {
     const marks = log.filter(
       (one) => nameOf(one) === `findAndModify ${Collections.FencedEffectMarks}`,
     );
-    expect(marks).toHaveLength(1);
+    // the fence is checked before the work and again after it, each time raising the mark
+    expect(marks).toHaveLength(2);
     expect(log.every((one) => one.inTransaction)).toBe(true);
     expect(
       await stored(connection, Collections.FencedEffectMarks).findOne({ _id: `${TENANT}:marked` }),
-    ).toEqual({ _id: `${TENANT}:marked`, highestToken: held.token, storedAt: clock.now() });
+    ).toEqual({
+      ...{ _id: `${TENANT}:marked`, highestToken: held.token, storedAt: clock.now() },
+      expiresAt: null,
+    });
   });
 });
 
@@ -139,6 +143,6 @@ describe("agbossjs/agboss#81: a business key's lock", () => {
 
     expect(
       await stored(connection, Collections.FencedKeyLocks).find().project({ _id: 0 }).toArray(),
-    ).toEqual([{ locks: 2, lockedAt: clock.now() }]);
+    ).toEqual([{ locks: 2, lockedAt: clock.now(), expiresAt: null }]);
   });
 });

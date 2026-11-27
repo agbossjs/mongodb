@@ -135,7 +135,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
 
     await expect(startOn(database)).rejects.toMatchObject({
       code: "mongodb.schema-missing",
-      applied: 4,
+      applied: 1,
       collections: [Collections.OutboundCalls],
     });
   });
