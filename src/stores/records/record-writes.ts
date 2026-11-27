@@ -7,7 +7,7 @@ import type {
   TurnOutcome,
 } from "@agboss/core";
 import type { ClientSession, Db } from "mongodb";
-import type { StatusContext } from "@agboss/core/stores";
+import { assertValidInstant, type StatusContext } from "@agboss/core/stores";
 import type { MongoConnection } from "../../connection/mongodb-connection.js";
 import { appendRecordStatus } from "../status-log.js";
 import { threadsOf } from "./record-threads.js";
@@ -20,6 +20,21 @@ import type { RecordDocument } from "./record-documents.js";
 /** Threads, appended records, their completion (unconditional or compare-and-set) and the pause log. */
 
 const PauseAnswerText = z.object({ record: z.string() });
+
+/**
+ * An Invalid Date in a pause's log entry is refused before anything is written (`StoreError.UnreadableRecord`
+ * naming the field): `JSON.stringify` would write it as `null` and the entry would never read back, and
+ * `askedAt` — a BSON Date in every entry, the key of the order — has no Invalid Date.
+ */
+function assertAnswerInstants(answer: PauseAnswerRecord): void {
+  const record = "pause answer";
+  assertValidInstant(answer.askedAt, "askedAt", record);
+  assertValidInstant(answer.resolvedAt, "resolvedAt", record);
+  for (const [index, entry] of answer.trail.entries()) {
+    assertValidInstant(entry.at, `trail[${String(index)}].at`, record);
+    assertValidInstant(entry.expiresAt, `trail[${String(index)}].expiresAt`, record);
+  }
+}
 const ThreadOf = z.object({ tenantId: z.string(), threadId: z.string() });
 
 /**
@@ -116,7 +131,9 @@ export async function completedIn(
 }
 
 /**
- * Keeps a resolved pause once per step of its tree (a second save is ignored) — by tenant, tree
+ * Keeps a resolved pause once per step of its tree (a second save is ignored) — `askedAt` a BSON Date
+ * (the order `sort({ askedAt: 1, seq: 1 })` is by instant: a text would sort apart from a Date), the
+ * entry's JSON canonical ISO texts — by tenant, tree
  * and step key (agbossjs/agboss#676: a step key names no tree, so another tree's pause of the same
  * step key is logged too).
  */
@@ -126,6 +143,7 @@ export async function savePauseAnswer(
   rootExecutionId: string,
   answer: PauseAnswerRecord,
 ): Promise<void> {
+  assertAnswerInstants(answer);
   const _id = idOf(tenantId, rootExecutionId, answer.step.idempotencyKey);
   const seq = await nextSequence(db, Collections.PauseAnswers);
   const document = {
@@ -168,6 +186,7 @@ export async function markPauseAnswerNotTaken(
   rootExecutionId: string,
   answer: PauseAnswerRecord,
 ): Promise<void> {
+  assertAnswerInstants(answer);
   const _id = idOf(tenantId, rootExecutionId, answer.step.idempotencyKey);
   const seq = await nextSequence(db, Collections.PauseAnswers);
   const entries = db.collection<{ _id: string }>(Collections.PauseAnswers);

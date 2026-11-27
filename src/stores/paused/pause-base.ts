@@ -4,6 +4,7 @@ import {
   type PausedExecution,
   type PauseRecord,
 } from "@agboss/core";
+import { assertValidInstant, type PauseTransition, type PlannedNotice } from "@agboss/core/stores";
 import type { Collection, Filter } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
@@ -11,7 +12,6 @@ import type { MongoConnection } from "../../connection/mongodb-connection.js";
 import type { MongoTransaction } from "../../connection/transaction.js";
 import { pausedRunJsonOf, pausedRunOfJson } from "../framework-json.js";
 import { idOf } from "../keys.js";
-import type { PauseChange, PlannedNotice } from "./pause-changes.js";
 import {
   pauseIdOf,
   pauseOfDocument,
@@ -76,14 +76,20 @@ export abstract class MongoPauseBase extends PausedExecutionRepository {
     return this.connection.db.collection<PausedDocument>(Collections.PausedExecutions);
   }
 
-  /** The pause `plan` changes where `guard` holds: the record as it is now, `undefined` when nothing changed. */
+  /**
+   * The pause `plan` changes where `guard` holds: the record as it is now, `undefined` when nothing
+   * changed. An Invalid Date for `at` is refused first (a `StoreError.UnreadableRecord`, nothing
+   * written), whether or not the pause exists.
+   */
   protected change(
     tenantId: string,
     pauseId: string,
+    at: Date,
     guard: Filter<PauseDocument>,
-    plan: (before: PauseRecord) => PauseChange | undefined,
+    plan: (before: PauseRecord) => PauseTransition | undefined,
   ): Promise<PauseRecord | undefined> {
     return this.connection.inTransaction(async (transaction) => {
+      assertValidInstant(at, "at");
       const { db, session } = transaction;
       const pauses = db.collection<PauseDocument>(Collections.Pauses);
       const _id = pauseIdOf(tenantId, pauseId);
@@ -122,6 +128,9 @@ export abstract class MongoPauseBase extends PausedExecutionRepository {
 
   async save(paused: PausedExecution): Promise<void> {
     const { run } = paused;
+    // an Invalid Date would be written as `null` and make the run unreadable on every later read
+    for (const [index, pending] of run.pending.entries())
+      assertValidInstant(pending.expiresAt, `pending[${String(index)}].expiresAt`, "paused run");
     await this.#paused.replaceOne(
       { _id: idOf(run.tenantId, run.threadId) },
       {

@@ -148,7 +148,7 @@ describe("MongoPausedExecutionRepository", () => {
 
   it("a stored limit that is `null`, not absent, is refused (the strict reader), and the dates read back as the text that was written", async () => {
     const pauses = pausesOn();
-    const capped = "2026-01-05T18:00:00.000Z";
+    const capped = new Date("2026-01-05T18:00:00.000Z");
     await pauses.findOrCreateByStepKey({
       ...pauseOf("p-cap", "step-cap"),
       maxExpiresAt: capped,
@@ -156,7 +156,7 @@ describe("MongoPausedExecutionRepository", () => {
     });
 
     expect(await pauses.findByTenantIdAndPauseId("default", "p-cap")).toMatchObject({
-      firstAskedAt: "2026-01-05T09:00:00.000Z",
+      firstAskedAt: NINE,
       maxExpiresAt: capped,
       escalationLimits: { maxExtensions: 2 },
     });

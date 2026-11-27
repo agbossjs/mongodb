@@ -1,10 +1,14 @@
 import { PauseClosedReason } from "@agboss/core";
-import { PauseNoticeKind, type PauseMailbox } from "@agboss/core/stores";
+import {
+  instantOfText,
+  PauseNoticeKind,
+  type PauseMailbox,
+  type PlannedNotice,
+} from "@agboss/core/stores";
 import type { ClientSession, Collection, Db, Document } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
 import { idOf } from "../keys.js";
-import type { PlannedNotice } from "./pause-changes.js";
 
 /**
  * The mailboxes of the pause notices (#938, #910 I8–I10): one document per pause and receiver,
@@ -13,8 +17,10 @@ import type { PlannedNotice } from "./pause-changes.js";
  * is delivered: the claim's index never walks the finished), `headWrittenAt` (the first
  * undelivered notice's time, `null` when none), `isDead`, and the claim (`claimToken`,
  * `claimedUntil`). **`headWrittenAt` and every notice's `writtenAt` are BSON Dates**, never ISO
- * strings: the stale look compares them with a Date, and a string never sorts below one. The
- * store converts to ISO text only when it returns a `PauseNotice`.
+ * strings: the stale look compares them with a Date, and a string never sorts below one (BSON
+ * orders by type). The other times of a notice (`closedAt`, `expiresAt`, `previousExpiresAt`) are
+ * only read back, never queried: canonical ISO texts (`toISOString()`), read by `instantOfText`,
+ * so a notice written in any other spelling makes its mailbox unreadable, never a wrong time.
  */
 export interface MailboxDocument {
   _id: string;
@@ -38,14 +44,23 @@ export const mailboxIdOf = (tenantId: string, pauseId: string, recipient: string
 export const mailboxesOf = (db: Db): Collection<MailboxDocument> =>
   db.collection<MailboxDocument>(Collections.PauseNotices);
 
+/** A time of a notice kept as text: canonical only (`instantOfText`), the refusal names the field. */
+const storedInstant = (
+  field: string,
+): z.ZodOptional<z.ZodPipe<z.ZodString, z.ZodTransform<Date>>> =>
+  z
+    .string()
+    .transform((text) => instantOfText(text, field))
+    .optional();
+
 const StoredNotice = z.object({
   seq: z.number(),
   kind: z.enum(PauseNoticeKind),
-  writtenAt: z.date().transform((at) => at.toISOString()),
+  writtenAt: z.date(),
   reason: z.enum(PauseClosedReason).optional(),
-  closedAt: z.string().optional(),
-  expiresAt: z.string().optional(),
-  previousExpiresAt: z.string().optional(),
+  closedAt: storedInstant("closedAt"),
+  expiresAt: storedInstant("expiresAt"),
+  previousExpiresAt: storedInstant("previousExpiresAt"),
   assignees: z.array(z.string()).optional(),
   previousAssignees: z.array(z.string()).optional(),
   previousTarget: z.string().optional(),
@@ -72,7 +87,7 @@ const StoredMailbox = z.object({
   headWrittenAt: z
     .date()
     .nullable()
-    .transform((at) => at?.toISOString()),
+    .transform((at) => at ?? undefined),
   isDead: z.boolean(),
   problem: z
     .string()
@@ -98,14 +113,16 @@ const orElse = (field: string, fallback: unknown): Document => ({
   $ifNull: [`$${field}`, fallback],
 });
 
-/** The notice as an expression: its texts as literals, its time a Date, its `seq` the next place. */
+/** The notice as an expression: its texts as literals, its times canonical texts but `writtenAt` (a Date), its `seq` the next place. */
 function noticeExpression(planned: PlannedNotice): Document {
   const fields = Object.entries(planned.notice).flatMap(([key, value]) => {
     if (typeof value === "string") return [[key, literal(value)] as const];
+    // `closedAt`, `expiresAt`, `previousExpiresAt`: text, never a BSON Date among the notice's texts
+    if (value instanceof Date) return [[key, literal(value.toISOString())] as const];
     // a list of texts (the assignees) or an object (the actor): a literal too, no text of it is a field path
     return typeof value === "object" ? [[key, { $literal: value }] as const] : [];
   });
-  const writtenAt = new Date(planned.notice.writtenAt);
+  const { writtenAt } = planned.notice;
   const seq = { $add: [{ $size: NOTICES }, 1] };
   return { ...Object.fromEntries(fields), writtenAt, seq };
 }
@@ -121,7 +138,7 @@ export function appendStage(
   site: { readonly tenantId: string; readonly pauseId: string },
   planned: PlannedNotice,
 ): Document {
-  const writtenAt = new Date(planned.notice.writtenAt);
+  const { writtenAt } = planned.notice;
   const head = (idle: unknown, kept: Document): Document => ({ $cond: [IS_IDLE, idle, kept] });
   return {
     $set: {

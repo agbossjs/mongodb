@@ -158,7 +158,7 @@ import { MongoDriver, MongoTransactionReadConcern } from "@agboss/mongodb";
 
 export const driver = MongoDriver({
   url: secret("MONGODB_URL"), // mongodb://h1,h2,h3/<database>?replicaSet=rs0, read once at start, never printed
-  database: "desk", // default: the URL's database, else "agboss"
+  database: "desk", // or env("MONGODB_DATABASE"), read once at start; default: the URL's database, else "agboss"
   transactionReadConcern: MongoTransactionReadConcern.Snapshot, // Snapshot (default) or Majority
   schemaSetup: SchemaSetup.Check, // SchemaSetup.Check (default) or SchemaSetup.MigrateOnStart
   timeouts: { watchLiveness: sec(10) }, // the longest a silently dead change stream goes unnoticed: 10 s (default), 2 to 3600 s
@@ -393,8 +393,17 @@ fields `assignees`, `externalRef` and `channel` (absent when the pause has none,
   never from the change, never from configuration. A move to another target narrows them with the
   core's `narrowedLimits` over that same read, in the same write as the replacement's insert; a
   deadline a change sets must be at or before the cap, and is refused when none is given while a cap
-  is set. `maxExpiresAt` and `firstAskedAt` are the `toISOString()` text the core wrote: kept as text,
-  compared as text.
+  is set. Every time of a pause is a `Date` in memory (`firstAskedAt`, `maxExpiresAt`, the chain's
+  `at`, a notice's times) and compared by instant, never as text or with `===`; in the record JSON it
+  is the canonical `toISOString()` text and is read back in that one spelling only (any other is
+  `StoreError.UnreadableRecord`, naming the field).
+- **Dates in the fields a query reads.** `expiresAt`, `remindAt`, `resolvedAt` and a replacement's
+  `askedAt` of a pause document, `headWrittenAt`, `nextAttemptAt`, `claimedUntil` and every notice's
+  `writtenAt` of a mailbox, and the answer log's `askedAt` are BSON Dates in every document: BSON
+  orders by type, so one text among them would sort apart and a `$lte: Date` would never match it.
+  The scans' indexes are partial on `$type: "date"`, and a document with a text in such a field is
+  refused when read (`StoreError.UnreadableRecord`), not skipped quietly. An Invalid `Date` handed to
+  any write or scan is refused first (`StoreError.UnreadableRecord` naming the field), nothing written.
 - **A deadline may be taken away** (`expiresAt: null`, `remindAt: null` in the document): the
   deadline indexes are partial on `$type: "date"`, so such a pause is in none of them.
 - **Listing.** `findPageByTenantId` and `findPageOfAllTenants` (every tenant's, no tenant clause,

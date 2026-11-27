@@ -1,11 +1,12 @@
 import { Clock, Injectable, PauseStatus, type PauseRecord } from "@agboss/core";
-import type {
-  PauseFilter,
-  PauseNoticeClaim,
-  PauseNoticeCounts,
-  PausePage,
-  PauseScanAfter,
-  SetAsideMailbox,
+import {
+  assertValidInstant,
+  type PauseFilter,
+  type PauseNoticeClaim,
+  type PauseNoticeCounts,
+  type PausePage,
+  type PauseScanAfter,
+  type SetAsideMailbox,
 } from "@agboss/core/stores";
 import type { Milliseconds } from "@agboss/core/units";
 import { Collections } from "../connection/collections.js";
@@ -110,11 +111,13 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     after?: string,
   ): Promise<PausePage> {
     assertScanLimit(limit);
+    assertValidInstant(cutoff, "cutoff");
     return removablePageBefore(this.connection.db, cutoff, limit, after);
   }
 
   /** Removes the closed pauses before `cutoff` with no live mailbox, and their mailboxes, a batch per transaction. */
   async deleteByResolvedAtBefore(cutoff: Date): Promise<void> {
+    assertValidInstant(cutoff, "cutoff");
     // what this sweep removed: a reassigned pause whose replacement went in the same sweep stays for
     // the next one, so a chain is removed oldest first (#946)
     const removedByThisSweep = new Set<string>();

@@ -168,7 +168,7 @@ describe("agbossjs/agboss#81: the first notice of a mailbox, and one that follow
       { tenantId: "default", pauseId: "new" },
       {
         ...{ recipient: AUDIT, at: NEXT },
-        notice: { kind: PauseNoticeKind.Opened, writtenAt: NEXT.toISOString() },
+        notice: { kind: PauseNoticeKind.Opened, writtenAt: NEXT },
       },
     );
 
@@ -193,7 +193,7 @@ describe("agbossjs/agboss#81: the first notice of a mailbox, and one that follow
       { tenantId: "default", pauseId: "idle" },
       {
         ...{ recipient: AUDIT, at: NEXT },
-        notice: { kind: PauseNoticeKind.Closed, writtenAt: NEXT.toISOString() },
+        notice: { kind: PauseNoticeKind.Closed, writtenAt: NEXT },
       },
     );
 

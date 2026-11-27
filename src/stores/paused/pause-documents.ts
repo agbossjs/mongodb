@@ -1,4 +1,5 @@
 import { PauseStatus, type PauseRecord } from "@agboss/core";
+import { assertPauseInstants, StoreError } from "@agboss/core/stores";
 import type { ClientSession, Db, UpdateFilter } from "mongodb";
 import { z } from "zod";
 import { Collections } from "../../connection/collections.js";
@@ -80,18 +81,6 @@ const Ids = z.object({ pauseId: z.string().optional(), rootExecutionId: z.string
 
 const Fields = z.record(z.string(), z.unknown());
 
-/** The instant of an ISO 8601 text a record holds; a text that is none is a `TypeError`. */
-export function dateOf(text: string, field: string): Date {
-  const instant = new Date(text);
-  if (Number.isNaN(instant.getTime()))
-    throw new TypeError(`a pause's ${field} is an ISO 8601 time, not ${JSON.stringify(text)}`);
-  return instant;
-}
-
-/** `text` as a BSON Date, `null` when absent. */
-export const dateOrNull = (text: string | undefined, field: string): Date | null =>
-  text === undefined ? null : dateOf(text, field);
-
 /** The deadline fields a document keeps over its record's: `undefined` for a document without them. */
 function deadlinesOf(stored: z.infer<typeof Stored>): readonly (readonly [string, unknown])[] {
   const iso = (date: Date | null | undefined): Date | string | null | undefined =>
@@ -105,9 +94,19 @@ function deadlinesOf(stored: z.infer<typeof Stored>): readonly (readonly [string
 
 /** The record a document keeps: the created record, its closing over it, its status, sending and deadlines. */
 export function pauseOfDocument(found: unknown): PauseRecord {
-  const stored = Stored.parse(found);
+  // a text where a BSON Date belongs (a hand-written migration's) is refused, naming the field, never the value
+  const parsed = Stored.safeParse(found);
   // a text that is not JSON names the pause by its ids, never by the text or a tenant (#906 D4)
   const ids = Ids.parse(found);
+  if (!parsed.success)
+    throw new StoreError.UnreadableRecord({
+      record: "pause",
+      ids: Object.entries(ids)
+        .flatMap(([key, value]) => (typeof value === "string" ? [`${key} ${value}`] : []))
+        .join(", "),
+      fields: parsed.error.issues.map((issue) => issue.path.join(".")).join(", "),
+    });
+  const stored = parsed.data;
   const closing =
     stored.closing === null ? {} : Fields.parse(parsedOrUnreadable("pause", stored.closing, ids));
   const created = Fields.parse(parsedOrUnreadable("pause", stored.record, ids));
@@ -140,12 +139,14 @@ export function closingOf(pause: PauseRecord): string | null {
 
 /** The fields a change of a pause sets: status, sending, closing and deadlines, as the record has them now. */
 export function fieldsOf(pause: PauseRecord): PauseFields {
+  // an Invalid Date is no BSON Date and no JSON time: refused before anything is written
+  assertPauseInstants(pause);
   return {
     status: pause.status,
     isSent: pause.isSent,
-    resolvedAt: dateOrNull(pause.resolvedAt, "resolvedAt"),
-    expiresAt: dateOrNull(pause.expiresAt, "expiresAt"),
-    remindAt: dateOrNull(pause.remindAt, "remindAt"),
+    resolvedAt: pause.resolvedAt ?? null,
+    expiresAt: pause.expiresAt ?? null,
+    remindAt: pause.remindAt ?? null,
     expiryBound: pause.expiryBound ?? null,
     closing: closingOf(pause),
     reassignedTo: pause.reassignedTo ?? null,
@@ -191,6 +192,8 @@ export async function insertPause(
   session: ClientSession,
   pause: PauseRecord,
 ): Promise<void> {
+  // before the sequence is drawn: a refused pause leaves no trace, not even a gap in the numbers
+  assertPauseInstants(pause);
   const document: PauseDocument = {
     _id: pauseIdOf(pause.tenantId, pause.pauseId),
     tenantId: pause.tenantId,
@@ -204,13 +207,14 @@ export async function insertPause(
     ...listingFieldsOf(pause),
     ...(pause.reassignedFrom === undefined
       ? {}
-      : { reassignedFrom: pause.reassignedFrom, askedAt: dateOf(pause.askedAt, "askedAt") }),
+      : { reassignedFrom: pause.reassignedFrom, askedAt: pause.askedAt }),
   };
   await db.collection<PauseDocument>(Collections.Pauses).insertOne(document, { session });
 }
 
 /** The pause of the step in its tenant's tree when one exists, else `pause` saved — one upsert, then a read. */
 export async function findOrCreatePause(db: Db, pause: PauseRecord): Promise<PauseRecord> {
+  assertPauseInstants(pause);
   const pauses = db.collection<PauseDocument>(Collections.Pauses);
   const step = {
     tenantId: pause.tenantId,

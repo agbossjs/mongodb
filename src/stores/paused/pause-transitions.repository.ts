@@ -1,16 +1,4 @@
 import { PauseStatus, type PauseCancellation, type PauseRecord } from "@agboss/core";
-import type {
-  PauseExpiry,
-  PauseNoticeFacts,
-  PauseNoticeKind,
-  PauseAnswer,
-  PauseReassignmentChange,
-  PauseRecipients,
-  PauseSeen,
-  PauseTimeoutChange,
-  PauseUntakenResolution,
-} from "@agboss/core/stores";
-import { MongoPauseBase } from "./pause-base.js";
 import {
   cancelChange,
   closeUntakenChange,
@@ -18,8 +6,18 @@ import {
   expireChange,
   remindChange,
   resolveChange,
-} from "./pause-changes.js";
-import { timeoutChange } from "./pause-timeout.js";
+  timeoutChange,
+  type PauseAnswer,
+  type PauseExpiry,
+  type PauseNoticeFacts,
+  type PauseNoticeKind,
+  type PauseReassignmentChange,
+  type PauseRecipients,
+  type PauseSeen,
+  type PauseTimeoutChange,
+  type PauseUntakenResolution,
+} from "@agboss/core/stores";
+import { MongoPauseBase } from "./pause-base.js";
 import { findOrCreatePause, pauseIdOf, pauseOfDocument } from "./pause-documents.js";
 import { markSentIn } from "./pause-sent.js";
 import { noticeOnceIn } from "./pause-once.js";
@@ -78,7 +76,7 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     recipients: PauseRecipients,
     seen?: PauseSeen,
   ): Promise<PauseRecord | undefined> {
-    return this.change(tenantId, pauseId, this.guards.open(at), (before) =>
+    return this.change(tenantId, pauseId, at, this.guards.open(at), (before) =>
       resolveChange(before, answer, at, recipients, seen),
     );
   }
@@ -95,7 +93,7 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     at: Date,
     seen: PauseSeen,
   ): Promise<boolean> {
-    const decided = await this.change(tenantId, pauseId, this.guards.open(at), (before) =>
+    const decided = await this.change(tenantId, pauseId, at, this.guards.open(at), (before) =>
       decideChange(before, answer, at, seen),
     );
     return decided !== undefined;
@@ -108,7 +106,7 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
-    return this.change(tenantId, pauseId, this.guards.inStatus(PauseStatus.Pending), (before) =>
+    return this.change(tenantId, pauseId, at, this.guards.inStatus(PauseStatus.Pending), (before) =>
       cancelChange(before, resolution, at, recipients),
     );
   }
@@ -120,7 +118,7 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
-    return this.change(tenantId, pauseId, this.guards.due(at), (before) =>
+    return this.change(tenantId, pauseId, at, this.guards.due(at), (before) =>
       expireChange(before, expiry, at, recipients),
     );
   }
@@ -132,8 +130,12 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
-    return this.change(tenantId, pauseId, this.guards.inStatus(PauseStatus.Resolved), (before) =>
-      closeUntakenChange(before, resolution, at, recipients),
+    return this.change(
+      tenantId,
+      pauseId,
+      at,
+      this.guards.inStatus(PauseStatus.Resolved),
+      (before) => closeUntakenChange(before, resolution, at, recipients),
     );
   }
 
@@ -150,10 +152,12 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
-    const previous =
-      change.previousExpiresAt === undefined ? undefined : new Date(change.previousExpiresAt);
-    return this.change(tenantId, pauseId, this.guards.changeable(at, previous), (before) =>
-      timeoutChange(before, change, at, recipients),
+    return this.change(
+      tenantId,
+      pauseId,
+      at,
+      this.guards.changeable(at, change.previousExpiresAt),
+      (before) => timeoutChange(before, change, at, recipients),
     );
   }
 
@@ -183,8 +187,12 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
     at: Date,
     recipients: PauseRecipients,
   ): Promise<boolean> {
-    const reminded = await this.change(tenantId, pauseId, this.guards.remindable(at), (before) =>
-      remindChange(before, at, recipients),
+    const reminded = await this.change(
+      tenantId,
+      pauseId,
+      at,
+      this.guards.remindable(at),
+      (before) => remindChange(before, at, recipients),
     );
     return reminded !== undefined;
   }

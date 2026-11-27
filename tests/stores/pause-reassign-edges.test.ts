@@ -102,7 +102,7 @@ describe("agbossjs/agboss#1213: the retention of a chain and of a long list", ()
 
   it("one sweep goes on past a batch of the retention until nothing is left to remove", async () => {
     const { db } = connectionTo(database.url());
-    await insertTakenRows(db, 501, NINE.toISOString());
+    await insertTakenRows(db, 501, NINE);
 
     await storeOn().deleteByResolvedAtBefore(LATER);
 

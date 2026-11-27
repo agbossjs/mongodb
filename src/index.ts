@@ -65,6 +65,5 @@ export { MongoPauseBase } from "./stores/paused/pause-base.js";
 export { MongoPauseTransitions } from "./stores/paused/pause-transitions.repository.js";
 export type { PauseDocument } from "./stores/paused/pause-documents.js";
 export type { PauseGuards } from "./stores/paused/pause-guards.js";
-export type { PauseChange, PlannedNotice } from "./stores/paused/pause-changes.js";
 export { MongoExecutionRecordRepository } from "./stores/mongo-execution-record.repository.js";
 export { MongoCheckpointSaver } from "./stores/mongo-checkpoint-saver.js";

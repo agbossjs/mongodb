@@ -1,5 +1,10 @@
 import { PauseStatus, type PauseRecord } from "@agboss/core";
-import type { PauseFilter, PausePage, PauseScanAfter } from "@agboss/core/stores";
+import {
+  assertValidInstant,
+  type PauseFilter,
+  type PausePage,
+  type PauseScanAfter,
+} from "@agboss/core/stores";
 import type { ClientSession, Db, Filter } from "mongodb";
 import { Collections } from "../../connection/collections.js";
 import { pauseIdOf, pauseOfDocument, type PauseDocument } from "./pause-documents.js";
@@ -24,6 +29,7 @@ export function assertScanLimit(limit: number): void {
 /** Throws unless the filter names at least one status and its texts are texts (never an operator document). */
 export function assertPauseFilter(filter: PauseFilter): void {
   if (filter.statuses.length === 0) throw new TypeError("a pause filter names at least one status");
+  assertValidInstant(filter.expiresBefore, "expiresBefore");
   for (const [name, value] of Object.entries({
     target: filter.target,
     channel: filter.channel,
@@ -101,12 +107,8 @@ function pastKeyset(
   after: PauseScanAfter | undefined,
 ): Filter<PauseDocument> {
   if (after === undefined) return {};
-  const time = new Date(after.at);
-  if (Number.isNaN(time.getTime()))
-    throw new TypeError(
-      `a pause scan's cursor is an ISO 8601 time, not ${JSON.stringify(after.at)}`,
-    );
-  const { tenantId, pauseId } = after;
+  assertValidInstant(after.at, "after.at");
+  const { at: time, tenantId, pauseId } = after;
   return {
     $or: [
       { [field]: { $gt: time } },
@@ -127,12 +129,14 @@ export async function dueBy(
   limit: number,
   after?: PauseScanAfter,
 ): Promise<PauseRecord[]> {
+  assertValidInstant(at, "at");
+  const keyset = pastKeyset(field, after);
   const found = await db
     .collection<PauseDocument>(Collections.Pauses)
     .find({
       status: PauseStatus.Pending,
       [field]: { $lte: at, $type: "date" },
-      ...pastKeyset(field, after),
+      ...keyset,
     })
     .sort({ [field]: 1, tenantId: 1, pauseId: 1 })
     .limit(limit)
@@ -212,6 +216,8 @@ export async function reassignedUnsentBefore(
   limit: number,
   after?: PauseScanAfter,
 ): Promise<PauseRecord[]> {
+  assertValidInstant(cutoff, "cutoff");
+  const keyset = pastKeyset("askedAt", after);
   const found = await db
     .collection<PauseDocument>(Collections.Pauses)
     .find({
@@ -219,7 +225,7 @@ export async function reassignedUnsentBefore(
       isSent: false,
       reassignedFrom: { $exists: true },
       askedAt: { $lt: cutoff },
-      ...pastKeyset("askedAt", after),
+      ...keyset,
     })
     .sort({ askedAt: 1, tenantId: 1, pauseId: 1 })
     .limit(limit)

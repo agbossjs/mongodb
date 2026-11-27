@@ -10,7 +10,7 @@ import { PauseStatus, type PauseRecord } from "@agboss/core";
 import type { PauseRecipients } from "@agboss/core/stores";
 import { describe, expect, it } from "vitest";
 import { MongoPausedExecutionRepository, type MongoTransaction } from "../../src/index.js";
-import type { PlannedNotice } from "../../src/stores/paused/pause-changes.js";
+import type { PlannedNotice } from "@agboss/core/stores";
 import { mailboxIdOf, mailboxesOf } from "../../src/stores/paused/pause-mailboxes.js";
 import { testDatabase } from "../support/database.js";
 import { ANSWER, NINE, pauseOf } from "../support/pauses.js";

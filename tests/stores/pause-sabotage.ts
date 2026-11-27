@@ -7,14 +7,12 @@ import type {
   PauseRecipients,
   PauseTimeoutChange,
 } from "@agboss/core/stores";
-import { seenOf } from "@agboss/core/stores";
+import { onceNotices, seenOf, timeoutChange } from "@agboss/core/stores";
+import type { PlannedNotice } from "@agboss/core/stores";
 import { MongoServerError } from "mongodb";
 import type { MongoTransaction } from "../../src/index.js";
 import { MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
-import { onceNotices } from "../../src/stores/paused/pause-marks.js";
-import type { PlannedNotice } from "../../src/stores/paused/pause-changes.js";
-import { timeoutChange } from "../../src/stores/paused/pause-timeout.js";
 import { pauseIdOf, pauseOfDocument } from "../../src/stores/paused/pause-documents.js";
 import { PAUSE_GUARDS, inStatus, type PauseGuards } from "../../src/stores/paused/pause-guards.js";
 import {
@@ -144,7 +142,7 @@ export class TimeoutChangeWithoutCompare extends MongoPausedExecutionRepository 
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
     const guard = { status: PauseStatus.Pending, expiresAt: { $gt: at } };
-    return this.change(tenantId, pauseId, guard, (before) =>
+    return this.change(tenantId, pauseId, at, guard, (before) =>
       timeoutChange(
         before,
         {
