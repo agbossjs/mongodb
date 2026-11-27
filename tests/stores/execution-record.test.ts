@@ -550,7 +550,7 @@ describe("MongoExecutionRecordRepository", () => {
       _id: "bad",
       tenantId: "default",
       rootExecutionId: "root-bad",
-      askedAt: "",
+      askedAt: new Date("2026-01-05T09:00:00.000Z"),
       seq: 1,
       record: '{"role":1}',
     } as { _id: string });

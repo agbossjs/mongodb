@@ -84,6 +84,7 @@ import { NewStatusTransition } from '@agboss/core';
 import { NewSummary } from '@agboss/core';
 import { NewThread } from '@agboss/core';
 import { NewTurn } from '@agboss/core';
+import type { OnAbandon } from '@agboss/core/stores';
 import { OnDestroy } from '@agboss/core';
 import { OnInit } from '@agboss/core';
 import { OutboundCallClaim } from '@agboss/core/stores';
@@ -359,11 +360,12 @@ export interface MongoCollationNotSimpleErrorOptions {
 }
 
 // @public
-export class MongoConnection implements OnInit, OnDestroy {
+export class MongoConnection implements OnInit, OnDestroy, OnAbandon {
     constructor(source?: MongoConnectionSettings | ResolvedSettings, clock?: Clock | undefined);
     readonly client: MongoClient;
     readonly db: Db;
     inTransaction<TResult>(work: (transaction: MongoTransaction) => Promise<TResult>): Promise<TResult>;
+    onAbandon(): void;
     onDestroy(): Promise<void>;
     onInit(): Promise<void>;
     ping(): Promise<void>;

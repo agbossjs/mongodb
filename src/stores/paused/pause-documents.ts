@@ -126,6 +126,17 @@ export function pauseOfDocument(found: unknown): PauseRecord {
   return pauseRecordOf(record);
 }
 
+/**
+ * What a transition hands back: a copy (the caller's own `Date`s are never inside the stored state or
+ * what it returns), as a read gives the record — a field the pause has none of is no key, not `undefined`.
+ */
+export function returnedPause(pause: PauseRecord): PauseRecord {
+  const copy = structuredClone(pause);
+  for (const key of Object.keys(copy) as (keyof PauseRecord)[])
+    if (copy[key] === undefined) Reflect.deleteProperty(copy, key);
+  return copy;
+}
+
 export const pauseIdOf = (tenantId: string, pauseId: string): string => idOf(tenantId, pauseId);
 
 /** How a closed record closed, as the JSON `closing` keeps it; `null` while it is pending. */

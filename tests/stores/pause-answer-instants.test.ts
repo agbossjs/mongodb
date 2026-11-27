@@ -30,7 +30,7 @@ function database(): { db: Db; updates: unknown[][] } {
 }
 
 const refusal = (field: string): Error =>
-  new StoreError.UnreadableRecord({ record: "pause answer", fields: field });
+  new StoreError.UnreadableRecord({ record: "pause answer", fields: field, isInvalidDate: true });
 
 describe("the pause answer log's times", () => {
   it("saves askedAt as the BSON Date it is and the entry's JSON with canonical texts", async () => {

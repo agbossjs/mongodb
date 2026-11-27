@@ -309,9 +309,8 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
 
   /**
    * agbossjs/agboss#1302: a child's write held open while its root holds its own lease document;
-   * a cancel of the root from another instance. Answers whether the cancel was seen waiting on the
-   * child's transaction (an update of the root's document retrying its write conflicts, in
-   * `currentOp`) before it answered, and whether its mark was committed while the write was open.
+   * a cancel of the root from another instance. Answers whether the cancel was still waiting on the
+   * child's transaction (a transaction retrying its write conflict) when the settle bound passed, and whether its mark was committed while the write was open.
    */
   async function rootHeldChildAndCancel(
     effects: { runOnce: MongoFencedEffectRepository["runOnce"] },
@@ -335,36 +334,13 @@ describe("agbossjs/agboss#909: the cancel and an open fencing transaction", () =
     });
     await inside;
     const cancel = two.leases.requestCancel(tree("root-h"));
-    const isBlocked = await conflictingUpdateOn(one.connection, cancel);
+    // the cancel is a transaction now: its write conflict with the child's open one is retried, never answered
+    const isBlocked = !(await settledWithin(cancel, 600));
     const isMarkedInside = await two.leases.isCancelRequested(tree("root-h"));
     open();
     const written = await write;
     await cancel;
     return { isBlocked, isMarkedInside, written, child };
-  }
-
-  /**
-   * Settles `true` once an update of the leases collection of this database retries write conflicts
-   * (it waits on an open transaction's write of the document), `false` once `unless` settles first;
-   * polls the server, no timer.
-   */
-  async function conflictingUpdateOn(
-    connection: MongoConnection,
-    unless: Promise<unknown>,
-  ): Promise<boolean> {
-    const state = { isOver: false };
-    const over = (): void => {
-      state.isOver = true;
-    };
-    unless.then(over, over);
-    const ns = `${database.name()}.${Collections.ExecutionLeases}`;
-    while (!state.isOver) {
-      const { inprog } = await connection.db
-        .admin()
-        .command({ currentOp: 1, ns, op: "update", active: true, writeConflicts: { $gt: 0 } });
-      if (Array.isArray(inprog) && inprog.length > 0) return true;
-    }
-    return false;
   }
 
   it("agbossjs/agboss#1302: a child whose root holds its document writes it in its transaction: the cancel waits for the child's write, its mark unseen until then, and refuses the next", async () => {

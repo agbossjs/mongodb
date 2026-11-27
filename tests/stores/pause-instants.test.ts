@@ -60,8 +60,12 @@ const documentOf = (pause: PauseRecord): Record<string, unknown> => ({
 });
 
 /** The refusal of an Invalid Date: the typed error naming the field (and its record), never a value. */
-const refusing = (field: string, record = "pause"): Error =>
-  new StoreError.UnreadableRecord({ record, fields: field });
+const refusing = (field: string, record = "pause", isInvalidDate = true): Error =>
+  new StoreError.UnreadableRecord({
+    record,
+    fields: field,
+    ...(isInvalidDate ? { isInvalidDate } : {}),
+  });
 
 /** The error `read` throws: a typed refusal that names `field` and shows no value. */
 function unreadable(read: () => unknown, field: string): void {
@@ -273,7 +277,7 @@ describe("a mailbox: Dates where the store queries them, canonical text in the n
     "a notice's %s in a spelling the framework did not write makes the mailbox unreadable, naming the field",
     (field) => {
       expect(() => mailboxOf(stored({ [field]: "2026-01-05T11:00:00+02:00" }))).toThrowError(
-        refusing(field),
+        refusing(field, "pause", false),
       );
     },
   );
@@ -780,6 +784,22 @@ describe("a transition of a pause: the core's rule over the record read, the Dat
     expect(moved?.expiresAt).not.toBe(due);
     moved?.expiresAt?.setTime(0);
     expect(due).toStrictEqual(NOON);
+  });
+
+  it("a deadline taken away comes back with no `expiresAt` key at all, as a read gives it", async () => {
+    const { store } = storeOn(open);
+
+    const changed = await store.changeTimeoutByTenantIdAndPauseId(
+      "default",
+      "p",
+      { previousExpiresAt: NOON, seen: seenOf(open) },
+      TEN,
+      NO_RECIPIENTS,
+    );
+
+    expect(changed).not.toBeUndefined();
+    expect(Object.keys(changed ?? {})).not.toContain("expiresAt");
+    expect(Object.keys(changed ?? {})).not.toContain("remindAt");
   });
 
   it("a set-aside at an Invalid Date is refused through the store, nothing written", async () => {

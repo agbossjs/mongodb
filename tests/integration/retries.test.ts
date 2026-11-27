@@ -222,20 +222,15 @@ describe("agbossjs/agboss#1017: what the driver's retry could not resolve is unk
     expect(failure).toBeInstanceOf(TypeError);
   });
 
-  it("a single-command write whose retry fails too is StoreError.OutcomeUnknown: acquire, release, a cancel", async () => {
+  it("a single-command write whose retry fails too is StoreError.OutcomeUnknown: acquire (a cancel is a transaction since #1341d: the driver retries it as a whole)", async () => {
     const leases = leasesOf("instance-1");
     await failNext(["findAndModify"], { closeConnection: true }, 2);
 
     const acquired: unknown = await leases
       .acquire("default", "unknown-5", minutes(1))
       .catch((error: unknown) => error);
-    await failNext(["update"], { closeConnection: true }, 2);
-    const cancelled: unknown = await leases
-      .requestCancel({ tenantId: "default", rootExecutionId: "unknown-6" })
-      .catch((error: unknown) => error);
 
     expect(acquired).toBeInstanceOf(StoreError.OutcomeUnknown);
-    expect(cancelled).toBeInstanceOf(StoreError.OutcomeUnknown);
   });
 });
 

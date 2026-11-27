@@ -70,7 +70,7 @@ export const DROP_OLD_NAMES = { $unset: ["leaseEpoch", "previousEpoch"] };
 export const TokenFields = z
   .object({ token: z.number().int().optional(), leaseEpoch: z.number().int().optional() })
   .refine((stored) => stored.token !== undefined || stored.leaseEpoch !== undefined, {
-    message: "a lease document has a token (or a 0.1.0 leaseEpoch)",
+    error: "a lease document has a token (or a 0.1.0 leaseEpoch)",
   });
 
 /**

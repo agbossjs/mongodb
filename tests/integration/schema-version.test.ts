@@ -102,7 +102,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
     await expect(refused).rejects.toMatchObject({
       code: "mongodb.schema-missing",
       applied: undefined,
-      expected: 4,
+      expected: 1,
       collections: [],
     });
     await expect(refused).rejects.toThrow(
@@ -124,7 +124,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
     await expect(startOn(database, SchemaSetup.Check)).rejects.toMatchObject({
       code: "mongodb.schema-missing",
       applied: 0,
-      expected: 4,
+      expected: 1,
     });
   });
 
@@ -151,7 +151,7 @@ describe("agbossjs/agboss#891 AC1: the schema's version", () => {
     await expect(startOn(database, SchemaSetup.MigrateOnStart)).rejects.toMatchObject({
       code: "mongodb.schema-too-new",
       applied: 7,
-      expected: 4,
+      expected: 1,
     });
     await expect(migrateMongodb({ url: REPLICA_SET_URL, database })).rejects.toThrow(
       MongoSchemaTooNewError,

@@ -43,7 +43,7 @@ export const dropOnServer =
   async (database, boundMs) => {
     await client
       .db(database)
-      .dropDatabase({ maxTimeMS: boundMs, writeConcern: { w: "majority", wtimeout: boundMs } });
+      .dropDatabase({ maxTimeMS: boundMs, writeConcern: { w: "majority", wtimeoutMS: boundMs } });
   };
 
 const describe = (error: unknown): string =>
