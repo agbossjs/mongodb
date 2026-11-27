@@ -52,4 +52,6 @@ export const pausedRunOf = (threadId = "thread-1", runId = "run-1"): PausedExecu
 });
 
 /** The stored form of `pausedRunOf()`, as a plain object. */
-export const currentPausedRun: Record<string, unknown> = JSON.parse(pausedRunJsonOf(pausedRunOf()));
+/** Made on use, never at import: a test file that imports this one must not fail outside a test run. */
+export const currentPausedRun = (): Record<string, unknown> =>
+  JSON.parse(pausedRunJsonOf(pausedRunOf())) as Record<string, unknown>;

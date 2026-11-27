@@ -52,7 +52,7 @@ describe("agbossjs/agboss#81: a paused run", () => {
   it("is saved with the time it paused at, the clock's", async () => {
     const run = pausedRunOfJson(
       JSON.stringify({
-        ...currentPausedRun,
+        ...currentPausedRun(),
         ...{ threadId: "thread-1", tenantId: "acme", runId: "run-9", turnId: "turn-1" },
       }),
     );

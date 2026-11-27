@@ -37,7 +37,19 @@ export interface MongoMigration {
 export const MIGRATIONS: readonly MongoMigration[] = [{ version: 1, name: "baseline_0_1_1" }];
 
 /** The schema version this package needs: its newest migration's. */
-export const SCHEMA_VERSION = Math.max(...MIGRATIONS.map((migration) => migration.version));
+export const SCHEMA_VERSION = MIGRATIONS.reduce(
+  (newest, migration) => Math.max(newest, migration.version),
+  0,
+);
+
+/**
+ * Whether a database at `from` is older than this package. A database never migrated (no version) is
+ * not behind: no old instance runs on it, so there is none to stop.
+ */
+function isBehind(from: number | undefined): boolean {
+  // Stryker disable next-line LogicalOperator: equivalent while the schema has one migration: `from && SCHEMA_VERSION` differs from `from ?? SCHEMA_VERSION` only for a version between 0 and the newest, and there is none
+  return (from ?? SCHEMA_VERSION) < SCHEMA_VERSION;
+}
 
 /** The `_id` of the version document. */
 export const SCHEMA_DOCUMENT_ID = "agboss";
@@ -135,8 +147,7 @@ export async function migrateSchema(
   signal?.throwIfAborted();
   const from = await appliedVersionOf(db);
   refuseNewer(from);
-  if ((from ?? SCHEMA_VERSION) < SCHEMA_VERSION && options.allowLiveLeases !== true)
-    await refuseLiveLeases(db);
+  if (isBehind(from) && options.allowLiveLeases !== true) await refuseLiveLeases(db);
   await ensureSchema(db);
   signal?.throwIfAborted();
   await raiseVersion(db);
@@ -172,9 +183,7 @@ export async function migrateAtStart(
   // newer schema waits for nothing, so its removal is equivalent
   // Stryker disable next-line CallExpression: equivalent, see above
   refuseNewer(from);
-  // a database never migrated has no instance to stop: with no version it is not behind
-  const isBehind = (from ?? SCHEMA_VERSION) < SCHEMA_VERSION;
-  if (isBehind && !allowLiveLeases)
+  if (isBehind(from) && !allowLiveLeases)
     await waitForLeasesToLapse(db, options.leaseWait ?? DEFAULT_LEASE_WAIT, options.sleep);
   return migrateSchema(db, { allowLiveLeases });
 }

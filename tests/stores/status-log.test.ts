@@ -12,6 +12,7 @@ import {
   appendStatus,
   forgottenStatus,
   historyOf,
+  recordTransitionOf,
 } from "../../src/stores/status-log.js";
 
 const SESSION = { id: "session" } as never;
@@ -163,4 +164,64 @@ describe("the history and its removal", () => {
       [Collections.ThreadStatusTransitions, "deleteMany", THREAD, {}],
     ]);
   });
+});
+
+describe("the thread status each record status makes", () => {
+  it.each([
+    ["running", ThreadStatus.Running, StatusTrigger.Start],
+    ["paused", ThreadStatus.Paused, StatusTrigger.Ask],
+    ["answered", ThreadStatus.Finished, StatusTrigger.Finish],
+    ["guarded", ThreadStatus.Finished, StatusTrigger.Finish],
+    ["failed", ThreadStatus.Failed, StatusTrigger.Fail],
+    ["stopped", ThreadStatus.Stopped, StatusTrigger.Stop],
+    ["cancelled", ThreadStatus.Cancelled, StatusTrigger.Cancel],
+  ])("%s", (recordStatus, toStatus, trigger) => {
+    expect(recordTransitionOf(THREAD, recordStatus, undefined, undefined)).toStrictEqual({
+      ...THREAD,
+      toStatus,
+      trigger,
+    });
+  });
+});
+
+describe("a record running again while its tree is stopping or cancelling", () => {
+  const lastOf = (toStatus: string) => ({
+    ...THREAD,
+    seq: 1,
+    fromStatus: null,
+    toStatus,
+    trigger: "stop",
+    at: NOW,
+  });
+  const running = { ...THREAD, toStatus: ThreadStatus.Running, trigger: StatusTrigger.Resume };
+
+  it.each([ThreadStatus.Stopping, ThreadStatus.Cancelling])(
+    "is no change while the thread is %s",
+    async (status) => {
+      const { db, log } = recording(lastOf(status));
+
+      expect(await appendStatus(db, SESSION, running, NOW)).toBeUndefined();
+
+      expect(log.map((one) => one[1])).toStrictEqual(["findOne"]);
+    },
+  );
+
+  it("is the only move a stop under way keeps from the log: another status after it is a change", async () => {
+    const { db, log } = recording(lastOf(ThreadStatus.Stopping));
+
+    expect(await appendStatus(db, SESSION, PAUSED, NOW)).toMatchObject({ seq: 2 });
+
+    expect(log.map((one) => one[1])).toStrictEqual(["findOne", "insertOne"]);
+  });
+
+  it.each([ThreadStatus.Paused, ThreadStatus.Stopped, ThreadStatus.Finished])(
+    "is a change after %s",
+    async (status) => {
+      const { db, log } = recording(lastOf(status));
+
+      expect(await appendStatus(db, SESSION, running, NOW)).toMatchObject({ seq: 2 });
+
+      expect(log.map((one) => one[1])).toStrictEqual(["findOne", "insertOne"]);
+    },
+  );
 });

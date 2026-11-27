@@ -22,7 +22,9 @@ export function withAmbientTransaction<TResult>(
   transaction: MongoTransaction,
   work: () => Promise<TResult>,
 ): Promise<TResult> {
-  return STORAGE.run([...(STORAGE.getStore() ?? []), { owner, transaction }], work);
+  const outer = STORAGE.getStore();
+  const own = { owner, transaction };
+  return STORAGE.run(outer === undefined ? [own] : [...outer, own], work);
 }
 
 /** `owner`'s transaction of the `runOnce` the caller is inside of; `IdempotencyError.OutsideTransaction` outside one. */
