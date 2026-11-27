@@ -710,6 +710,19 @@ describe("a transition of a pause: the core's rule over the record read, the Dat
     },
   );
 
+  it.each(["expiresAt", "remindAt", "previousExpiresAt"])(
+    "a deadline change with an Invalid %s is refused before the read, even for a pause that does not exist",
+    async (field) => {
+      const { store, writes } = storeOn(open);
+      const change = { seen: seenOf(open), [field]: BAD };
+
+      await expect(
+        store.changeTimeoutByTenantIdAndPauseId("default", "missing", change, TEN, NO_RECIPIENTS),
+      ).rejects.toThrowError(refusing(field));
+      expect(writes).toEqual([]);
+    },
+  );
+
   it("a paused run with an Invalid Date in a pending deadline is refused before it is saved", async () => {
     const { store } = storeOn(open);
     const pending = { expiresAt: BAD } as never;

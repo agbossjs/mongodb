@@ -11,4 +11,4 @@ and the core's are called, so the stores cannot diverge. The exported types `Pau
 reads are BSON Dates in every document, the JSON a record keeps is canonical ISO text read back in that
 spelling only, and an Invalid `Date` is refused (`StoreError.UnreadableRecord`) before anything is
 written. The answer log's `askedAt` is a BSON Date (a database made by an earlier unreleased build with
-text there is to be recreated). `MongoDriver`'s `database` is `string | EnvRef<string>`.
+text there is recreated: no migration, a hard break). `MongoDriver`'s `database` is `string | EnvRef<string>`.

@@ -403,7 +403,7 @@ fields `assignees`, `externalRef` and `channel` (absent when the pause has none,
   orders by type, so one text among them would sort apart and a `$lte: Date` would never match it.
   The scans' indexes are partial on `$type: "date"`, and a document with a text in such a field is
   refused when read (`StoreError.UnreadableRecord`), not skipped quietly. An Invalid `Date` handed to
-  any write or scan is refused first (`StoreError.UnreadableRecord` naming the field), nothing written.
+  any write or scan is refused first (`StoreError.UnreadableRecord` naming the field), nothing written. A database an earlier unreleased 0.1.1 build made (text in the answer log's `askedAt`) is recreated: no migration, no 0.1.0 compatibility.
 - **A deadline may be taken away** (`expiresAt: null`, `remindAt: null` in the document): the
   deadline indexes are partial on `$type: "date"`, so such a pause is in none of them.
 - **Listing.** `findPageByTenantId` and `findPageOfAllTenants` (every tenant's, no tenant clause,

@@ -1,5 +1,6 @@
 import { PauseStatus, type PauseCancellation, type PauseRecord } from "@agboss/core";
 import {
+  assertValidInstant,
   cancelChange,
   closeUntakenChange,
   decideChange,
@@ -145,14 +146,18 @@ export abstract class MongoPauseTransitions extends MongoPauseBase {
    * deadline is still `change.previousExpiresAt` (absent: none); the plan decides the pause as seen,
    * the new deadline after `at` or none, the record's cap and its `maxExtensions` count.
    */
-  changeTimeoutByTenantIdAndPauseId(
+  async changeTimeoutByTenantIdAndPauseId(
     tenantId: string,
     pauseId: string,
     change: PauseTimeoutChange,
     at: Date,
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
-    return this.change(
+    // refused before the read, whether or not the pause exists
+    assertValidInstant(change.expiresAt, "expiresAt");
+    assertValidInstant(change.remindAt, "remindAt");
+    assertValidInstant(change.previousExpiresAt, "previousExpiresAt");
+    return await this.change(
       tenantId,
       pauseId,
       at,
