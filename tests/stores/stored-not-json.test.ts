@@ -126,7 +126,7 @@ describe.each(DAMAGED)("%s", (_name, text) => {
         _id: idOf("default", root, "run-1:s:1"),
         tenantId: "default",
         rootExecutionId: root,
-        askedAt: "2026-01-05T09:00:00.000Z",
+        askedAt: new Date("2026-01-05T09:00:00.000Z"),
         seq: text.length,
         record: text,
       });

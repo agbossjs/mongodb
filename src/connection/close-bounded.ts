@@ -133,7 +133,7 @@ function hasCallsInFlight(client: MongoClient): boolean {
  * once: the driver's topology (pools, monitors) closed beside the waiting close, which then ends by
  * itself.
  */
-function dropSockets(client: MongoClient): void {
+export function dropSockets(client: MongoClient): void {
   client.close().catch(() => undefined); // the late failure of a close left running is dropped
   // checked at the start by `assertDriverInternals`; a topology with no close throws into the catch
   const topology = member(client, "topology") as { close(): unknown };

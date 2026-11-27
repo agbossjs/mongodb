@@ -46,12 +46,8 @@ export async function insertPauseRow(
 }
 
 /** A closed (taken) pause resolved at `resolvedAt`. */
-export const insertTakenRow = (
-  db: Db,
-  id: string,
-  seq: number,
-  resolvedAt: string,
-): Promise<void> => insertPauseRow(db, id, seq, { status: PauseStatus.Taken, resolvedAt });
+export const insertTakenRow = (db: Db, id: string, seq: number, resolvedAt: Date): Promise<void> =>
+  insertPauseRow(db, id, seq, { status: PauseStatus.Taken, resolvedAt });
 
 /** Inserts a mailbox of the pause `id` for `recipient`, one notice written at `headWrittenAt`, due at `nextAttemptAt`. */
 export async function insertMailboxRow(
@@ -79,7 +75,7 @@ export async function insertMailboxRow(
 }
 
 /** `count` taken pauses `t0`, `t1`, … resolved at `resolvedAt`, in one write. */
-export async function insertTakenRows(db: Db, count: number, resolvedAt: string): Promise<void> {
+export async function insertTakenRows(db: Db, count: number, resolvedAt: Date): Promise<void> {
   const documents = Array.from({ length: count }, (_, seq): PauseDocument => {
     const record: PauseRecord = {
       ...pauseOf(`t${String(seq)}`),

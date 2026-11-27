@@ -34,8 +34,8 @@ export function completeUnlessInterrupted(
     const record = await db
       .collection<RecordDocument>(Collections.ExecutionRecords)
       .findOne({ _id: id }, { session, projection: { tenantId: 1, runId: 1 } });
-    const tree = Tree.parse(record ?? { tenantId: "" });
-    if (typeof tree.runId === "string") {
+    const tree = record === null ? undefined : Tree.parse(record);
+    if (tree !== undefined && typeof tree.runId === "string") {
       const leases = db.collection<LeaseDocument>(Collections.ExecutionLeases);
       const root = { tenantId: tree.tenantId, rootExecutionId: tree.runId };
       const filter = { _id: treeIdOf(root.tenantId, root.rootExecutionId) };

@@ -7,7 +7,7 @@ import type {
   TurnOutcome,
 } from "@agboss/core";
 import type { ClientSession, Db } from "mongodb";
-import type { StatusContext } from "@agboss/core/stores";
+import { assertPauseAnswerInstants, StoreError, type StatusContext } from "@agboss/core/stores";
 import type { MongoConnection } from "../../connection/mongodb-connection.js";
 import { appendRecordStatus } from "../status-log.js";
 import { threadsOf } from "./record-threads.js";
@@ -19,7 +19,7 @@ import type { RecordDocument } from "./record-documents.js";
 
 /** Threads, appended records, their completion (unconditional or compare-and-set) and the pause log. */
 
-const PauseAnswerText = z.object({ record: z.string() });
+const PauseAnswerText = z.object({ record: z.string(), askedAt: z.date() });
 const ThreadOf = z.object({ tenantId: z.string(), threadId: z.string() });
 
 /**
@@ -116,7 +116,9 @@ export async function completedIn(
 }
 
 /**
- * Keeps a resolved pause once per step of its tree (a second save is ignored) — by tenant, tree
+ * Keeps a resolved pause once per step of its tree (a second save is ignored) — `askedAt` a BSON Date
+ * (the order `sort({ askedAt: 1, seq: 1 })` is by instant: a text would sort apart from a Date), the
+ * entry's JSON canonical ISO texts — by tenant, tree
  * and step key (agbossjs/agboss#676: a step key names no tree, so another tree's pause of the same
  * step key is logged too).
  */
@@ -126,6 +128,7 @@ export async function savePauseAnswer(
   rootExecutionId: string,
   answer: PauseAnswerRecord,
 ): Promise<void> {
+  assertPauseAnswerInstants(answer);
   const _id = idOf(tenantId, rootExecutionId, answer.step.idempotencyKey);
   const seq = await nextSequence(db, Collections.PauseAnswers);
   const document = {
@@ -152,7 +155,16 @@ export async function pauseAnswerTextsOf(
     .find({ tenantId, rootExecutionId })
     .sort({ askedAt: 1, seq: 1 })
     .toArray();
-  return found.map((one) => PauseAnswerText.parse(one).record);
+  return found.map((one) => {
+    const parsed = PauseAnswerText.safeParse(one);
+    if (parsed.success) return parsed.data.record;
+    // a text where the sort key's BSON Date belongs: refused by the field, never by the value
+    throw new StoreError.UnreadableRecord({
+      record: "pause answer",
+      ids: `tenantId ${tenantId}, rootExecutionId ${rootExecutionId}`,
+      fields: parsed.error.issues.map((issue) => String(issue.path[0])).join(", "),
+    });
+  });
 }
 
 /**
@@ -168,6 +180,7 @@ export async function markPauseAnswerNotTaken(
   rootExecutionId: string,
   answer: PauseAnswerRecord,
 ): Promise<void> {
+  assertPauseAnswerInstants(answer);
   const _id = idOf(tenantId, rootExecutionId, answer.step.idempotencyKey);
   const seq = await nextSequence(db, Collections.PauseAnswers);
   const entries = db.collection<{ _id: string }>(Collections.PauseAnswers);

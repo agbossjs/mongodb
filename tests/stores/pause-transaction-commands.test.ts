@@ -94,7 +94,7 @@ describe("agbossjs/agboss#1213: a pause transaction's operations are in it", () 
     await sentPause("p");
     const { store, log } = watched();
 
-    const facts = { expiresAt: LATER.toISOString(), previousExpiresAt: NINE.toISOString() };
+    const facts = { expiresAt: LATER, previousExpiresAt: NINE };
     await store.noticeOnceByTenantIdAndPauseId(
       "default",
       "p",
@@ -126,7 +126,8 @@ describe("agbossjs/agboss#1213: a pause transaction's operations are in it", () 
       "p",
       { pauseId: "p-r", assignees: ["alice"], seen },
       LATER,
-      AUDIT,
+      // the old pause's `closed` goes to its channel only (listeners hear the replacement's `reassigned`)
+      { channel: "refund-approval-channel", listeners: ["audit"] },
     );
 
     expect(ofPauses(log).map(nameOf)).toEqual([
@@ -155,7 +156,7 @@ async function retentionRows(): Promise<void> {
     NINE,
     NO_RECIPIENTS,
   );
-  await insertTakenRow(connectionTo(database.url()).db, "p3", 9, NINE.toISOString());
+  await insertTakenRow(connectionTo(database.url()).db, "p3", 9, NINE);
   await insertMailboxRow(connectionTo(database.url()).db, "p3", {
     headWrittenAt: NINE,
     nextAttemptAt: NINE,
@@ -203,8 +204,8 @@ describe("agbossjs/agboss#1213: the retention's transaction", () => {
 
   it("a page of removable pauses stops reading at its limit", async () => {
     const { db } = connectionTo(database.url());
-    await insertTakenRow(db, "a", 1, NINE.toISOString());
-    await insertTakenRow(db, "b", 2, NINE.toISOString());
+    await insertTakenRow(db, "a", 1, NINE);
+    await insertTakenRow(db, "b", 2, NINE);
     const { store, log } = watched();
 
     const page = await store.findClosedByResolvedAtBefore(LATER, 1);

@@ -1,7 +1,6 @@
 import { PauseStatus } from "@agboss/core";
-import type { PauseRecipients } from "@agboss/core/stores";
+import { markSentChange, type PauseRecipients } from "@agboss/core/stores";
 import { pauseIdOf, pauseOfDocument, writtenFieldsOf } from "./pause-documents.js";
-import { markSentChange } from "./pause-marks.js";
 import type { PauseParts } from "./pause-reassign.js";
 
 /**

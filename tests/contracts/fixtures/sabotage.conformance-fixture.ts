@@ -32,10 +32,7 @@ import {
 } from "../../../src/stores/fenced-effects/result-documents.js";
 import {
   DuplicateKeyNoticeOnce,
-  ExtendAfterDeadline,
   MARKERS,
-  NoDeadlineGuards,
-  ReassignWithoutGuard,
   RenewRevivesAndShortens,
   RetentionIgnoresChain,
   ReversedOrder,
@@ -319,18 +316,19 @@ type PauseStore = new (
   ...args: ConstructorParameters<typeof MongoPausedExecutionRepository>
 ) => MongoPausedExecutionRepository;
 
+// The deadline and the "still pending" of the write's filter (`pause-guards.ts`) are no longer a
+// rule a contract can tell from a missing one: the core's pure transition decides them over the record read in the same snapshot
+// transaction (`isOpenAt`, `isDueAt`, `isSeenAs`), and a concurrent writer of the document is a write conflict. The filters are
+// the second line, pinned by `tests/stores/pause-guards.test.ts`; stores broken there (no deadline in the filter, a reassignment
+// with no condition) pass the contract, and are no sabotage case.
 const brokenPauseStores: readonly (readonly [string, PauseStore])[] = [
-  ["a pause deadline left out of the compare-and-set", NoDeadlineGuards],
   ["pause notices written in the wrong order", ReversedOrder],
   ["a pause head time stored as a string", StringHeadTime],
   ["noticeOnce that relies on a duplicate-key error", DuplicateKeyNoticeOnce],
   // agbossjs/agboss#1064
   ["an extension decided by the stale read, not its deadline", TimeoutChangeWithoutCompare],
-  ["an extension applied after the deadline", ExtendAfterDeadline],
   ["a notice claim renewed without its token holding", RenewRevivesAndShortens],
   ["pause scans that ignore their keyset", ScansIgnoreAfter],
-  // agbossjs/agboss#946
-  ["a reassignment whose write has no condition", ReassignWithoutGuard],
   [
     "a retention that removes a reassigned pause with its replacement stored",
     RetentionIgnoresChain,

@@ -5,7 +5,7 @@ import { PauseRespondent } from "@agboss/core/stores";
 export const answerOf = (
   responder: string,
   key = "child-7:refund-agent:1:call-1",
-  askedAt = "2026-01-05T09:00:00.000Z",
+  askedAt = new Date("2026-01-05T09:00:00.000Z"),
 ): PauseAnswerRecord => ({
   pauseId: undefined,
   executionId: "child-7",
@@ -31,7 +31,7 @@ export const answerOf = (
   actor: { id: responder, orgId: "holding-hq" },
   resolution: PauseResolution.Replied,
   askedAt,
-  resolvedAt: "2026-01-05T09:05:00.000Z",
+  resolvedAt: new Date("2026-01-05T09:05:00.000Z"),
   decision: { approved: true },
   input: { text: "10 USD" },
   toolCall: { callId: "call-1", tool: "charge", summary: "charge" },

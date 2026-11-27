@@ -19,13 +19,13 @@ const pausesOn = (): MongoPausedExecutionRepository =>
   new MongoPausedExecutionRepository(connectionTo(database.url()), new VirtualClock());
 
 const run = {
-  ...currentPausedRun,
+  ...currentPausedRun(),
   threadId: "thread-1",
   tenantId: "acme",
   runId: "run-1",
   turnId: "turn-1",
   startInput: { ssn: SECRET },
-  data: { ...Object(currentPausedRun.data), note: SECRET },
+  data: { ...Object(currentPausedRun().data), note: SECRET },
 };
 
 interface StoredPaused {
@@ -75,7 +75,7 @@ describe("agbossjs/agboss#906 D4: MongoDB paused runs", () => {
   });
 
   it("a run in the 0.1.1 shape is read whole", async () => {
-    await storedAs(() => ({ ...currentPausedRun, threadId: "thread-1", tenantId: "acme" }));
+    await storedAs(() => ({ ...currentPausedRun(), threadId: "thread-1", tenantId: "acme" }));
 
     const found = await pausesOn().findByTenantIdAndThreadId("acme", "thread-1");
 

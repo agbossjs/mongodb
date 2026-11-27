@@ -3,9 +3,9 @@ import {
   PauseStatus,
   type PausedExecutionRepository,
   type PauseRecord,
-  type PauseTrailRecord,
 } from "@agboss/core";
 import { PauseRespondent, seenOf, type PauseSeen } from "@agboss/core/stores";
+import type { PauseTrailEntry } from "@agboss/core";
 
 /** A pending approval pause of `pauseId` at the step `stepKey`, asked at nine on 2026-01-05. */
 export const pauseOf = (pauseId: string, stepKey = `run-1:${pauseId}:1`): PauseRecord => ({
@@ -30,15 +30,15 @@ export const pauseOf = (pauseId: string, stepKey = `run-1:${pauseId}:1`): PauseR
   trail: [
     {
       action: "opened",
-      at: "2026-01-05T09:00:00.000Z",
+      at: new Date("2026-01-05T09:00:00.000Z"),
       target: "refund-tool-approval",
       channel: "refund-approval-channel",
     },
   ],
   status: PauseStatus.Pending,
   isSent: false,
-  askedAt: "2026-01-05T09:00:00.000Z",
-  firstAskedAt: "2026-01-05T09:00:00.000Z",
+  askedAt: new Date("2026-01-05T09:00:00.000Z"),
+  firstAskedAt: new Date("2026-01-05T09:00:00.000Z"),
   escalationLimits: {},
 });
 
@@ -66,7 +66,7 @@ export async function withSeenNow<C extends object>(
 }
 
 /** The `opened` entry every pause's chain of custody starts with. */
-export function openedEntryOf(pause: PauseRecord): PauseTrailRecord {
+export function openedEntryOf(pause: PauseRecord): PauseTrailEntry {
   const [opened] = pause.trail;
   if (opened === undefined) throw new Error(`pause ${pause.pauseId} has no opened entry`);
   return opened;

@@ -134,7 +134,10 @@ export const SHARDS = {
       "src/stores/records/record-threads.ts",
       "src/stores/records/record-idle.ts",
     ],
-    tests: [CONFORMANCE, "tests/stores/{execution-record*,minted-thread}.test.ts"],
+    tests: [
+      CONFORMANCE,
+      "tests/stores/{execution-record*,minted-thread,pause-answer-instants}.test.ts",
+    ],
     contracts: ["executionRecord"],
   },
   // the execution tree store (agbossjs/mongodb#105, agbossjs/agboss#105): `saveIfAbsentInTree`, one upsert with

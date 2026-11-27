@@ -47,7 +47,7 @@ describe("agbossjs/agboss#81: the keyset of a due scan", () => {
       seq += 1;
       await insertPauseRow(dbOf(), pauseId, seq, {
         ...{ tenantId, rootExecutionId: `run-${pauseId}`, stepKey: `${tenantId}:${pauseId}` },
-        expiresAt: at.toISOString(),
+        expiresAt: at,
       });
     }
   }
@@ -60,7 +60,7 @@ describe("agbossjs/agboss#81: the keyset of a due scan", () => {
     ]);
 
     const page = await storeOn().findPendingByExpiresAtBefore(AFTER, 10, {
-      at: DUE.toISOString(),
+      at: DUE,
       tenantId: "default",
       pauseId: "n",
     });
@@ -77,7 +77,7 @@ describe("agbossjs/agboss#81: the keyset of a due scan", () => {
     ]);
 
     const page = await storeOn().findPendingByExpiresAtBefore(AFTER, 10, {
-      at: DUE.toISOString(),
+      at: DUE,
       tenantId: "b",
       pauseId: "a",
     });
@@ -113,7 +113,7 @@ describe("agbossjs/agboss#81: a scan's filter implies the partial index that ser
 
 describe("agbossjs/agboss#81: the retention of closed pauses", () => {
   it("removes a closed pause with no live mailbox, though another pause's mailbox is live", async () => {
-    await insertTakenRow(dbOf(), "closed", 1, NINE.toISOString());
+    await insertTakenRow(dbOf(), "closed", 1, NINE);
     await insertPauseRow(dbOf(), "open", 2);
     await insertMailboxRow(dbOf(), "open", { headWrittenAt: NINE, nextAttemptAt: NINE });
 

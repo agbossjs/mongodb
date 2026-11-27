@@ -11,8 +11,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Collections, MongoConnection, MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
 import {
-  dateOf,
-  dateOrNull,
   fieldsOf,
   findOrCreatePause,
   insertPause,
@@ -37,20 +35,27 @@ interface PausedRow {
   workflowVersion: string;
   configHash: string;
 }
-const badTime = (field: string) =>
-  new TypeError(`a pause's ${field} is an ISO 8601 time, not "soon"`);
-
 describe("agbossjs/agboss#1213: the times a record holds", () => {
-  it("a text that is no time is refused by the field and the text", () => {
-    expect(() => dateOf("soon", "askedAt")).toThrowError(badTime("askedAt"));
-    expect(dateOrNull(undefined, "expiresAt")).toBeNull();
-    expect(dateOrNull("2026-01-05T09:00:00.000Z", "expiresAt")).toStrictEqual(NINE);
+  it("a deadline and a close time are BSON Dates in the fields, null when absent", () => {
+    expect(fieldsOf(pauseOf("p"))).toMatchObject({
+      expiresAt: null,
+      remindAt: null,
+      resolvedAt: null,
+    });
+    expect(
+      fieldsOf({ ...pauseOf("p"), expiresAt: NINE, remindAt: NINE, resolvedAt: NINE }),
+    ).toMatchObject({ expiresAt: NINE, remindAt: NINE, resolvedAt: NINE });
   });
 
-  it.each(["resolvedAt", "expiresAt", "remindAt"] as const)(
-    "a %s that is no time is refused by its name when the fields are made",
+  it.each(["resolvedAt", "expiresAt", "remindAt", "askedAt"] as const)(
+    "an Invalid Date in %s is refused by its name when the fields are made",
     (field) => {
-      expect(() => fieldsOf({ ...pauseOf("p"), [field]: "soon" })).toThrowError(badTime(field));
+      expect(() => fieldsOf({ ...pauseOf("p"), [field]: new Date(Number.NaN) })).toThrowError(
+        expect.objectContaining({
+          name: "StoreError.UnreadableRecord",
+          message: expect.stringContaining(field),
+        }),
+      );
     },
   );
 
@@ -62,9 +67,9 @@ describe("agbossjs/agboss#1213: the times a record holds", () => {
         insertPause(connection.db, session, {
           ...pauseOf("r"),
           reassignedFrom: "p",
-          askedAt: "soon",
+          askedAt: new Date(Number.NaN),
         }),
-      ).rejects.toThrowError(badTime("askedAt"));
+      ).rejects.toThrowError(expect.objectContaining({ name: "StoreError.UnreadableRecord" }));
       await insertPause(connection.db, session, pauseOf("plain"));
     } finally {
       await session.endSession();
@@ -79,7 +84,7 @@ describe("agbossjs/agboss#1213: the times a record holds", () => {
 
 describe("agbossjs/agboss#1213: the fields a document keeps over its record's", () => {
   it("a document of schema version 1, with no deadline fields, reads the record's own", async () => {
-    const deadline = "2026-01-06T09:00:00.000Z";
+    const deadline = new Date("2026-01-06T09:00:00.000Z");
     await storeOn().findOrCreateByStepKey({
       ...pauseOf("p"),
       expiresAt: deadline,
@@ -97,15 +102,18 @@ describe("agbossjs/agboss#1213: the fields a document keeps over its record's", 
 
   it("a pending pause has no closing text, stored or after a deadline change", async () => {
     const store = storeOn();
-    await store.findOrCreateByStepKey({ ...pauseOf("p"), expiresAt: "2026-01-06T09:00:00.000Z" });
+    await store.findOrCreateByStepKey({
+      ...pauseOf("p"),
+      expiresAt: new Date("2026-01-06T09:00:00.000Z"),
+    });
     expect((await pauses().findOne({ pauseId: "p" }))?.closing).toBeNull();
 
     await store.changeTimeoutByTenantIdAndPauseId(
       "default",
       "p",
       {
-        expiresAt: "2026-01-07T09:00:00.000Z",
-        previousExpiresAt: "2026-01-06T09:00:00.000Z",
+        expiresAt: new Date("2026-01-07T09:00:00.000Z"),
+        previousExpiresAt: new Date("2026-01-06T09:00:00.000Z"),
         seen: await seenNow(store, "p"),
       },
       NINE,
@@ -119,15 +127,15 @@ describe("agbossjs/agboss#1213: the fields a document keeps over its record's", 
     const store = storeOn();
     await store.findOrCreateByStepKey({
       ...pauseOf("p"),
-      expiresAt: "2026-01-06T09:00:00.000Z",
-      remindAt: "2026-01-06T08:00:00.000Z",
+      expiresAt: new Date("2026-01-06T09:00:00.000Z"),
+      remindAt: new Date("2026-01-06T08:00:00.000Z"),
     });
 
     const changed = await store.changeTimeoutByTenantIdAndPauseId(
       "default",
       "p",
       {
-        previousExpiresAt: "2026-01-06T09:00:00.000Z",
+        previousExpiresAt: new Date("2026-01-06T09:00:00.000Z"),
         seen: await seenNow(store, "p"),
       },
       NINE,
@@ -250,7 +258,7 @@ describe("agbossjs/agboss#1213: the paused run and the pause's own reads", () =>
       "default",
       "p",
       PauseNoticeKind.TimeoutChanged,
-      { expiresAt: undefined, previousExpiresAt: "2026-01-05T09:00:00.000Z" },
+      { expiresAt: undefined, previousExpiresAt: new Date("2026-01-05T09:00:00.000Z") },
       NINE,
       { listeners: ["audit"] },
     );

@@ -136,7 +136,7 @@ describe("the stored result", () => {
     const stored = await connection.db
       .collection(Collections.FencedEffectResults)
       .findOne({}, { projection: { _id: 0 } });
-    expect(Object.keys(stored ?? {}).sort()).toEqual(["result", "storedAt", "token"]);
+    expect(Object.keys(stored ?? {}).sort()).toEqual(["expiresAt", "result", "storedAt", "token"]);
   });
 
   it("of a key with a business key and no origin has the fingerprint and no origin field", () => {

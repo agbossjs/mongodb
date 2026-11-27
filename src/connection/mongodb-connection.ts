@@ -1,6 +1,7 @@
 import { Clock, Injectable, type OnDestroy, type OnInit } from "@agboss/core";
+import type { OnAbandon } from "@agboss/core/stores";
 import { DATABASE_SETTINGS, SchemaSetup, type ResolvedSettings } from "@agboss/core/stores";
-import { assertDriverInternals, closeClientBounded } from "./close-bounded.js";
+import { assertDriverInternals, closeClientBounded, dropSockets } from "./close-bounded.js";
 import {
   MongoClient,
   type ClientSession,
@@ -84,7 +85,7 @@ function settingsOf(
  * (`new MongoConnection({ url })`). The DI token the MongoDB stores will name in their `deps`.
  */
 @Injectable({ deps: [DATABASE_SETTINGS, Clock] })
-export class MongoConnection implements OnInit, OnDestroy {
+export class MongoConnection implements OnInit, OnDestroy, OnAbandon {
   /** The instance's client: every store's operations, every transaction's session. */
   readonly client: MongoClient;
   /**
@@ -248,5 +249,13 @@ export class MongoConnection implements OnInit, OnDestroy {
   /** Closes the client when the instance stops (its stores are destroyed first: they depend on it). */
   async onDestroy(): Promise<void> {
     await closeClientBounded(this.client, this.clock);
+  }
+
+  /**
+   * The stop's end passed with `onDestroy` still running (agbossjs/agboss#954, #1432): the client's
+   * sockets are destroyed at once, synchronously, whatever the orderly close still waits on.
+   */
+  onAbandon(): void {
+    dropSockets(this.client);
   }
 }

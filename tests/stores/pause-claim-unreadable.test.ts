@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Db } from "mongodb";
-import { claimDue, UNREADABLE_MAILBOX } from "../../src/stores/paused/pause-delivery.js";
+import { claimDue } from "../../src/stores/paused/pause-delivery.js";
 
 const AT = new Date("2026-01-05T10:00:00.000Z");
 
@@ -51,7 +51,7 @@ describe("agbossjs/agboss#1307: a claim and a mailbox that does not read", () =>
       claimToken: expect.stringMatching(/^[0-9a-f]{32}$/u),
     });
     expect(update).toStrictEqual({
-      $set: { isDead: true, problem: UNREADABLE_MAILBOX, claimToken: null, claimedUntil: null },
+      $set: { isDead: true, problem: "unreadable mailbox", claimToken: null, claimedUntil: null },
     });
   });
 

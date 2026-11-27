@@ -92,13 +92,10 @@ describe("agbossjs/agboss#527: the contract suites bite on MongoDB", () => {
       "a key built by hand, a zombie > #695: the lease released and taken while its holder's write runs: the hand-over waits for the write, or the write is refused — never the take during the work and the write landing after it",
     );
   });
-  it("agbossjs/agboss#938: the pause contract bites on each broken pause store — deadline, order, head time, noticeOnce", () => {
+  it("agbossjs/agboss#938: the pause contract bites on each broken pause store — order, head time, noticeOnce", () => {
     const failed = (name: string): string[] =>
       failedIn(`paused execution contract (${name})`).map((one) => nameOf(one));
 
-    expect(failed("a pause deadline left out of the compare-and-set")).toEqual(
-      expect.arrayContaining([expect.stringMatching(/deadline/u)]),
-    );
     expect(failed("pause notices written in the wrong order")).toEqual(
       expect.arrayContaining([expect.stringMatching(/order/u)]),
     );
@@ -110,15 +107,12 @@ describe("agbossjs/agboss#527: the contract suites bite on MongoDB", () => {
     );
   });
 
-  it("agbossjs/agboss#1064: the pause contract bites on a stale extension, one after the deadline, a revived claim and a scan without its keyset", () => {
+  it("agbossjs/agboss#1064: the pause contract bites on a stale extension, a revived claim and a scan without its keyset", () => {
     const failed = (name: string): string[] =>
       failedIn(`paused execution contract (${name})`).map((one) => nameOf(one));
 
     expect(failed("an extension decided by the stale read, not its deadline")).toEqual(
       expect.arrayContaining([expect.stringMatching(/previousExpiresAt|longer|shorter|later/iu)]),
-    );
-    expect(failed("an extension applied after the deadline")).toEqual(
-      expect.arrayContaining([expect.stringMatching(/#1148/u)]),
     );
     expect(failed("a notice claim renewed without its token holding")).toEqual(
       expect.arrayContaining([expect.stringMatching(/renew/iu)]),
@@ -178,13 +172,10 @@ describe("agbossjs/agboss#527: the contract suites bite on MongoDB", () => {
     );
   });
 
-  it("agbossjs/agboss#946: the pause contract bites on a reassignment with no condition and a retention that ignores the chain", () => {
+  it("agbossjs/agboss#946: the pause contract bites on a retention that ignores the chain", () => {
     const failed = (name: string): string[] =>
       failedIn(`paused execution contract (${name})`).map((one) => nameOf(one));
 
-    expect(failed("a reassignment whose write has no condition")).toEqual(
-      expect.arrayContaining([expect.stringMatching(/reassign/iu)]),
-    );
     expect(
       failed("a retention that removes a reassigned pause with its replacement stored"),
     ).toEqual(

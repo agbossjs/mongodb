@@ -4,6 +4,7 @@
  * driver has no meaning for refused (never silently ignored).
  */
 import { SchemaSetup, StorageRole } from "@agboss/core/stores";
+import { env } from "@agboss/core";
 import { ms, sec } from "@agboss/core/units";
 import { describe, expect, it } from "vitest";
 import { MongoSettingsError } from "../../src/errors.js";
@@ -90,5 +91,23 @@ describe("MongoDriver", () => {
     expect(driver.coordinationStores).toHaveLength(3);
     expect(driver.leaseStore?.name).toBe("MongoExecutionLeaseRepository");
     expect(driver.migrate).toBeTypeOf("function");
+  });
+
+  it("a database named by env(…) stays that reference in the settings (the application resolves it once, at start) and is described by its variable", () => {
+    const database = env("MONGODB_DATABASE");
+
+    const driver = MongoDriver({ url: revealing("mongodb://h1/agboss") as never, database });
+
+    expect(driver.settings).toMatchObject({ kind: "mongodb", database });
+    expect(driver.describes).toBe("mongodb (database from MONGODB_DATABASE)");
+  });
+
+  it("the settings the application resolved from env(…) carry the database as the name read", () => {
+    expect(settingsOfResolved(resolved({ database: "read-at-start" }))).toMatchObject({
+      database: "read-at-start",
+    });
+    expect(() => settingsOfResolved(resolved({ database: env("MONGODB_DATABASE") }))).toThrow(
+      MongoSettingsError,
+    );
   });
 });

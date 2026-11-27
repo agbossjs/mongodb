@@ -189,8 +189,8 @@ describe("a take that finds the seed of a cancel made since its first look (#111
   });
 });
 
-describe("isCancelRequested reads the mark alone", () => {
-  it("one find of the tree's lease document, projecting `cancelRequestedAt`", async () => {
+describe("isCancelRequested reads the marks of the tree in one read", () => {
+  it("one find of the tree's lease document, projecting the six mark fields", async () => {
     const { connection, leases } = await leasesOf("instance-1");
     const sent = commandsOf(connection);
 
@@ -198,7 +198,10 @@ describe("isCancelRequested reads the mark alone", () => {
 
     const finds = sent.filter((one) => nameOf(one) === `find ${Collections.ExecutionLeases}`);
     expect(finds).toHaveLength(1);
-    expect(finds[0]?.command.projection).toEqual({ cancelRequestedAt: 1 });
+    expect(finds[0]?.command.projection).toEqual({
+      ...{ cancelRequestedAt: 1, stopMode: 1, isExternallyPaused: 1 },
+      ...{ externalPauseReason: 1, externalPauseMode: 1, fencedThroughToken: 1 },
+    });
   });
 });
 

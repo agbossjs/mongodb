@@ -131,7 +131,12 @@ export class MongoCheckpointSaver extends BaseCheckpointSaver {
       },
       { upsert: true },
     );
-    return configOf(threadId, namespace, checkpoint.id);
+    // a thread of another root names it in the config it gives back, so the next `put` and the writes
+    // of the checkpoint keep the tree they belong to (`deleteThread` finds them by it, #1321d)
+    const named = configOf(threadId, namespace, checkpoint.id);
+    return rootId === threadId
+      ? named
+      : { configurable: { ...named.configurable, root_execution_id: rootId } };
   }
 
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {

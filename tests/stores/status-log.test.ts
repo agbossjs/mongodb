@@ -1,101 +1,172 @@
 /**
- * agbossjs/agboss#1341d on MongoDB: the rules that say which write is a change of a thread's status
- * (the core's `transitionOf` and `recordTransitionOf`, restated from its public enums) — pure, so a
- * mutant of one is a failing test here, not a wait for a database.
+ * The thread status history's commands as the client sends them, on a recording fake (no server):
+ * the document a change writes with only the details it has, the record write that is no change, the
+ * history read oldest first, the removal of a thread's documents.
  */
-import { StatusTrigger, ThreadStatus, type ThreadStatusTransition } from "@agboss/core";
+import { StatusTrigger, ThreadStatus } from "@agboss/core";
 import { describe, expect, it } from "vitest";
-import { recordTransitionOf, transitionOf } from "../../src/stores/status-log.js";
+import { Collections } from "../../src/index.js";
+import { idOf } from "../../src/stores/keys.js";
+import {
+  appendRecordStatus,
+  appendStatus,
+  forgottenStatus,
+  historyOf,
+  recordTransitionOf,
+} from "../../src/stores/status-log.js";
 
-const THREAD = { tenantId: "default", threadId: "thread-1" };
-const AT = new Date("2026-01-05T09:00:00.000Z");
+const SESSION = { id: "session" } as never;
+const NOW = new Date("2026-01-05T09:00:00.000Z");
+const THREAD = { tenantId: "default", threadId: "t-1" };
 
-const last = (toStatus: ThreadStatus, seq = 1): ThreadStatusTransition => ({
-  ...THREAD,
-  seq,
-  fromStatus: null,
-  toStatus,
-  trigger: StatusTrigger.Start,
-  at: AT,
-});
+/** A fake database whose transitions collection holds `last` as the thread's last change. */
+function recording(last: object | null = null) {
+  const log: unknown[][] = [];
+  const collection = (name: string) => ({
+    findOne: (...args: unknown[]) => {
+      log.push([name, "findOne", ...args]);
+      return Promise.resolve(last);
+    },
+    insertOne: (...args: unknown[]) => {
+      log.push([name, "insertOne", ...args]);
+      return Promise.resolve({});
+    },
+    deleteMany: (...args: unknown[]) => {
+      log.push([name, "deleteMany", ...args]);
+      return Promise.resolve({});
+    },
+    find: (...args: unknown[]) => {
+      log.push([name, "find", ...args]);
+      const cursor = {
+        sort: (sort: unknown) => {
+          log.push([name, "sort", sort]);
+          return cursor;
+        },
+        toArray: () => Promise.resolve([]),
+      };
+      return cursor;
+    },
+  });
+  return { db: { collection } as never, log };
+}
 
-describe("transitionOf", () => {
-  it("the first change is seq 1 from nothing, at the store's time", () => {
-    expect(
-      transitionOf(
-        { ...THREAD, toStatus: ThreadStatus.Running, trigger: StatusTrigger.Start },
-        undefined,
-        AT,
-      ),
-    ).toEqual({
+const PAUSED = { ...THREAD, toStatus: ThreadStatus.Paused, trigger: StatusTrigger.Pause };
+
+describe("appendStatus", () => {
+  it("reads the last change in the session and writes the next one whole, with the details it has", async () => {
+    const { db, log } = recording();
+
+    const written = await appendStatus(
+      db,
+      SESSION,
+      { ...PAUSED, reason: "why", actor: "a", leaseToken: 3 },
+      NOW,
+    );
+
+    expect(log[0]).toStrictEqual([
+      Collections.ThreadStatusTransitions,
+      "findOne",
+      THREAD,
+      { session: SESSION, sort: { seq: -1 } },
+    ]);
+    expect(log[1]).toStrictEqual([
+      Collections.ThreadStatusTransitions,
+      "insertOne",
+      {
+        _id: idOf("default", "t-1", 1),
+        ...THREAD,
+        seq: 1,
+        fromStatus: null,
+        toStatus: ThreadStatus.Paused,
+        trigger: StatusTrigger.Pause,
+        reason: "why",
+        actor: "a",
+        leaseToken: 3,
+        at: NOW,
+      },
+      { session: SESSION },
+    ]);
+    expect(written).toMatchObject({ seq: 1 });
+  });
+
+  it("writes no detail it was not given", async () => {
+    const { db, log } = recording();
+
+    await appendStatus(db, SESSION, PAUSED, NOW);
+
+    const document = log[1]?.[2] as object;
+    expect(Object.keys(document)).not.toContain("reason");
+    expect(Object.keys(document)).not.toContain("actor");
+    expect(Object.keys(document)).not.toContain("leaseToken");
+  });
+
+  it("a repeat of the last status changes nothing: nothing is written", async () => {
+    const last = {
       ...THREAD,
       seq: 1,
       fromStatus: null,
-      toStatus: ThreadStatus.Running,
-      trigger: StatusTrigger.Start,
-      at: AT,
-    });
-  });
+      toStatus: "paused",
+      trigger: "pause",
+      at: NOW,
+    };
+    const { db, log } = recording(last);
 
-  it("a change is one more than the last, from the last's status; reason, actor and lease token are kept when given", () => {
-    const written = transitionOf(
-      {
-        ...THREAD,
-        toStatus: ThreadStatus.Stopping,
-        trigger: StatusTrigger.Stop,
-        reason: "audit",
-        actor: "ops-1",
-        leaseToken: 3,
-      },
-      last(ThreadStatus.Running, 4),
-      AT,
-    );
+    expect(await appendStatus(db, SESSION, PAUSED, NOW)).toBeUndefined();
 
-    expect(written).toMatchObject({
-      seq: 5,
-      fromStatus: ThreadStatus.Running,
-      reason: "audit",
-      actor: "ops-1",
-      leaseToken: 3,
-    });
-  });
-
-  it("a status the thread already has is no change", () => {
-    expect(
-      transitionOf(
-        { ...THREAD, toStatus: ThreadStatus.Paused, trigger: StatusTrigger.Ask },
-        last(ThreadStatus.Paused),
-        AT,
-      ),
-    ).toBeUndefined();
-  });
-
-  it.each([ThreadStatus.Stopping, ThreadStatus.Cancelling])(
-    "a record moving through running while the thread is %s is no change",
-    (status) => {
-      expect(
-        transitionOf(
-          { ...THREAD, toStatus: ThreadStatus.Running, trigger: StatusTrigger.Resume },
-          last(status),
-          AT,
-        ),
-      ).toBeUndefined();
-    },
-  );
-
-  it("an entry with no reason, actor or lease token has none of them, not an undefined one", () => {
-    const written = transitionOf(
-      { ...THREAD, toStatus: ThreadStatus.Failed, trigger: StatusTrigger.Fail },
-      undefined,
-      AT,
-    );
-
-    for (const field of ["reason", "actor", "leaseToken"])
-      expect(written).not.toHaveProperty(field);
+    expect(log.map((one) => one[1])).toStrictEqual(["findOne"]);
   });
 });
 
-describe("recordTransitionOf", () => {
+describe("appendRecordStatus", () => {
+  it("writes the change a record status makes, and nothing for a status that is no thread status", async () => {
+    const written = recording();
+    const none = recording();
+
+    await appendRecordStatus(written.db, SESSION, THREAD, {
+      status: "running",
+      context: undefined,
+      at: NOW,
+    });
+    await appendRecordStatus(none.db, SESSION, THREAD, {
+      status: "queued",
+      context: undefined,
+      at: NOW,
+    });
+
+    expect(written.log.map((one) => one[1])).toStrictEqual(["findOne", "findOne", "insertOne"]);
+    expect(none.log.map((one) => one[1])).toStrictEqual(["findOne"]);
+  });
+});
+
+describe("the history and its removal", () => {
+  it("the history is the thread's documents oldest first", async () => {
+    const { db, log } = recording();
+
+    expect(await historyOf(db, THREAD)).toStrictEqual([]);
+
+    expect(log).toStrictEqual([
+      [Collections.ThreadStatusTransitions, "find", THREAD],
+      [Collections.ThreadStatusTransitions, "sort", { seq: 1 }],
+    ]);
+  });
+
+  it("the thread's documents are removed, in the caller's session when it has one", async () => {
+    const withSession = recording();
+    const without = recording();
+
+    await forgottenStatus(withSession.db, THREAD, SESSION);
+    await forgottenStatus(without.db, THREAD);
+
+    expect(withSession.log).toStrictEqual([
+      [Collections.ThreadStatusTransitions, "deleteMany", THREAD, { session: SESSION }],
+    ]);
+    expect(without.log).toStrictEqual([
+      [Collections.ThreadStatusTransitions, "deleteMany", THREAD, {}],
+    ]);
+  });
+});
+
+describe("the thread status each record status makes", () => {
   it.each([
     ["running", ThreadStatus.Running, StatusTrigger.Start],
     ["paused", ThreadStatus.Paused, StatusTrigger.Ask],
@@ -104,46 +175,53 @@ describe("recordTransitionOf", () => {
     ["failed", ThreadStatus.Failed, StatusTrigger.Fail],
     ["stopped", ThreadStatus.Stopped, StatusTrigger.Stop],
     ["cancelled", ThreadStatus.Cancelled, StatusTrigger.Cancel],
-  ])("a %s record makes %s by %s", (status, to, trigger) => {
-    expect(recordTransitionOf(THREAD, status, undefined, undefined)).toEqual({
+  ])("%s", (recordStatus, toStatus, trigger) => {
+    expect(recordTransitionOf(THREAD, recordStatus, undefined, undefined)).toStrictEqual({
       ...THREAD,
-      toStatus: to,
+      toStatus,
       trigger,
     });
   });
+});
 
-  it.each(["queued", "written"])("a %s record makes no thread status", (status) => {
-    expect(recordTransitionOf(THREAD, status, undefined, undefined)).toBeUndefined();
+describe("a record running again while its tree is stopping or cancelling", () => {
+  const lastOf = (toStatus: string) => ({
+    ...THREAD,
+    seq: 1,
+    fromStatus: null,
+    toStatus,
+    trigger: "stop",
+    at: NOW,
+  });
+  const running = { ...THREAD, toStatus: ThreadStatus.Running, trigger: StatusTrigger.Resume };
+
+  it.each([ThreadStatus.Stopping, ThreadStatus.Cancelling])(
+    "is no change while the thread is %s",
+    async (status) => {
+      const { db, log } = recording(lastOf(status));
+
+      expect(await appendStatus(db, SESSION, running, NOW)).toBeUndefined();
+
+      expect(log.map((one) => one[1])).toStrictEqual(["findOne"]);
+    },
+  );
+
+  it("is the only move a stop under way keeps from the log: another status after it is a change", async () => {
+    const { db, log } = recording(lastOf(ThreadStatus.Stopping));
+
+    expect(await appendStatus(db, SESSION, PAUSED, NOW)).toMatchObject({ seq: 2 });
+
+    expect(log.map((one) => one[1])).toStrictEqual(["findOne", "insertOne"]);
   });
 
-  it("running again after a pause is a resume, after a dual pause too; after anything else a start", () => {
-    for (const before of [ThreadStatus.Paused, ThreadStatus.DualPaused])
-      expect(recordTransitionOf(THREAD, "running", last(before), undefined)).toMatchObject({
-        trigger: StatusTrigger.Resume,
-      });
-    expect(
-      recordTransitionOf(THREAD, "running", last(ThreadStatus.Failed), undefined),
-    ).toMatchObject({
-      trigger: StatusTrigger.Start,
-    });
-  });
+  it.each([ThreadStatus.Paused, ThreadStatus.Stopped, ThreadStatus.Finished])(
+    "is a change after %s",
+    async (status) => {
+      const { db, log } = recording(lastOf(status));
 
-  it("a command's context names the status, the trigger and the details of its write", () => {
-    expect(
-      recordTransitionOf(THREAD, "paused", undefined, {
-        toStatus: ThreadStatus.ExternallyPaused,
-        trigger: StatusTrigger.Pause,
-        reason: "hold",
-        actor: "ops-1",
-        leaseToken: 2,
-      }),
-    ).toEqual({
-      ...THREAD,
-      toStatus: ThreadStatus.ExternallyPaused,
-      trigger: StatusTrigger.Pause,
-      reason: "hold",
-      actor: "ops-1",
-      leaseToken: 2,
-    });
-  });
+      expect(await appendStatus(db, SESSION, running, NOW)).toMatchObject({ seq: 2 });
+
+      expect(log.map((one) => one[1])).toStrictEqual(["findOne", "insertOne"]);
+    },
+  );
 });

@@ -48,6 +48,7 @@ import { DriverTimeouts } from '@agboss/core/stores';
 import { EffectKey } from '@agboss/core/stores';
 import { EndedTree } from '@agboss/core/stores';
 import { EndedTree as EndedTree_2 } from '@agboss/core';
+import type { EnvRef } from '@agboss/core';
 import { ExecutionAuditEventRecord } from '@agboss/core';
 import { ExecutionAuditLogRepository } from '@agboss/core';
 import type { ExecutionHistoryQuery } from '@agboss/core/stores';
@@ -83,6 +84,7 @@ import { NewStatusTransition } from '@agboss/core';
 import { NewSummary } from '@agboss/core';
 import { NewThread } from '@agboss/core';
 import { NewTurn } from '@agboss/core';
+import type { OnAbandon } from '@agboss/core/stores';
 import { OnDestroy } from '@agboss/core';
 import { OnInit } from '@agboss/core';
 import { OutboundCallClaim } from '@agboss/core/stores';
@@ -95,30 +97,31 @@ import { OutboundCallRepository } from '@agboss/core/stores';
 import { OutboundCallState } from '@agboss/core/stores';
 import { OutboundCallStatusQuery } from '@agboss/core/stores';
 import { Page } from '@agboss/core/stores';
-import type { PauseAnswer } from '@agboss/core/stores';
+import { PauseAnswer } from '@agboss/core/stores';
 import { PauseAnswerRecord } from '@agboss/core';
 import { PauseCancellation } from '@agboss/core';
 import { PausedExecution } from '@agboss/core';
 import { PausedExecutionRepository } from '@agboss/core';
-import type { PauseExpiry } from '@agboss/core/stores';
-import type { PauseFilter } from '@agboss/core/stores';
+import { PauseExpiry } from '@agboss/core/stores';
+import { PauseFilter } from '@agboss/core/stores';
 import { PauseMarks } from '@agboss/core';
-import { PauseNotice } from '@agboss/core/stores';
-import type { PauseNoticeClaim } from '@agboss/core/stores';
-import type { PauseNoticeCounts } from '@agboss/core/stores';
-import type { PauseNoticeFacts } from '@agboss/core/stores';
-import type { PauseNoticeKind } from '@agboss/core/stores';
-import type { PausePage } from '@agboss/core/stores';
-import type { PauseReassignmentChange } from '@agboss/core/stores';
-import type { PauseRecipients } from '@agboss/core/stores';
+import { PauseNoticeClaim } from '@agboss/core/stores';
+import { PauseNoticeCounts } from '@agboss/core/stores';
+import { PauseNoticeFacts } from '@agboss/core/stores';
+import { PauseNoticeKind } from '@agboss/core/stores';
+import { PausePage } from '@agboss/core/stores';
+import { PauseReassignmentChange } from '@agboss/core/stores';
+import { PauseRecipients } from '@agboss/core/stores';
 import { PauseRecord } from '@agboss/core';
 import { PauseRequest } from '@agboss/core';
-import type { PauseScanAfter } from '@agboss/core/stores';
-import type { PauseSeen } from '@agboss/core/stores';
+import { PauseScanAfter } from '@agboss/core/stores';
+import { PauseSeen } from '@agboss/core/stores';
 import { PauseStatus } from '@agboss/core';
-import type { PauseTimeoutChange } from '@agboss/core/stores';
-import type { PauseUntakenResolution } from '@agboss/core/stores';
+import { PauseTimeoutChange } from '@agboss/core/stores';
+import { PauseTransition } from '@agboss/core/stores';
+import { PauseUntakenResolution } from '@agboss/core/stores';
 import { PendingWrite } from '@langchain/langgraph-checkpoint';
+import { PlannedNotice } from '@agboss/core/stores';
 import { QueuedChildExecution } from '@agboss/core';
 import { RateLimitLease } from '@agboss/core';
 import { RateLimitRepository } from '@agboss/core';
@@ -126,7 +129,7 @@ import { ResolvedSettings } from '@agboss/core/stores';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { SchemaSetup } from '@agboss/core/stores';
 import type { SecretRef } from '@agboss/core';
-import type { SetAsideMailbox } from '@agboss/core/stores';
+import { SetAsideMailbox } from '@agboss/core/stores';
 import { StatusContext } from '@agboss/core/stores';
 import { StopMark } from '@agboss/core';
 import { StorageMigration } from '@agboss/core/stores';
@@ -357,11 +360,12 @@ export interface MongoCollationNotSimpleErrorOptions {
 }
 
 // @public
-export class MongoConnection implements OnInit, OnDestroy {
+export class MongoConnection implements OnInit, OnDestroy, OnAbandon {
     constructor(source?: MongoConnectionSettings | ResolvedSettings, clock?: Clock | undefined);
     readonly client: MongoClient;
     readonly db: Db;
     inTransaction<TResult>(work: (transaction: MongoTransaction) => Promise<TResult>): Promise<TResult>;
+    onAbandon(): void;
     onDestroy(): Promise<void>;
     onInit(): Promise<void>;
     ping(): Promise<void>;
@@ -446,7 +450,7 @@ export interface MongoDriverInternalsErrorOptions {
 
 // @public
 export interface MongoDriverOptions {
-    readonly database?: string;
+    readonly database?: string | EnvRef<string>;
     readonly schemaSetup?: SchemaSetup;
     readonly timeouts?: DriverTimeouts;
     readonly transactionReadConcern?: MongoTransactionReadConcern;
@@ -746,7 +750,7 @@ export class MongoOutboundCallRepository extends OutboundCallRepository {
 export abstract class MongoPauseBase extends PausedExecutionRepository {
     constructor(connection: MongoConnection, clock: Clock);
     protected appendNotices(transaction: MongoTransaction, pause: PauseRecord, notices: readonly PlannedNotice[]): Promise<void>;
-    protected change(tenantId: string, pauseId: string, guard: Filter<PauseDocument>, plan: (before: PauseRecord) => PauseChange | undefined): Promise<PauseRecord | undefined>;
+    protected change(tenantId: string, pauseId: string, at: Date, guard: Filter<PauseDocument>, plan: (before: PauseRecord) => PauseTransition | undefined): Promise<PauseRecord | undefined>;
     // (undocumented)
     protected readonly clock: Clock;
     // (undocumented)
@@ -792,7 +796,7 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     // (undocumented)
     retryNotice(claim: PauseNoticeClaim, nextAttemptAt: Date, problem: string): Promise<boolean>;
     // (undocumented)
-    setAsideNotices(claim: PauseNoticeClaim, _at: Date, problem: string): Promise<boolean>;
+    setAsideNotices(claim: PauseNoticeClaim, at: Date, problem: string): Promise<boolean>;
     // (undocumented)
     setAsideStaleNoticesBefore(writtenBefore: Date, at: Date, problem: string, limit: number): Promise<readonly SetAsideMailbox[]>;
 }
@@ -933,14 +937,6 @@ export enum MongoTransactionReadConcern {
 }
 
 // @public
-export interface PauseChange {
-    // (undocumented)
-    readonly notices: readonly PlannedNotice[];
-    // (undocumented)
-    readonly pause: PauseRecord;
-}
-
-// @public
 export interface PauseDocument {
     // (undocumented)
     askedAt?: Date;
@@ -992,16 +988,6 @@ export interface PauseGuards {
     open(at: Date): Filter<PauseDocument>;
     // (undocumented)
     remindable(at: Date): Filter<PauseDocument>;
-}
-
-// @public
-export interface PlannedNotice {
-    // (undocumented)
-    readonly at: Date;
-    // (undocumented)
-    readonly notice: Omit<PauseNotice, "seq">;
-    // (undocumented)
-    readonly recipient: string;
 }
 
 // @public
@@ -1202,11 +1188,6 @@ export { SchemaSetup }
 // src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "findByTenantIdAndThreadId".
 // src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "save".
 // src/stores/paused/pause-base.ts - (ae-undocumented) Missing documentation for "deleteByTenantIdAndThreadId".
-// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "recipient".
-// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "at".
-// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "notice".
-// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "pause".
-// src/stores/paused/pause-changes.ts - (ae-undocumented) Missing documentation for "notices".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "_id".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "tenantId".
 // src/stores/paused/pause-documents.ts - (ae-undocumented) Missing documentation for "pauseId".

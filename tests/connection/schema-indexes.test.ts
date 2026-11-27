@@ -24,14 +24,22 @@ interface Expected {
 
 const up = (...fields: string[]): Key => fields.map((field) => [field, 1]);
 
+/** `deleteExpired`'s index (#1317): the documents whose `expiresAt` is a date. */
+const EXPIRY: Expected = {
+  name: "by_expiry",
+  key: up("expiresAt"),
+  partial: { expiresAt: { $type: "date" } },
+};
+
 const EXPECTED: Readonly<Record<string, readonly Expected[]>> = {
-  [Collections.FencedEffectMarks]: [{ name: "by_stored_at", key: up("storedAt") }],
+  [Collections.FencedEffectMarks]: [EXPIRY],
+  [Collections.FencedKeyLocks]: [EXPIRY],
   [Collections.CostEntries]: [{ name: "by_made_at", key: up("madeAt") }],
-  [Collections.FencedEffectResults]: [{ name: "by_stored_at", key: up("storedAt") }],
+  [Collections.FencedEffectResults]: [EXPIRY],
   [Collections.OutboundCalls]: [
     { name: "by_tree", key: up("tenantId", "rootExecutionId", "seq") },
     { name: "by_status", key: up("tenantId", "status", "seq") },
-    { name: "by_ended_at", key: up("endedAt") },
+    EXPIRY,
   ],
   [Collections.ExecutionAuditLog]: [
     { name: "by_tree", key: up("tenantId", "rootExecutionId", "occurredAt", "_id") },
@@ -42,12 +50,18 @@ const EXPECTED: Readonly<Record<string, readonly Expected[]>> = {
     { name: "by_thread", key: up("tenantId", "threadId", "seq") },
     { name: "by_run", key: up("tenantId", "runId", "seq") },
     { name: "by_status", key: up("status", "seq") },
-    { name: "by_version", key: up("bundle", "promptVersion", "seq") },
-    { name: "by_workflow", key: up("bundle", "seq") },
+    { name: "by_version", key: up("workflow", "promptVersion", "seq") },
+    { name: "by_workflow", key: up("workflow", "seq") },
+  ],
+  [Collections.ThreadStatusTransitions]: [
+    { name: "by_thread", key: up("tenantId", "threadId", "seq"), unique: true },
+  ],
+  [Collections.Threads]: [
+    { name: "idle", key: up("workflow", "lastActiveAt"), partial: { isSwept: false } },
   ],
   [Collections.ExecutionScores]: [{ name: "by_record", key: up("recordId") }],
   [Collections.ExecutionSummaries]: [
-    { name: "by_thread", key: up("tenantId", "threadId", "compaction", "toSeq") },
+    { name: "by_thread", key: up("tenantId", "threadId", "memory", "toSeq") },
   ],
   [Collections.PauseAnswers]: [
     { name: "by_tree", key: up("tenantId", "rootExecutionId", "askedAt", "seq") },
@@ -110,26 +124,27 @@ const EXPECTED: Readonly<Record<string, readonly Expected[]>> = {
     { name: "by_start", key: up("startedAt", "executionId") },
     { name: "by_ended_at", key: up("endedAt") },
   ],
-  [Collections.MeshRequests]: [{ name: "by_created_at", key: up("createdAt") }],
+  [Collections.MeshRequests]: [{ name: "by_expiry", key: up("expiresAt") }],
   [Collections.A2ATasks]: [
     {
       name: "by_owner",
       key: [
+        ["endpoint", 1],
         ["tenantId", 1],
         ["ownerId", 1],
         ["statusAt", -1],
         ["taskId", -1],
       ],
     },
-    { name: "by_finished", key: up("state", "statusAt") },
+    { name: "by_endpoint", key: up("endpoint", "state", "statusAt") },
   ],
   [Collections.A2AMessages]: [
     { name: "by_task", key: up("tenantId", "taskId") },
-    { name: "by_claim", key: up("taskId", "savedAt") },
+    { name: "by_endpoint", key: up("endpoint", "taskId", "savedAt") },
   ],
   [Collections.A2ADirectMessages]: [
     { name: "by_in_flight", key: up("state", "expiresAt") },
-    { name: "by_created_at", key: up("createdAt") },
+    { name: "by_endpoint", key: up("endpoint", "state", "completedAt") },
   ],
   [Collections.Checkpoints]: [
     {
@@ -150,9 +165,11 @@ const EXPECTED: Readonly<Record<string, readonly Expected[]>> = {
         ["checkpointId", -1],
       ],
     },
+    { name: "by_root", key: up("rootId") },
   ],
   [Collections.CheckpointWrites]: [
     { name: "by_checkpoint", key: up("threadId", "namespace", "checkpointId", "seq", "position") },
+    { name: "by_root", key: up("rootId") },
   ],
 };
 

@@ -81,11 +81,14 @@ describe("agbossjs/agboss#1213: the limit, the filter and the cursor", () => {
     });
   });
 
-  it("a scan's keyset with an unreadable time is refused by its text", async () => {
-    const after = { at: "nonsense", tenantId: "default", pauseId: "p" };
+  it("a scan's keyset with an Invalid Date is refused by its field, never queried", async () => {
+    const after = { at: new Date(Number.NaN), tenantId: "default", pauseId: "p" };
 
     await expect(storeOn().findPendingByExpiresAtBefore(LATER, 5, after)).rejects.toThrowError(
-      new TypeError(`a pause scan's cursor is an ISO 8601 time, not "nonsense"`),
+      expect.objectContaining({
+        name: "StoreError.UnreadableRecord",
+        message: expect.stringContaining("after.at"),
+      }),
     );
   });
 
@@ -150,7 +153,7 @@ describe("agbossjs/agboss#1213: a page is in the sequence's order, its cursor th
       ["c", 20],
       ["d", 40],
     ] as const)
-      await insertTakenRow(dbOf(), id, seq, NINE.toISOString());
+      await insertTakenRow(dbOf(), id, seq, NINE);
     const store = storeOn();
 
     const first = await store.findClosedByResolvedAtBefore(LATER, 3);
@@ -175,7 +178,7 @@ describe("agbossjs/agboss#1213: a page is in the sequence's order, its cursor th
       ["r3", 5],
       ["r4", 6],
     ] as const)
-      await insertTakenRow(db, id, seq, NINE.toISOString());
+      await insertTakenRow(db, id, seq, NINE);
     for (const id of ["k1", "k2"])
       await insertMailboxRow(db, id, { headWrittenAt: NINE, nextAttemptAt: NINE });
 
@@ -186,7 +189,7 @@ describe("agbossjs/agboss#1213: a page is in the sequence's order, its cursor th
 
   it("a pause is kept for a replacement it names, not for a pause called undefined", async () => {
     const db = dbOf();
-    await insertTakenRow(db, "plain", 1, NINE.toISOString());
+    await insertTakenRow(db, "plain", 1, NINE);
     await insertPauseRow(db, "undefined", 2);
 
     const page = await storeOn().findClosedByResolvedAtBefore(LATER, 5);
@@ -206,7 +209,7 @@ describe("agbossjs/agboss#1213: a page is in the sequence's order, its cursor th
         db,
         id,
         1,
-        { reassignedFrom: "old", askedAt: asked(minutes).toISOString() },
+        { reassignedFrom: "old", askedAt: asked(minutes) },
         { reassignedFrom: "old", askedAt: asked(minutes) },
       );
 

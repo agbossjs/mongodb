@@ -17,7 +17,7 @@ const Revealing = z.custom<{ reveal(): string }>(
     value !== null &&
     "reveal" in value &&
     typeof value.reveal === "function",
-  { message: "the driver's url must be a secret(…)" },
+  { error: "the driver's url must be a secret(…)" },
 );
 
 const Resolved = z.object({

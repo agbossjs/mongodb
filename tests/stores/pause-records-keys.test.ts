@@ -52,7 +52,7 @@ describe("agbossjs/agboss#81: a paused run", () => {
   it("is saved with the time it paused at, the clock's", async () => {
     const run = pausedRunOfJson(
       JSON.stringify({
-        ...currentPausedRun,
+        ...currentPausedRun(),
         ...{ threadId: "thread-1", tenantId: "acme", runId: "run-9", turnId: "turn-1" },
       }),
     );
@@ -123,7 +123,7 @@ describe("agbossjs/agboss#81: a pause taken", () => {
   it("a pause expired for a problem keeps it in its closing", async () => {
     const store = storeOn();
     const at = new Date(NINE.getTime() + 60_000);
-    await store.findOrCreateByStepKey({ ...pauseOf("late"), expiresAt: at.toISOString() });
+    await store.findOrCreateByStepKey({ ...pauseOf("late"), expiresAt: at });
 
     const expired = await store.expireByTenantIdAndPauseId(
       "default",
@@ -156,7 +156,7 @@ describe("agbossjs/agboss#81: a notice written once", () => {
         tenantId,
         id,
         PauseNoticeKind.TimeoutChanged,
-        { expiresAt: "2026-01-05T10:00:00.000Z" },
+        { expiresAt: new Date("2026-01-05T10:00:00.000Z") },
         NINE,
         recipients,
       );
@@ -182,7 +182,7 @@ describe("agbossjs/agboss#81: a notice written once", () => {
         tenantId,
         "same",
         PauseNoticeKind.TimeoutChanged,
-        { expiresAt: "2026-01-05T10:00:00.000Z" },
+        { expiresAt: new Date("2026-01-05T10:00:00.000Z") },
         NINE,
         recipients,
       );
@@ -198,7 +198,11 @@ describe("agbossjs/agboss#81: a reassignment's replacement", () => {
     await store.findOrCreateByStepKey(pauseOf("before"));
     const hostile = {
       ...(await withSeenNow(store, "before", { pauseId: "after", assignees: ["alice"] })),
-      ...{ status: PauseStatus.Resolved, isSent: true, askedAt: "2020-01-01T00:00:00.000Z" },
+      ...{
+        status: PauseStatus.Resolved,
+        isSent: true,
+        askedAt: new Date("2020-01-01T00:00:00.000Z"),
+      },
       reassignedFrom: "someone-else",
     };
 
@@ -212,7 +216,7 @@ describe("agbossjs/agboss#81: a reassignment's replacement", () => {
 
     expect(made).toMatchObject({
       ...{ pauseId: "after", status: PauseStatus.Pending, isSent: false },
-      ...{ askedAt: NINE.toISOString(), reassignedFrom: "before" },
+      ...{ askedAt: NINE, reassignedFrom: "before" },
     });
     expect(await rowOf("after")).toMatchObject({
       ...{ status: PauseStatus.Pending, isSent: false, reassignedFrom: "before" },

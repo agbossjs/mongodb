@@ -1,4 +1,4 @@
-import type { SecretRef } from "@agboss/core";
+import type { EnvRef, SecretRef } from "@agboss/core";
 import {
   defineStorageDriver,
   StorageRole,
@@ -22,8 +22,11 @@ import { MongoRateLimitRepository } from "./stores/mongo-rate-limit.repository.j
 export interface MongoDriverOptions {
   /** The replica set: `secret("MONGODB_URL")`, read once when the application starts, never printed. */
   readonly url: SecretRef;
-  /** The database the stores' collections are in (default: the URL's, else `agboss`). */
-  readonly database?: string;
+  /**
+   * The database the stores' collections are in (default: the URL's, else `agboss`): a name, or an
+   * `env(…)` reference read once when the application starts.
+   */
+  readonly database?: string | EnvRef<string>;
   /** The read concern of the stores' transactions (default `snapshot`). */
   readonly transactionReadConcern?: MongoTransactionReadConcern;
   /** What the start does with the schema (default `SchemaSetup.Check`: it is migrated by `agboss migrate db`). */
@@ -62,7 +65,10 @@ export function MongoDriver(options: MongoDriverOptions): DatabaseDriver {
   return defineStorageDriver({
     role: StorageRole.Database,
     backend: "mongodb",
-    describes: database === undefined ? "mongodb" : `mongodb (database ${database})`,
+    describes:
+      database === undefined
+        ? "mongodb"
+        : `mongodb (database ${typeof database === "string" ? database : `from ${database.variable}`})`,
     settings: {
       kind: "mongodb",
       url,

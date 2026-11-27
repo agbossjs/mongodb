@@ -288,6 +288,16 @@ const CASES: readonly WriteCase[] = [
   },
   {
     name: "audit log: deleteExpired",
+    // the sweep asks only about trees that have events older than the cutoff: one of an ended tree
+    setup: () =>
+      live()
+        .db.collection<{
+          _id: string;
+          tenantId: string;
+          rootExecutionId: string;
+          occurredAt: Date;
+        }>(Collections.ExecutionAuditLog)
+        .insertOne({ _id: "event-76", ...TREE, occurredAt: new Date("2020-01-01T00:00:00.000Z") }),
     write: () =>
       new MongoExecutionAuditLogRepository(live()).deleteExpired(BEFORE, () =>
         Promise.resolve(true),

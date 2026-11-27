@@ -15,7 +15,7 @@ import {
   MongoPausedExecutionRepository,
   type MongoTransaction,
 } from "../../src/index.js";
-import type { PlannedNotice } from "../../src/stores/paused/pause-changes.js";
+import type { PlannedNotice } from "@agboss/core/stores";
 import { mailboxIdOf, mailboxesOf } from "../../src/stores/paused/pause-mailboxes.js";
 import { emptyAll, testDatabase } from "../support/database.js";
 import { ANSWER, NINE, pauseOf } from "../support/pauses.js";
@@ -123,7 +123,7 @@ describe("MongoPausedExecutionRepository notices", () => {
 
     const [first] = await store.claimNoticesDue(NINE, 5, seconds(60), ["listener:audit"]);
     const second = first === undefined ? undefined : await store.ackNotice(first, NINE);
-    expect(second?.mailbox.headWrittenAt).toBe(NINE.toISOString());
+    expect(second?.mailbox.headWrittenAt).toStrictEqual(NINE);
     expect(await typed("date")).toBe(1);
     expect(second === undefined ? undefined : await store.ackNotice(second, NINE)).toBeUndefined();
 

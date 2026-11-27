@@ -14,7 +14,7 @@ import {
   type MongoConnection,
   type MongoTransaction,
 } from "../../src/index.js";
-import type { PlannedNotice } from "../../src/stores/paused/pause-changes.js";
+import type { PlannedNotice } from "@agboss/core/stores";
 import { mailboxIdOf, mailboxesOf } from "../../src/stores/paused/pause-mailboxes.js";
 import { emptyAll, testDatabase } from "../support/database.js";
 import { NINE, pauseOf } from "../support/pauses.js";

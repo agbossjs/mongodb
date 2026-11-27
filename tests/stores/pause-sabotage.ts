@@ -7,16 +7,13 @@ import type {
   PauseRecipients,
   PauseTimeoutChange,
 } from "@agboss/core/stores";
-import { seenOf } from "@agboss/core/stores";
+import { onceNotices, seenOf, timeoutChange } from "@agboss/core/stores";
+import type { PlannedNotice } from "@agboss/core/stores";
 import { MongoServerError } from "mongodb";
 import type { MongoTransaction } from "../../src/index.js";
 import { MongoPausedExecutionRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
-import { onceNotices } from "../../src/stores/paused/pause-marks.js";
-import type { PlannedNotice } from "../../src/stores/paused/pause-changes.js";
-import { timeoutChange } from "../../src/stores/paused/pause-timeout.js";
 import { pauseIdOf, pauseOfDocument } from "../../src/stores/paused/pause-documents.js";
-import { PAUSE_GUARDS, inStatus, type PauseGuards } from "../../src/stores/paused/pause-guards.js";
 import {
   appendNotice,
   mailboxIdOf,
@@ -31,20 +28,6 @@ import {
 
 /** The collection `DuplicateKeyNoticeOnce` keeps its once-markers in (a test's reset empties it). */
 export const MARKERS = "noticeonce_markers";
-
-/** The deadline taken out of every compare-and-set: a pending pause is answered, expired, changed at any time. */
-export class NoDeadlineGuards extends MongoPausedExecutionRepository {
-  protected override get guards(): PauseGuards {
-    const pending = (): ReturnType<typeof inStatus> => inStatus(PauseStatus.Pending);
-    return {
-      ...PAUSE_GUARDS,
-      open: pending,
-      due: pending,
-      changeable: pending,
-      remindable: pending,
-    };
-  }
-}
 
 /** The notices written outside the transaction's session: committed at once, whatever the change does. */
 export class OutsideSessionOutbox extends MongoPausedExecutionRepository {
@@ -144,7 +127,7 @@ export class TimeoutChangeWithoutCompare extends MongoPausedExecutionRepository 
     recipients: PauseRecipients,
   ): Promise<PauseRecord | undefined> {
     const guard = { status: PauseStatus.Pending, expiresAt: { $gt: at } };
-    return this.change(tenantId, pauseId, guard, (before) =>
+    return this.change(tenantId, pauseId, at, guard, (before) =>
       timeoutChange(
         before,
         {
@@ -156,19 +139,6 @@ export class TimeoutChangeWithoutCompare extends MongoPausedExecutionRepository 
         recipients,
       ),
     );
-  }
-}
-
-/** A deadline change whose filter never looks at the deadline: one written after it is applied (#1148). */
-export class ExtendAfterDeadline extends MongoPausedExecutionRepository {
-  protected override get guards(): PauseGuards {
-    return {
-      ...PAUSE_GUARDS,
-      changeable: (_at, previous) => ({
-        status: PauseStatus.Pending,
-        expiresAt: previous === undefined ? null : { $eq: previous },
-      }),
-    };
   }
 }
 
@@ -198,13 +168,6 @@ export class ScansIgnoreAfter extends MongoPausedExecutionRepository {
 
   override findPendingByRemindAtBefore(at: Date, limit: number): Promise<readonly PauseRecord[]> {
     return super.findPendingByRemindAtBefore(at, limit);
-  }
-}
-
-/** A reassignment decided by the stale read alone (#946): the old pause's write has no condition, so two racing reassignments, or one after an answer, both apply. */
-export class ReassignWithoutGuard extends MongoPausedExecutionRepository {
-  protected override get guards(): PauseGuards {
-    return { ...PAUSE_GUARDS, open: () => ({}) };
   }
 }
 

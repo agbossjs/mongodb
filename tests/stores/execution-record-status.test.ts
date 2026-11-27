@@ -7,14 +7,17 @@
 import { ExecutionRecordStatus, StatusTrigger, ThreadStatus } from "@agboss/core";
 import { VirtualClock } from "@agboss/core/testing";
 import { minutes } from "@agboss/core/units";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Collections, MongoExecutionRecordRepository } from "../../src/index.js";
 import { idOf } from "../../src/stores/keys.js";
 import { TestApplicationContext } from "../support/application-context.js";
-import { testDatabase } from "../support/database.js";
+import { emptyAll, testDatabase } from "../support/database.js";
 import { connectionTo, CountingIdGenerator, outcomeOf, recordOf } from "../support/stores.js";
 
 const database = testDatabase();
+
+// the tests count whole collections: each starts from an empty database
+beforeEach(() => emptyAll(database.url()));
 const { Answered, Paused, Running, Failed } = ExecutionRecordStatus;
 const WORKFLOW = "desk-workflow";
 

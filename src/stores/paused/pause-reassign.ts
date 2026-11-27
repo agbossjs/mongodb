@@ -1,18 +1,23 @@
 import type { PauseRecord } from "@agboss/core";
-import type { PauseReassignmentChange, PauseRecipients } from "@agboss/core/stores";
+import {
+  assertValidInstant,
+  reassignChange,
+  type PauseReassignmentChange,
+  type PauseRecipients,
+  type PlannedNotice,
+} from "@agboss/core/stores";
 import type { Collection } from "mongodb";
 import type { MongoConnection } from "../../connection/mongodb-connection.js";
 import type { MongoTransaction } from "../../connection/transaction.js";
-import type { PlannedNotice } from "./pause-changes.js";
 import {
   insertPause,
   pauseIdOf,
   pauseOfDocument,
+  returnedPause,
   writtenFieldsOf,
   type PauseDocument,
 } from "./pause-documents.js";
 import type { PauseGuards } from "./pause-guards.js";
-import { reassignChange } from "./pause-reassign-plan.js";
 
 /** What a transaction of the pause store needs of it: its connection, collection, guards and notice writer. */
 export interface PauseParts {
@@ -27,7 +32,7 @@ export interface PauseParts {
 }
 
 /**
- * One transaction (#946): the old pause read, its replacement planned, the old pause closed by the
+ * One transaction (#946): the old pause read, its replacement planned (the core's `reassignChange`), the old pause closed by the
  * compare-and-set of an answer's — pending, its deadline after `at` in the filter — and the
  * replacement inserted with the old pause's `closed` notice. Of two racing reassignments, or a
  * reassignment and an answer, one writes the old pause and the other's write conflicts, runs again
@@ -43,6 +48,12 @@ export function reassignIn(
 ): Promise<PauseRecord | undefined> {
   const { tenantId, pauseId } = target;
   return parts.connection.inTransaction(async (transaction) => {
+    // refused whether or not the pause exists (the core's rule refuses the same times once it plans)
+    assertValidInstant(at, "at");
+    assertValidInstant(replacement.due?.expiresAt, "due.expiresAt");
+    assertValidInstant(replacement.due?.remindAt, "due.remindAt");
+    assertValidInstant(replacement.timeout?.expiresAt, "timeout.expiresAt");
+    assertValidInstant(replacement.timeout?.remindAt, "timeout.remindAt");
     const { db, session } = transaction;
     const _id = pauseIdOf(tenantId, pauseId);
     const found = await parts.pauses.findOne({ _id }, { session });
@@ -63,8 +74,8 @@ export function reassignIn(
     if (written.matchedCount === 0) return undefined;
     await parts.appendNotices(transaction, change.pause, change.notices);
     // in place: the changed pause itself; otherwise the replacement is inserted
-    if (change.inserted === undefined) return change.pause;
+    if (change.inserted === undefined) return returnedPause(change.pause);
     await insertPause(db, session, change.inserted);
-    return change.inserted;
+    return returnedPause(change.inserted);
   });
 }

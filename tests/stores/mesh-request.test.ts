@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Collections, MongoMeshRequestRepository } from "../../src/index.js";
-import { testDatabase } from "../support/database.js";
+import { emptyAll, testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
 import { StoreError } from "@agboss/core/stores";
 
@@ -137,6 +137,8 @@ describe("agbossjs/mongodb#105: the mesh request store's answer", () => {
 });
 
 describe("agbossjs/agboss#1319c: a running mesh request is held by an attempt under a lease", () => {
+  // the tests share one key: each starts from no request
+  beforeEach(() => emptyAll(database.url()));
   const key = { tenantId: "acme", peer: "orders-application", idempotencyKey: "k-lease" };
   const record = (attemptId: string, createdAt: string, lockedUntil: string) => ({
     ...key,

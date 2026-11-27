@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
-import type {
-  PauseMailbox,
-  PauseNoticeClaim,
-  PauseNoticeCounts,
-  SetAsideMailbox,
+import {
+  assertValidInstant,
+  type PauseMailbox,
+  type PauseNoticeClaim,
+  type PauseNoticeCounts,
+  type SetAsideMailbox,
 } from "@agboss/core/stores";
 import type { Db, Document, Filter } from "mongodb";
 import { z } from "zod";
@@ -23,7 +24,7 @@ const unclaimedAt = (at: Date): Filter<MailboxDocument> => ({
 });
 
 /** What a mailbox that does not read is set aside with (agbossjs/agboss#1307, review #1419 L8: the core's SQLite store says the same). */
-export const UNREADABLE_MAILBOX = "unreadable mailbox";
+const UNREADABLE_MAILBOX = "unreadable mailbox";
 
 /**
  * Claims up to `limit` due mailboxes of `recipients`, oldest due first, each under a token of its
@@ -38,6 +39,7 @@ export async function claimDue(
   claimFor: number,
   recipients: readonly string[],
 ): Promise<PauseNoticeClaim[]> {
+  assertValidInstant(at, "at", "pause notice");
   const until = new Date(at.getTime() + claimFor);
   const claims: PauseNoticeClaim[] = [];
   while (claims.length < limit) {
@@ -56,18 +58,20 @@ export async function claimDue(
     if (claimed === null) return claims;
     const mailbox = readable(claimed);
     if (mailbox === undefined) await setAsideUnreadable(db, claimed._id, token);
-    else claims.push({ mailbox, token, until });
+    else claims.push({ mailbox, token, until: new Date(until.getTime()) });
   }
   return claims;
 }
 
 /** The mailbox a document is, `undefined` when it does not read. */
 function readable(found: unknown): PauseMailbox | undefined {
+  let mailbox: PauseMailbox | undefined;
   try {
-    return mailboxOf(found);
+    mailbox = mailboxOf(found);
   } catch {
-    return undefined;
+    // it does not read: no mailbox
   }
+  return mailbox;
 }
 
 /** The unreadable mailbox, claimed under `token`, dead: never claimed again. */
@@ -93,6 +97,7 @@ export async function acknowledge(
   claim: PauseNoticeClaim,
   at: Date,
 ): Promise<PauseNoticeClaim | undefined> {
+  assertValidInstant(at, "at", "pause notice");
   const { tenantId, pauseId, recipient } = claim.mailbox;
   const next: Document = { $add: ["$delivered", 1] };
   const hasMore: Document = { $lt: [next, { $size: "$notices" }] };
@@ -121,7 +126,8 @@ export async function acknowledge(
     { returnDocument: "after" },
   );
   if (after === null || Claimed.parse(after).claimedUntil === null) return undefined;
-  return { mailbox: mailboxOf(after), token: claim.token, until: claim.until };
+  // a copy: the caller's `Date` is never the one a later `setTime` there could move
+  return { mailbox: mailboxOf(after), token: claim.token, until: new Date(claim.until.getTime()) };
 }
 
 /**
@@ -135,6 +141,7 @@ export async function renew(
   at: Date,
   claimFor: number,
 ): Promise<PauseNoticeClaim | undefined> {
+  assertValidInstant(at, "at", "pause notice");
   const { tenantId, pauseId, recipient } = claim.mailbox;
   const until = new Date(at.getTime() + claimFor);
   const after = await mailboxesOf(db).findOneAndUpdate(
@@ -158,6 +165,7 @@ export async function retry(
   nextAttemptAt: Date,
   problem: string,
 ): Promise<boolean> {
+  assertValidInstant(nextAttemptAt, "nextAttemptAt", "pause notice");
   const { tenantId, pauseId, recipient } = claim.mailbox;
   const held = await mailboxesOf(db).updateOne(
     { _id: mailboxIdOf(tenantId, pauseId, recipient), claimToken: claim.token },
@@ -189,6 +197,8 @@ export async function setAsideStale(
   problem: string,
   limit: number,
 ): Promise<SetAsideMailbox[]> {
+  assertValidInstant(before, "writtenBefore", "pause notice");
+  assertValidInstant(at, "at", "pause notice");
   const taken: SetAsideMailbox[] = [];
   while (taken.length < limit) {
     const one = await mailboxesOf(db).findOneAndUpdate(

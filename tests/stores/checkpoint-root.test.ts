@@ -4,12 +4,15 @@
  * thread and every thread with that stored root — never a range or a prefix of thread ids.
  */
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Collections, MongoCheckpointSaver } from "../../src/index.js";
-import { testDatabase } from "../support/database.js";
+import { emptyAll, testDatabase } from "../support/database.js";
 import { connectionTo } from "../support/stores.js";
 
 const database = testDatabase();
+
+// the tests count whole collections: each starts from an empty database
+beforeEach(() => emptyAll(database.url()));
 
 const at = (thread: string, root?: string) => ({
   configurable: {
