@@ -173,8 +173,9 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     return retry(this.connection.db, claim, nextAttemptAt, problem);
   }
 
-  setAsideNotices(claim: PauseNoticeClaim, _at: Date, problem: string): Promise<boolean> {
-    return giveUp(this.connection.db, claim, problem);
+  async setAsideNotices(claim: PauseNoticeClaim, at: Date, problem: string): Promise<boolean> {
+    assertValidInstant(at, "at", "pause notice");
+    return await giveUp(this.connection.db, claim, problem);
   }
 
   setAsideStaleNoticesBefore(

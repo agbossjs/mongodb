@@ -58,7 +58,7 @@ export async function claimDue(
     if (claimed === null) return claims;
     const mailbox = readable(claimed);
     if (mailbox === undefined) await setAsideUnreadable(db, claimed._id, token);
-    else claims.push({ mailbox, token, until });
+    else claims.push({ mailbox, token, until: new Date(until.getTime()) });
   }
   return claims;
 }

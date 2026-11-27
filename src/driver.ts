@@ -68,7 +68,7 @@ export function MongoDriver(options: MongoDriverOptions): DatabaseDriver {
     describes:
       database === undefined
         ? "mongodb"
-        : `mongodb (database ${typeof database === "string" ? database : `(${database.variable})`})`,
+        : `mongodb (database ${typeof database === "string" ? database : `from ${database.variable}`})`,
     settings: {
       kind: "mongodb",
       url,

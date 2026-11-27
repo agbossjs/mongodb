@@ -75,6 +75,9 @@ const Stored = z.object({
   closing: z.string().nullable(),
   expiresAt: z.date().nullable().optional(),
   remindAt: z.date().nullable().optional(),
+  // never read back as such, but a query's key: a text here would sort apart (retention, the re-send scan)
+  resolvedAt: z.date().nullable().optional(),
+  askedAt: z.date().optional(),
   expiryBound: z.string().nullable().optional(),
 });
 const Ids = z.object({ pauseId: z.string().optional(), rootExecutionId: z.string().optional() });

@@ -99,7 +99,7 @@ describe("MongoDriver", () => {
     const driver = MongoDriver({ url: revealing("mongodb://h1/agboss") as never, database });
 
     expect(driver.settings).toMatchObject({ kind: "mongodb", database });
-    expect(driver.describes).toBe("mongodb (database (MONGODB_DATABASE))");
+    expect(driver.describes).toBe("mongodb (database from MONGODB_DATABASE)");
   });
 
   it("the settings the application resolved from env(…) carry the database as the name read", () => {

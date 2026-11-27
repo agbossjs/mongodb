@@ -401,9 +401,17 @@ fields `assignees`, `externalRef` and `channel` (absent when the pause has none,
   `askedAt` of a pause document, `headWrittenAt`, `nextAttemptAt`, `claimedUntil` and every notice's
   `writtenAt` of a mailbox, and the answer log's `askedAt` are BSON Dates in every document: BSON
   orders by type, so one text among them would sort apart and a `$lte: Date` would never match it.
-  The scans' indexes are partial on `$type: "date"`, and a document with a text in such a field is
-  refused when read (`StoreError.UnreadableRecord`), not skipped quietly. An Invalid `Date` handed to
-  any write or scan is refused first (`StoreError.UnreadableRecord` naming the field), nothing written. A database an earlier unreleased 0.1.1 build made (text in the answer log's `askedAt`) is recreated: no migration, no 0.1.0 compatibility.
+  Every write makes Dates. A document read directly (by id, by step key, a tree's list, a listing
+  page, a claimed mailbox, the answer log) with a text in one of those fields is refused
+  (`StoreError.UnreadableRecord` naming the field, never the value); a claimed mailbox is set aside as
+  dead. The scans do not read such a document at all, by construction: only the two deadline scans
+  (`pending_by_expiry`, `pending_by_remind`) have partial indexes on `$type: "date"`; the others
+  (`reassigned_unsent`, `by_resolution`, the answer log's `by_tree`, the mailbox claim and stale looks)
+  filter or sort by the field with a Date, so a document with a text there is passed over quietly by
+  them until a direct read refuses it. An Invalid `Date` handed to any write or scan is refused first
+  (`StoreError.UnreadableRecord` naming the field), nothing written. A database an earlier unreleased
+  0.1.1 build made (text in the answer log's `askedAt`) is recreated: no migration, no 0.1.0
+  compatibility.
 - **A deadline may be taken away** (`expiresAt: null`, `remindAt: null` in the document): the
   deadline indexes are partial on `$type: "date"`, so such a pause is in none of them.
 - **Listing.** `findPageByTenantId` and `findPageOfAllTenants` (every tenant's, no tenant clause,

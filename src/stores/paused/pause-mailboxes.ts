@@ -84,6 +84,8 @@ const StoredMailbox = z.object({
   delivered: z.number(),
   attempts: z.number(),
   nextAttemptAt: z.date(),
+  // the claim's end, a query's key: a text would make the mailbox unclaimable and invisible to the stale look
+  claimedUntil: z.date().nullish(),
   headWrittenAt: z
     .date()
     .nullable()

@@ -104,7 +104,8 @@ export abstract class MongoPauseBase extends PausedExecutionRepository {
       );
       if (recorded.matchedCount === 0) return undefined;
       await this.appendNotices(transaction, change.pause, change.notices);
-      return change.pause;
+      // a copy: the caller's own `at` and deadline instances are never inside what comes back
+      return structuredClone(change.pause);
     });
   }
 

@@ -8,6 +8,7 @@ import type { Db } from "mongodb";
 import { describe, expect, it } from "vitest";
 import {
   markPauseAnswerNotTaken,
+  pauseAnswerTextsOf,
   savePauseAnswer,
 } from "../../src/stores/records/record-writes.js";
 import { answerOf } from "../support/pause-answers.js";
@@ -81,5 +82,22 @@ describe("the pause answer log's times", () => {
       }),
     ).rejects.toThrowError(refusal("trail[0].at"));
     expect(updates).toEqual([]);
+  });
+
+  it("an entry whose askedAt is a text is refused when the log is read, by the field, not the value", async () => {
+    const cursor = {
+      sort: () => cursor,
+      toArray: () => Promise.resolve([{ record: "{}", askedAt: "2026-01-05T09:00:00.000Z" }]),
+    };
+    const db = { collection: () => ({ find: () => cursor }) } as never;
+
+    const refused = await pauseAnswerTextsOf(db, "default", "root").then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(refused).toBeInstanceOf(StoreError.UnreadableRecord);
+    expect((refused as Error).message).toContain("askedAt");
+    expect((refused as Error).message).not.toContain("2026-01-05");
   });
 });

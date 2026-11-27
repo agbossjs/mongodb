@@ -794,7 +794,7 @@ export class MongoPausedExecutionRepository extends MongoPauseTransitions {
     // (undocumented)
     retryNotice(claim: PauseNoticeClaim, nextAttemptAt: Date, problem: string): Promise<boolean>;
     // (undocumented)
-    setAsideNotices(claim: PauseNoticeClaim, _at: Date, problem: string): Promise<boolean>;
+    setAsideNotices(claim: PauseNoticeClaim, at: Date, problem: string): Promise<boolean>;
     // (undocumented)
     setAsideStaleNoticesBefore(writtenBefore: Date, at: Date, problem: string, limit: number): Promise<readonly SetAsideMailbox[]>;
 }

@@ -73,8 +73,8 @@ export function reassignIn(
     if (written.matchedCount === 0) return undefined;
     await parts.appendNotices(transaction, change.pause, change.notices);
     // in place: the changed pause itself; otherwise the replacement is inserted
-    if (change.inserted === undefined) return change.pause;
+    if (change.inserted === undefined) return structuredClone(change.pause);
     await insertPause(db, session, change.inserted);
-    return change.inserted;
+    return structuredClone(change.inserted);
   });
 }

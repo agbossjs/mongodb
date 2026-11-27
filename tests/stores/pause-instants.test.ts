@@ -154,6 +154,15 @@ describe("a pause's document: Dates in the fields a query reads, canonical text 
     expect(second.askedAt).toStrictEqual(NINE);
   });
 
+  it.each(["resolvedAt", "askedAt"])(
+    "a text in the Date field %s of a document is refused by the field, never by the value",
+    (field) => {
+      const document = { ...documentOf(pauseOf("p")), [field]: "2026-01-05T09:00:00.000Z" };
+
+      unreadable(() => pauseOfDocument(document), field);
+    },
+  );
+
   it("a text where a BSON Date belongs is refused by the field, never by the value", () => {
     const document = {
       ...documentOf({ ...pauseOf("p"), expiresAt: TEN }),
@@ -247,6 +256,13 @@ describe("a mailbox: Dates where the store queries them, canonical text in the n
       expiresAt: new Date("2026-01-05T11:00:00.000Z"),
       previousExpiresAt: TEN,
     });
+  });
+
+  it("a text in claimedUntil makes the mailbox unreadable, naming the field", () => {
+    const damaged = { ...stored({}), claimedUntil: "2026-01-05T09:00:00.000Z" };
+
+    expect(() => mailboxOf(damaged)).toThrowError(/claimedUntil/);
+    expect(mailboxOf({ ...stored({}), claimedUntil: null }).tenantId).toBe("default");
   });
 
   it("a delivered mailbox has no head", () => {
@@ -384,6 +400,28 @@ describe("the notices' delivery: an Invalid Date is refused before the mailbox i
     ["a set-aside at", () => setAsideStale(UNTOUCHED, NINE, BAD, "stale", 1), "at"],
   ])("%s", async (_what, call, field) => {
     await expect(call()).rejects.toThrowError(refusing(field, "pause notice"));
+  });
+
+  it("every claim of a call has an `until` of its own", async () => {
+    const documents = [1, 2].map((n) => ({
+      tenantId: "default",
+      pauseId: `p${String(n)}`,
+      recipient: "listener:audit",
+      notices: [],
+      delivered: 0,
+      attempts: 0,
+      nextAttemptAt: NINE,
+      headWrittenAt: null,
+      claimedUntil: null,
+      isDead: false,
+    }));
+    const collection = { findOneAndUpdate: () => Promise.resolve(documents.shift() ?? null) };
+    const db = { collection: () => collection } as never;
+
+    const [first, second] = await claimDue(db, TEN, 2, 1000, ["listener:audit"]);
+
+    expect(first?.until).toStrictEqual(second?.until);
+    expect(first?.until).not.toBe(second?.until);
   });
 
   it("the acknowledged claim's `until` is a copy of the caller's", async () => {
@@ -709,6 +747,63 @@ describe("a transition of a pause: the core's rule over the record read, the Dat
       expect(appended).toEqual([]);
     },
   );
+
+  it("the record a transition returns holds copies: moving a Date of it moves nothing the caller passed", async () => {
+    const { store } = storeOn(open);
+    const at = new Date(TEN.getTime());
+
+    const resolved = await store.resolveByTenantIdAndPauseId(
+      "default",
+      "p",
+      { decision: 1, actor: undefined },
+      at,
+      NO_RECIPIENTS,
+    );
+
+    expect(resolved?.resolvedAt).not.toBe(at);
+    resolved?.resolvedAt?.setTime(0);
+    resolved?.trail.forEach((entry) => entry.at.setTime(0));
+    expect(at).toStrictEqual(TEN);
+  });
+
+  it("a reassignment returns a copy of the pause it made, not the caller's Dates", async () => {
+    const { store } = storeOn(open);
+    const due = new Date(NOON.getTime());
+    const moved = await store.reassignByTenantIdAndPauseId(
+      "default",
+      "p",
+      { seen: seenOf(open), assignees: ["alice"], timeout: { expiresAt: due } },
+      TEN,
+      NO_RECIPIENTS,
+    );
+
+    expect(moved?.expiresAt).not.toBe(due);
+    moved?.expiresAt?.setTime(0);
+    expect(due).toStrictEqual(NOON);
+  });
+
+  it("a set-aside at an Invalid Date is refused through the store, nothing written", async () => {
+    const { store, writes } = storeOn(open);
+    const claim = {
+      mailbox: {
+        tenantId: "default",
+        pauseId: "p",
+        recipient: "listener:audit",
+        notices: [],
+        delivered: 0,
+        attempts: 0,
+        nextAttemptAt: NINE,
+        isDead: false,
+      },
+      token: "t",
+      until: TEN,
+    };
+
+    await expect(store.setAsideNotices(claim, BAD, "gave up")).rejects.toThrowError(
+      refusing("at", "pause notice"),
+    );
+    expect(writes).toEqual([]);
+  });
 
   it.each(["expiresAt", "remindAt", "previousExpiresAt"])(
     "a deadline change with an Invalid %s is refused before the read, even for a pause that does not exist",
