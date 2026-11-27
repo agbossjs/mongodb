@@ -87,11 +87,12 @@ describe("agbossjs/agboss#81: an intent is saved", () => {
     // the sequence of its number is drawn before it, outside the transaction (nothing to fence)
     const writes = log.filter((one) => nameOf(one) === `update ${Collections.OutboundCalls}`);
     expect(writes.map((one) => one.inTransaction)).toEqual([true]);
-    // a pending call has no end, so no expiry: the retention's index skips it
+    // a pending call has no end, so its expiry is `null`: the retention's partial index skips it
     expect(await document(connection)).toEqual({
       status: OutboundCallStatus.Pending,
       attempt: 1,
       attemptOwner: OWNER,
+      expiresAt: null,
     });
   });
 });

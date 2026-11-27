@@ -95,9 +95,10 @@ export abstract class MongoPauseBase extends PausedExecutionRepository {
       const pauses = db.collection<PauseDocument>(Collections.Pauses);
       const _id = pauseIdOf(tenantId, pauseId);
       const found = await pauses.findOne({ _id }, { session });
-      const before = found === null ? undefined : pauseOfDocument(found);
-      const change = before === undefined ? undefined : plan(before);
-      if (before === undefined || change === undefined) return undefined;
+      if (found === null) return undefined;
+      const before = pauseOfDocument(found);
+      const change = plan(before);
+      if (change === undefined) return undefined;
       const recorded = await pauses.updateOne(
         { _id, ...guard },
         writtenFieldsOf(before, change.pause),

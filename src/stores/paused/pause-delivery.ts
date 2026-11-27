@@ -24,7 +24,7 @@ const unclaimedAt = (at: Date): Filter<MailboxDocument> => ({
 });
 
 /** What a mailbox that does not read is set aside with (agbossjs/agboss#1307, review #1419 L8: the core's SQLite store says the same). */
-export const UNREADABLE_MAILBOX = "unreadable mailbox";
+const UNREADABLE_MAILBOX = "unreadable mailbox";
 
 /**
  * Claims up to `limit` due mailboxes of `recipients`, oldest due first, each under a token of its
@@ -65,11 +65,13 @@ export async function claimDue(
 
 /** The mailbox a document is, `undefined` when it does not read. */
 function readable(found: unknown): PauseMailbox | undefined {
+  let mailbox: PauseMailbox | undefined;
   try {
-    return mailboxOf(found);
+    mailbox = mailboxOf(found);
   } catch {
-    return undefined;
+    // it does not read: no mailbox
   }
+  return mailbox;
 }
 
 /** The unreadable mailbox, claimed under `token`, dead: never claimed again. */

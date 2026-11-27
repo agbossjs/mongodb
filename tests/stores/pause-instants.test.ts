@@ -7,6 +7,7 @@
 import { PauseStatus, type PauseRecord } from "@agboss/core";
 import {
   NO_RECIPIENTS,
+  PauseExpiryBound,
   PauseNoticeKind,
   seenOf,
   StoreError,
@@ -44,6 +45,9 @@ import { pausedRunOf } from "../support/paused-run.js";
 const BAD = new Date(Number.NaN);
 const TEN = new Date("2026-01-05T10:00:00.000Z");
 const NOON = new Date("2026-01-05T12:00:00.000Z");
+
+/** An open pause: a deadline at noon. */
+const OPEN = { ...pauseOf("p"), expiresAt: NOON };
 
 /** The document a store keeps of `pause`, as `insertPause` makes it. */
 const documentOf = (pause: PauseRecord): Record<string, unknown> => ({
@@ -223,6 +227,74 @@ describe("a pause's document: Dates in the fields a query reads, canonical text 
     });
   });
 
+  it("a document that does not read is refused with the pause's ids and every field that failed", () => {
+    const bad = (change: object) => ({ ...documentOf(OPEN), ...change });
+    const date = "2026-01-05T10:00:00.000Z";
+
+    expect(() => pauseOfDocument(bad({ expiresAt: date, remindAt: date }))).toThrowError(
+      new StoreError.UnreadableRecord({
+        record: "pause",
+        ids: "pauseId p, rootExecutionId run-1",
+        fields: "expiresAt, remindAt",
+      }),
+    );
+    expect(() =>
+      pauseOfDocument(bad({ expiresAt: date, rootExecutionId: undefined })),
+    ).toThrowError(
+      new StoreError.UnreadableRecord({ record: "pause", ids: "pauseId p", fields: "expiresAt" }),
+    );
+  });
+
+  it("the expiry's source is the document's field over the record's", () => {
+    const document = {
+      ...documentOf({ ...OPEN, expiryBound: PauseExpiryBound.Pause }),
+      expiryBound: PauseExpiryBound.Quorum,
+    };
+
+    expect(pauseOfDocument(document).expiryBound).toBe(PauseExpiryBound.Quorum);
+  });
+
+  it("the listing fields are only those the pause has", () => {
+    const channel = "refund-approval-channel";
+    expect(listingFieldsOf(OPEN)).toStrictEqual({ channel });
+    expect(
+      listingFieldsOf({ ...OPEN, assignees: ["a"], externalRef: "JIRA-1", channel: "c" }),
+    ).toStrictEqual({ assignees: ["a"], externalRef: "JIRA-1", channel: "c" });
+    expect(listingFieldsOf({ ...OPEN, externalRef: "JIRA-1" })).toStrictEqual({
+      externalRef: "JIRA-1",
+      channel,
+    });
+    expect(listingFieldsOf({ ...OPEN, channel: undefined })).toStrictEqual({});
+  });
+
+  it("the record is written whole when only the assignees changed, or only the external reference", () => {
+    const written = (after: PauseRecord) => writtenFieldsOf(OPEN, after);
+
+    expect(written({ ...OPEN, assignees: ["a"] }).$set).toMatchObject({
+      assignees: ["a"],
+      record: expect.any(String),
+    });
+    const external = written({ ...OPEN, externalRef: "JIRA-1" });
+    expect(external.$set).toMatchObject({ externalRef: "JIRA-1", record: expect.any(String) });
+    expect(Object.keys(written({ ...OPEN, isSent: true }).$set ?? {})).not.toContain("record");
+  });
+
+  it("a record written whole with no assignees and no reference unsets their fields, never sets null", () => {
+    const before = { ...OPEN, assignees: ["a"], externalRef: "JIRA-1" };
+    const after = {
+      ...before,
+      assignees: undefined,
+      externalRef: undefined,
+      trail: [...before.trail],
+    };
+
+    const written = writtenFieldsOf(before, after);
+
+    expect(written.$unset).toStrictEqual({ assignees: "", externalRef: "" });
+    expect(Object.keys(written.$set ?? {})).not.toContain("assignees");
+    expect(Object.keys(written.$set ?? {})).not.toContain("externalRef");
+  });
+
   it("a write of a pause with an Invalid Date makes no fields", () => {
     expect(() => writtenFieldsOf(pauseOf("p"), { ...pauseOf("p"), remindAt: BAD })).toThrowError(
       refusing("remindAt"),
@@ -267,6 +339,23 @@ describe("a mailbox: Dates where the store queries them, canonical text in the n
 
     expect(() => mailboxOf(damaged)).toThrowError(/claimedUntil/);
     expect(mailboxOf({ ...stored({}), claimedUntil: null }).tenantId).toBe("default");
+  });
+
+  it("a notice keeps its actor as written: the id, and the organisation only when there is one", () => {
+    const actors = mailboxOf({
+      ...stored({}),
+      notices: [
+        {
+          seq: 1,
+          kind: PauseNoticeKind.TimeoutChanged,
+          writtenAt: NINE,
+          actor: { id: "a", orgId: "o" },
+        },
+        { seq: 2, kind: PauseNoticeKind.TimeoutChanged, writtenAt: NINE, actor: { id: "b" } },
+      ],
+    }).notices.map((notice) => notice.actor);
+
+    expect(actors).toStrictEqual([{ id: "a", orgId: "o" }, { id: "b" }]);
   });
 
   it("a delivered mailbox has no head", () => {
@@ -455,7 +544,10 @@ describe("the notices' delivery: an Invalid Date is refused before the mailbox i
  * A store on a fake database: the pauses collection answers a copy of the stored document (fresh
  * `Date`s on every read, as a driver hands out), `updateOne` is logged, the mailboxes take appends.
  */
-function storeOn(pause: PauseRecord): {
+function storeOn(
+  pause: PauseRecord,
+  options: { readonly isMissing?: boolean; readonly matched?: number } = {},
+): {
   store: MongoPausedExecutionRepository;
   writes: { filter: unknown; update: unknown }[];
   appended: unknown[];
@@ -464,10 +556,10 @@ function storeOn(pause: PauseRecord): {
   const writes: { filter: unknown; update: unknown }[] = [];
   const appended: unknown[] = [];
   const pauses = {
-    findOne: () => Promise.resolve(structuredClone(document)),
+    findOne: () => Promise.resolve(options.isMissing === true ? null : structuredClone(document)),
     updateOne: (filter: unknown, update: unknown) => {
       writes.push({ filter, update });
-      return Promise.resolve({ matchedCount: 1 });
+      return Promise.resolve({ matchedCount: options.matched ?? 1 });
     },
     find: () => ({ project: () => ({ toArray: () => Promise.resolve([document]) }) }),
   };
@@ -492,6 +584,13 @@ function storeOn(pause: PauseRecord): {
   };
 }
 
+/** The field each refusal of the table names; every other names `at`. */
+const REFUSED_FIELD: Readonly<Record<string, string>> = {
+  "a reassignment's deadline": "due.expiresAt",
+  "a deadline change to": "expiresAt",
+  "a once-notice's fact": "expiresAt",
+};
+
 describe("a transition of a pause: the core's rule over the record read, the Dates as they are", () => {
   const open = { ...pauseOf("p"), expiresAt: NOON };
 
@@ -513,6 +612,37 @@ describe("a transition of a pause: the core's rule over the record read, the Dat
       $or: [{ expiresAt: null }, { expiresAt: { $gt: TEN } }],
     });
     expect(writes[0]?.update).toMatchObject({ $set: { resolvedAt: TEN } });
+  });
+
+  it("a pause that does not exist is no change: undefined, nothing planned, nothing written", async () => {
+    const { store, writes, appended } = storeOn(open, { isMissing: true });
+
+    const resolved = await store.resolveByTenantIdAndPauseId(
+      "default",
+      "p",
+      { decision: 1, actor: undefined },
+      TEN,
+      { listeners: ["audit"] },
+    );
+
+    expect(resolved).toBeUndefined();
+    expect(writes).toEqual([]);
+    expect(appended).toEqual([]);
+  });
+
+  it("a write whose filter matched no pause is no change: undefined, and no notice is appended", async () => {
+    const { store, appended } = storeOn({ ...open, isSent: true }, { matched: 0 });
+
+    const resolved = await store.resolveByTenantIdAndPauseId(
+      "default",
+      "p",
+      { decision: 1, actor: undefined },
+      TEN,
+      { listeners: ["audit"] },
+    );
+
+    expect(resolved).toBeUndefined();
+    expect(appended).toEqual([]);
   });
 
   it("an answer at the deadline is the expiry's: the core's rule refuses it, nothing is written", async () => {
@@ -746,7 +876,9 @@ describe("a transition of a pause: the core's rule over the record read, the Dat
         (error: unknown) => error,
       );
 
+      // names the very field that was refused, not another
       expect(refused).toBeInstanceOf(StoreError.UnreadableRecord);
+      expect(refused).toEqual(refusing(REFUSED_FIELD[_what] ?? "at"));
       expect(writes).toEqual([]);
       expect(appended).toEqual([]);
     },
@@ -837,6 +969,49 @@ describe("a transition of a pause: the core's rule over the record read, the Dat
       expect(writes).toEqual([]);
     },
   );
+
+  it.each([
+    ["closedAt", { closedAt: BAD }],
+    ["previousExpiresAt", { previousExpiresAt: BAD }],
+  ])("a once-notice's fact %s is refused by its name", async (field, facts) => {
+    const { store } = storeOn(open);
+
+    await expect(
+      store.noticeOnceByTenantIdAndPauseId(
+        "default",
+        "p",
+        PauseNoticeKind.Closed,
+        facts,
+        NINE,
+        NO_RECIPIENTS,
+      ),
+    ).rejects.toEqual(refusing(field));
+  });
+
+  it.each([
+    ["due.remindAt", { due: { expiresAt: NOON, remindAt: BAD } }],
+    ["timeout.expiresAt", { timeout: { expiresAt: BAD } }],
+    ["timeout.remindAt", { timeout: { expiresAt: NOON, remindAt: BAD } }],
+  ])("a reassignment's %s is refused by its name", async (field, change) => {
+    const { store } = storeOn(open);
+
+    await expect(
+      store.reassignByTenantIdAndPauseId(
+        "default",
+        "p",
+        { seen: seenOf(open), ...change },
+        TEN,
+        NO_RECIPIENTS,
+      ),
+    ).rejects.toEqual(refusing(field));
+  });
+
+  it("the retention's cut-off that is an Invalid Date is refused by its name, whether it lists or deletes", async () => {
+    const { store } = storeOn(open);
+
+    await expect(store.findClosedByResolvedAtBefore(BAD, 10)).rejects.toEqual(refusing("cutoff"));
+    await expect(store.deleteByResolvedAtBefore(BAD)).rejects.toEqual(refusing("cutoff"));
+  });
 
   it("a paused run with an Invalid Date in a pending deadline is refused before it is saved", async () => {
     const { store } = storeOn(open);

@@ -162,7 +162,7 @@ export async function pauseAnswerTextsOf(
     throw new StoreError.UnreadableRecord({
       record: "pause answer",
       ids: `tenantId ${tenantId}, rootExecutionId ${rootExecutionId}`,
-      fields: parsed.error.issues.map((issue) => issue.path.join(".")).join(", "),
+      fields: parsed.error.issues.map((issue) => String(issue.path[0])).join(", "),
     });
   });
 }

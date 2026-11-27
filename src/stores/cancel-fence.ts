@@ -93,12 +93,11 @@ export async function checkCancel(db: Db, session: ClientSession, key: EffectKey
       { upsert: true, session },
     );
   const row = FenceMarks.parse(await leasesOf(db).findOne(filter, { session }));
-  const fenced = row.fencedThroughToken;
-  if (fenced !== undefined) {
-    const isStale =
-      key.leaseExecutionId === tree.rootExecutionId ? key.token <= fenced : fenced >= tokenOf(row);
-    if (isStale) throw pauseFencedOf(key);
-  }
+  // no fence is below every token: it compares false with all of them
+  const fenced = row.fencedThroughToken ?? Number.NEGATIVE_INFINITY;
+  const isStale =
+    key.leaseExecutionId === tree.rootExecutionId ? key.token <= fenced : fenced >= tokenOf(row);
+  if (isStale) throw pauseFencedOf(key);
   const isCancelled = row.cancelRequestedAt !== undefined;
   if (!isCancelled && row.stopMode === InterruptMode.Immediate) throw stopFencedOf(key);
   if (key.isCompensation === true) return;

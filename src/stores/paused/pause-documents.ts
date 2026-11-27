@@ -107,7 +107,8 @@ export function pauseOfDocument(found: unknown): PauseRecord {
       ids: Object.entries(ids)
         .flatMap(([key, value]) => (typeof value === "string" ? [`${key} ${value}`] : []))
         .join(", "),
-      fields: parsed.error.issues.map((issue) => issue.path.join(".")).join(", "),
+      // the fields of a document are all at its top: one name each
+      fields: parsed.error.issues.map((issue) => String(issue.path[0])).join(", "),
     });
   const stored = parsed.data;
   const closing =

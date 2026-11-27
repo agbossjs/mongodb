@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-const parsed = vi.hoisted(() => vi.fn(() => ({ parsed: true })));
+const parsed = vi.hoisted(() => vi.fn<(input: unknown) => unknown>(() => ({ parsed: true })));
 
 vi.mock("@agboss/core/stores", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@agboss/core/stores")>()),
@@ -17,7 +17,11 @@ describe("parsedOrUnreadable", () => {
 
     parsedOrUnreadable("a thing", "{}", { id: "1" });
 
-    expect(parsed).toHaveBeenLastCalledWith({ what: "a thing", text: "{}", ids: { id: "1" } });
+    expect(parsed.mock.lastCall?.[0]).toStrictEqual({
+      what: "a thing",
+      text: "{}",
+      ids: { id: "1" },
+    });
   });
 
   it("passes the reviver when there is one", async () => {
